@@ -325,6 +325,13 @@ function ShockForm({s,set,vibSetup,setup,ti}){
     <Row label="Grade"><Inp value={s.grade||""} onChange={v=>set({...s,grade:v})} width={60}/></Row>
     <Row label="Class"><Inp value={s.class_||""} onChange={v=>set({...s,class_:v})} width={60}/></Row>
     <Row label="Type"><Inp value={s.type_||""} onChange={v=>set({...s,type_:v})} width={60}/></Row>
+    <Row label="Location">
+      <Sel value={s.location||"Hull"} onChange={v=>set({...s,location:v})}
+        options={["Hull","Deck","Hull/Deck","Conventional Deck","Mitigated Deck","Isolated Deck","Shell","Wetted-Surface","Frame"]} width={220}/>
+    </Row>
+    <div style={{marginBottom:8,marginTop:-4}}>
+      <Toggle small checked={s.submarine||false} onChange={v=>set({...s,submarine:v})} label="Submarine"/>
+    </div>
     <Row label="Orientation">
       <Sel value={s.orientation||"Unrestricted"} onChange={v=>set({...s,orientation:v})}
         options={["Unrestricted","Vertical Axis Specified","Restricted","Custom","Unknown"]} width={180}/>
@@ -575,30 +582,74 @@ function calcEmiShifts(s){
   const phases=Math.max(1,sf(s.phases||3,3));
   const pwrCables=phases===1?3:4;
   const ru=x=>x>0?Math.ceil(x):0;
+  const rp=x=>Math.max(1,Math.ceil(x)); // round up, minimum 1 position
   const res={};
   res.CE101={raw:1.0,rounded:1.0,bd:[["Fixed",1.0]]};
   res.CE102={raw:1.0,rounded:1.0,bd:[["Fixed",1.0]]};
   res.CS101={raw:1.5,rounded:1.5,bd:[["Fixed",1.5]]};
   res.CS106={raw:1.5,rounded:1.5,bd:[["Fixed",1.5]]};
   const cs114=1.5+((120*cables)/60)/8+((pwrCables*120)/60)/8;
-  res.CS114={raw:cs114,rounded:ru(cs114),bd:[["Setup/Cal",1.5],["Signal cables (120min x "+cables+")",((120*cables)/60)/8],["Power cables ("+pwrCables+"x120min)",((pwrCables*120)/60)/8]]};
+  res.CS114={raw:cs114,rounded:ru(cs114),
+    sigTests:cables, pwrTests:pwrCables+1, totalTests:cables+(pwrCables+1),
+    bd:[["Setup/Cal",1.5],["Signal cables (120min x "+cables+")",((120*cables)/60)/8],["Power cables ("+pwrCables+"x120min)",((pwrCables*120)/60)/8]]};
+  // CS109 — Structure Current; fixed 1.0 shift placeholder (update when lab time confirmed)
+  res.CS109={raw:1.0,rounded:1.0,bd:[["Placeholder — confirm lab time",1.0]]};
+  // CS115 — Impulse Excitation; same test count as CS114, 5 min per test, 0.5 shift setup/cal
+  const cs115Total=cables+(pwrCables+1);
+  const cs115=0.5+((5*cs115Total)/60)/8;
+  res.CS115={raw:cs115,rounded:ru(cs115),
+    sigTests:cables, pwrTests:pwrCables+1, totalTests:cs115Total,
+    bd:[["Setup/Cal",0.5],["Tests (5min x "+cs115Total+")",((5*cs115Total)/60)/8]]};
   const cs116=1.0+((90*cables)/60)/8+((pwrCables*120)/60)/8;
-  res.CS116={raw:cs116,rounded:ru(cs116),bd:[["Setup/Cal/Sweep",1.0],["Signal cables (90min x "+cables+")",((90*cables)/60)/8],["Power cables",((pwrCables*120)/60)/8]]};
+  res.CS116={raw:cs116,rounded:ru(cs116),
+    sigTests:cables, pwrTests:pwrCables+1, totalTests:cables+(pwrCables+1),
+    bd:[["Setup/Cal/Sweep",1.0],["Signal cables (90min x "+cables+")",((90*cables)/60)/8],["Power cables",((pwrCables*120)/60)/8]]};
   const re101=L<50?2.0:2.5;
   res.RE101={raw:re101,rounded:ru(re101),bd:[["L="+L.toFixed(1)+"cm ("+(L<50?"<":">=")+"50cm)",re101]]};
+
+  // RE102 — shifts and positions per band
+  // Positions: ceil((L+7)/ref) + ceil(W/ref) per band, min 1 each side
   const p21=Math.max(0.0125,((L+7)/93)*0.0125),p22=Math.max(0.0125,(W/93)*0.0125);
   const p23=Math.max(0.032,((L+7)/52)*0.032),p24=Math.max(0.032,((W+7)/52)*0.032);
   const p25=Math.max(0.0073,((L+7)/14)*0.0073),p26=Math.max(0.0073,((W+7)/14)*0.1173);
   const re102=1.5+(p21+p22)+(p23+p24)+(p25+p26);
-  res.RE102={raw:re102,rounded:ru(re102),bd:[["Cal/Test <=1GHz",1.5],["1-4 GHz",p21+p22],["4-15 GHz",p23+p24],["15-18 GHz",p25+p26]]};
+  const re102Pos={
+    sub1GHz: 1, // always 1 below 1 GHz
+    b1_4:    rp((L+7)/93)+rp(W/93),
+    b4_15:   rp((L+7)/52)+rp((W+7)/52),
+    b15_18:  rp((L+7)/14)+rp((W+7)/14),
+  };
+  res.RE102={raw:re102,rounded:ru(re102),pos:re102Pos,
+    bd:[["Cal/Test <=1GHz",1.5],["1-4 GHz",p21+p22],["4-15 GHz",p23+p24],["15-18 GHz",p25+p26]]};
+
+  // RS101 — positions based on face areas (each 30cm×30cm = 1 pos)
   const rs101=1.0+(((L*W)*2)/900*22)/60/8+(((L*H)*2)/900*22)/60/8+(((W*H)*2)/900*22)/60/8;
-  res.RS101={raw:rs101,rounded:ru(rs101),bd:[["Cal/Setup",1.0],["LxW sides",+(((L*W)*2)/900*22/60/8).toFixed(4)],["LxH sides",+(((L*H)*2)/900*22/60/8).toFixed(4)],["WxH sides",+(((W*H)*2)/900*22/60/8).toFixed(4)]]};
+  const rs101Pos={
+    LW: Math.max(1,Math.ceil((L*W)/900))*2,
+    LH: Math.max(1,Math.ceil((L*H)/900))*2,
+    WH: Math.max(1,Math.ceil((W*H)/900))*2,
+    get total(){ return this.LW+this.LH+this.WH; }
+  };
+  res.RS101={raw:rs101,rounded:ru(rs101),pos:rs101Pos,
+    bd:[["Cal/Setup",1.0],["LxW sides",+(((L*W)*2)/900*22/60/8).toFixed(4)],["LxH sides",+(((L*H)*2)/900*22/60/8).toFixed(4)],["WxH sides",+(((W*H)*2)/900*22/60/8).toFixed(4)]]};
+
+  // RS103 — shifts and positions per band
+  // Positions: ceil((L+7)/ref) + ceil(W/ref) per band
   const n35=((2*16)/60)/8,n36=(25/60)/8;
   const p37=Math.max(0.04375,(L/89.5)*0.04375),p38=Math.max(0.04375,(W/89.5)*0.04375);
   const p39=Math.max(0.154,(L/93)*0.154),p40=Math.max(0.154,(W/93)*0.154);
   const p41=Math.max(0.052,(L/50)*0.052),p42=Math.max(0.052,(W/50)*0.052);
   const rs103=3.0+n35+n36+(p37+p38)+(p39+p40)+(p41+p42);
-  res.RS103={raw:rs103,rounded:ru(rs103),bd:[["Setup/Field Adj/Antenna",3.0],["2-30 MHz",n35],["30-200 MHz",n36],["200MHz-1GHz",p37+p38],["1-4 GHz",p39+p40],["4-18 GHz",p41+p42]]};
+  const rs103Pos={
+    b2_30:   2, // fixed per spec
+    b30_200: 1, // fixed per spec
+    b200_1G: rp(L/89.5)+rp(W/89.5),
+    b1_4:    rp(L/93)+rp(W/93),
+    b4_18:   rp(L/50)+rp(W/50),
+  };
+  res.RS103={raw:rs103,rounded:ru(rs103),pos:rs103Pos,
+    bd:[["Setup/Field Adj/Antenna",3.0],["2-30 MHz",n35],["30-200 MHz",n36],["200MHz-1GHz",p37+p38],["1-4 GHz",p39+p40],["4-18 GHz",p41+p42]]};
+
   // RS105 fixed
   res.RS105={raw:1.5,rounded:1.5,bd:[["Fixed",1.5]]};
   return res;
@@ -612,7 +663,28 @@ function EmiForm({s,set,ti}){
   // Use instance value if set, else fall back to ti
   const dispL=s.dimL||autoL; const dispW=s.dimW||autoW; const dispH=s.dimH||autoH;
   const dispWt=s.weight||autoWt; const dispPhases=s.phases||autoPhases;
-  const TESTS=["CE101","CE102","CS101","CS106","CS114","CS116","RE101","RE102","RS101","RS103","RS105"];
+  // Rev-aware test list: F has CS106+RS105, G has CS109+CS115
+  const isRevF=(s.revs||{})['Rev F']||false;
+  const isRevG=(s.revs||{})['Rev G']||false;
+  const TESTS_F=["CE101","CE102","CS101","CS106","CS114","CS116","RE101","RE102","RS101","RS103","RS105"];
+  const TESTS_G=["CE101","CE102","CS101","CS109","CS114","CS115","CS116","RE101","RE102","RS101","RS103"];
+  // If Rev G only → G list; if Rev F only or neither → F list; if both → combined
+  const TESTS=isRevG&&!isRevF ? TESTS_G : !isRevG&&isRevF ? TESTS_F : isRevG&&isRevF ? [...new Set([...TESTS_F,...TESTS_G])] : TESTS_F;
+  const TEST_LABELS={
+    CE101:"Conducted Emissions, Power Leads",
+    CE102:"Conducted Emissions, RF Potentials, Power Leads",
+    CS101:"Conducted Susceptibility, Power Leads",
+    CS106:"Conducted Susceptibility, Transients (461F)",
+    CS109:"Conducted Susceptibility, Structure Current (461G)",
+    CS114:"Conducted Susceptibility, Bulk Cable Injection",
+    CS115:"Conducted Susceptibility, Bulk Cable Injection, Impulse (461G)",
+    CS116:"Conducted Susceptibility, Damped Sinusoidal Transients",
+    RE101:"Radiated Emissions, Magnetic Field",
+    RE102:"Radiated Emissions, Electric Field",
+    RS101:"Radiated Susceptibility, Magnetic Field",
+    RS103:"Radiated Susceptibility, Electric Field",
+    RS105:"Radiated Susceptibility, Transients (461F)",
+  };
   const PLATS=["Surface Ships","Submarines"];
   const LOCS=["Below Deck","Above Deck","Hanger Deck"];
   const REVS=["Rev F","Rev G"];
@@ -699,9 +771,9 @@ function EmiForm({s,set,ti}){
           <input type="checkbox" checked={on} onChange={e=>set({...s,tests:{...s.tests,[t]:e.target.checked}})}
             style={{accentColor:C.red,width:13,height:13,flexShrink:0}}/>
           <span style={{fontSize:11,fontWeight:600,color:on?C.red:C.text,minWidth:50}}>{t}</span>
-          {sh&&<span style={{fontSize:10,color:C.muted,flex:1}}>
+          <span style={{fontSize:10,color:on?C.redDim:C.dim,flex:1,marginLeft:2}}>{TEST_LABELS[t]||""}</span>
+          {sh&&<span style={{fontSize:10,color:C.muted,flexShrink:0,marginLeft:4}}>
             {sh.rounded} shift{sh.rounded!==1?"s":""}
-            {" ("}{(sh.raw).toFixed(3)}{" raw)"}
           </span>}
           {t==="RS103"&&on&&(
             <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:4}}>
@@ -716,6 +788,24 @@ function EmiForm({s,set,ti}){
             {isExp?"▲":"▼"}
           </button>}
         </div>
+        {t==="CS109"&&on&&(
+          <div style={{background:"#fffbeb",border:"1px solid #b7791f",borderTop:"none",
+            borderRadius:"0 0 6px 6px",padding:"6px 10px",display:"flex",gap:6,alignItems:"flex-start"}}>
+            <span style={{fontSize:13,flexShrink:0}}>⚠️</span>
+            <span style={{fontSize:10,color:"#7b4f12",lineHeight:1.5}}>
+              <b>NU Labs does not perform CS109.</b> If this test is required, it will need to be subcontracted. A separate subcontract line item should be added to this quote.
+            </span>
+          </div>
+        )}
+        {t==="RS103"&&on&&(
+          <div style={{background:"#fffbeb",border:"1px solid #b7791f",borderTop:"none",
+            borderRadius:"0 0 6px 6px",padding:"6px 10px",display:"flex",gap:6,alignItems:"flex-start"}}>
+            <span style={{fontSize:13,flexShrink:0}}>⚠️</span>
+            <span style={{fontSize:10,color:"#7b4f12",lineHeight:1.5}}>
+              <b>NU Labs RS103 capability is limited to 10 V/m.</b> Any requirement above 10 V/m is outside our capabilities and will need to be subcontracted. Add a subcontract line if higher levels are required.
+            </span>
+          </div>
+        )}
         {isExp&&sh&&(
           <div style={{background:"#f7f9fb",border:"1px solid "+C.border,borderTop:"none",
             borderRadius:"0 0 6px 6px",padding:"6px 10px"}}>
@@ -1280,7 +1370,7 @@ function QuoteSearch({onLoad}){
 const newAb=()=>({id:Date.now(),on:false,spec:"",rev:"1474",testing:"2850",stdSetup:"1000",addlCosts:"0",proc:false,report:false});
 const newSb=()=>({id:Date.now(),on:false,spec:"",rev:"167 Type II",testing:"2650",stdSetup:"850",addlCosts:"0",proc:false,report:false});
 const newVib=()=>({id:Date.now(),on:false,cat:"LAB Vibration (MIL-STD-167)",spec:"",freqRange:"",circ:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"3250",stdSetup:"1250",addlCosts:"0",proc:false,report:false});
-const newShock=()=>({id:Date.now(),on:false,cat:"Medium Weight",spec:"",grade:"A",class_:"I",type_:"A",orientation:"Unrestricted",blows:"",fromVib:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"4575",stdSetup:"1500",addlCosts:"0",proc:false,report:false});
+const newShock=()=>({id:Date.now(),on:false,cat:"Medium Weight",spec:"",grade:"A",class_:"I",type_:"A",location:"Hull",submarine:false,orientation:"Unrestricted",blows:"",fromVib:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"4575",stdSetup:"1500",addlCosts:"0",proc:false,report:false});
 const newNoise=()=>({id:Date.now(),on:false,spec:"",level:"<=140dB",oaspl:"",chamber:"Speakerbox",durVal:"30",durUnit:"minutes",compBudget:"0",pia:0,testing:"3950",stdSetup:"1000",addlCosts:"0",proc:false,report:false});
 const newEnv=()=>({id:Date.now(),on:false,spec:"",items:{},thDur:"0 to 1 Day",thType:"Temperature & Humidity",proc:false,report:false});
 const newEmi=()=>({id:Date.now(),on:false,spec:"",rate:"1600",addl:"0",setupShifts:"3.0",tdShifts:"1.0",dimL:"",dimW:"",dimH:"",weight:"",cables:"0",rs103amp:"",plats:{},locs:{},revs:{},pia:0,tests:{},proc:false,report:false});
@@ -1659,12 +1749,26 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   const procLines=lines.filter(l=>l.code==="42"||l.code==="44"||l.label.toLowerCase().includes("procedure"));
   const repLines=lines.filter(l=>l.code==="41"||l.code==="43"||l.label.toLowerCase().includes("test report")||l.label.toLowerCase().includes("combined test report"));
   const mainLines=lines.filter(l=>!procLines.includes(l)&&!repLines.includes(l));
-  // Group mainLines by unit index so all Unit 1 tests come first, then Unit 2, etc.
-  // Within each unit, preserve insertion order via seq
-  mainLines.sort((a,b)=>{
+
+  // Separate Tear Down from mainLines — it needs special placement
+  const tdLine=mainLines.find(l=>l.label==="Tear Down");
+  const mainNoTd=mainLines.filter(l=>l.label!=="Tear Down");
+
+  // Split mainLines into mechanical (vib/shock/noise/env/hfv/sho/ab/sb/inst) vs shift-based (emi/pq/dcm)
+  const SHIFT_CODES=new Set(["51"]);
+  const mechLines=mainNoTd.filter(l=>!SHIFT_CODES.has(l.code));
+  const shiftLines=mainNoTd.filter(l=>SHIFT_CODES.has(l.code));
+
+  // Sort each group by unit then seq
+  const byUnitSeq=(a,b)=>{
     const ud=(a.unit||0)-(b.unit||0);
     return ud!==0?ud:(a.seq||0)-(b.seq||0);
-  });
+  };
+  mechLines.sort(byUnitSeq);
+  shiftLines.sort(byUnitSeq);
+
+  // Tear Down goes after all mechanical lines, before shift-based lines
+  const sortedMain=[...mechLines,...(tdLine?[tdLine]:[]),...shiftLines];
   // Proc order: general procs (42) first, then EMI (44), then DCM (44), then PQ (44)
   const sortedProcs=procLines.sort((a,b)=>{
     const order=l=>{
@@ -1685,7 +1789,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     };
     return order(a)-order(b);
   });
-  const sorted=[...sortedProcs,...mainLines,...sortedReps];
+  const sorted=[...sortedProcs,...sortedMain,...sortedReps];
   const setupLineLabels=sorted.filter(l=>l.label.toLowerCase().includes("setup")).map(l=>l.label);
   return{lines:sorted,total:sorted.reduce((s,l)=>s+l.val,0),setupLineLabels};
 }
@@ -1704,6 +1808,11 @@ function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
     if(s.grade)parts.push("Grade "+s.grade);
     if(s.class_)parts.push("Class "+s.class_);
     if(s.type_)parts.push("Type "+s.type_);
+    // Location — append "Mounted" for all options
+    const loc=s.location||"Hull";
+    const locStr=loc+" Mounted";
+    if(s.submarine)parts.push("Submarine");
+    parts.push(locStr);
     const orientStr=s.orientation&&s.orientation!=="Unrestricted"?s.orientation+" Orientation":"Unrestricted Orientation";
     parts.push(orientStr);
     if(s.blows)parts.push(s.blows+" blows");
@@ -1778,7 +1887,7 @@ function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App({onLogout,currentUser}){
   const [qi,setQi]=useState({opp:"",account:"",billTo:"",billToCity:"",contact:"",email:"",prepby:"",rev:"",revDate:"",date:new Date().toLocaleDateString("en-US"),rfq:"",stage:"Proposal/Price Quote",type:"New Business",relatedOpps:""});
-  const [ti,setTi]=useState({item:"",qty:"1",model:"",drawing:"",loads:"",dimL:"",dimW:"",dimH:"",wt:"",volt:"",phase:"",hz:"",inrush:"",amps:"",mounting:"",pressureFlow:"",gsi:"Unknown",witness:"Unknown",docRestriction:"None",dpas:"",tiSpecs:"",tiNotes:""});
+  const [ti,setTi]=useState({item:"",qty:"1",model:"",drawing:"",loads:"",dimL:"",dimW:"",dimH:"",wt:"",volt:"",pwrType:"AC",phase:"",hz:"",inrush:"",amps:"",mounting:"",pressureFlow:"",gsi:"Unknown",witness:"Unknown",docRestriction:"None",dpas:"",tiSpecs:"",tiNotes:""});
 
   // Multi-instance section state — arrays of instance objects
   const [vibs,setVibs]=useState([newVib()]);
@@ -1984,7 +2093,7 @@ export default function App({onLogout,currentUser}){
     }
     // Reset all state to blank defaults
     setQi({opp:"",account:"",billTo:"",billToCity:"",contact:"",email:"",prepby:"",rev:"",revDate:"",date:new Date().toLocaleDateString("en-US"),rfq:"",stage:"Proposal/Price Quote",type:"New Business",relatedOpps:""});
-    setTi({item:"",qty:"1",model:"",drawing:"",loads:"",dimL:"",dimW:"",dimH:"",wt:"",volt:"",phase:"",hz:"",inrush:"",amps:"",mounting:"",pressureFlow:"",gsi:"Unknown",witness:"Unknown",docRestriction:"None",dpas:"",tiSpecs:"",tiNotes:""});
+    setTi({item:"",qty:"1",model:"",drawing:"",loads:"",dimL:"",dimW:"",dimH:"",wt:"",volt:"",pwrType:"AC",phase:"",hz:"",inrush:"",amps:"",mounting:"",pressureFlow:"",gsi:"Unknown",witness:"Unknown",docRestriction:"None",dpas:"",tiSpecs:"",tiNotes:""});
     setVibs([newVib()]); setShocks([newShock()]); setNoises([newNoise()]); setEnvs([newEnv()]);
     setHfvs([newHfv()]); setShos([newSho()]); setDcms([newDcm()]); setPqs([newPq()]);
     setEmis([newEmi()]); setAbs([newAb()]); setSbs([newSb()]);
@@ -2094,6 +2203,979 @@ export default function App({onLogout,currentUser}){
       document.head.appendChild(script2);
     };
     document.head.appendChild(script);
+  };
+
+  const exportDcMagPDF = () => {
+    if(window.jspdf){buildDcMagPDF();return;}
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    script.onload = () => buildDcMagPDF();
+    document.head.appendChild(script);
+  };
+
+  const buildDcMagPDF = () => {
+    const {jsPDF} = window.jspdf;
+    const doc = new jsPDF({unit:"pt",format:"letter"});
+    const PW = doc.internal.pageSize.getWidth();
+    const PH = doc.internal.pageSize.getHeight();
+    const ML = 54, MR = 54, TW = PW - ML - MR;
+    const RED = [192,57,43], DARK = [30,30,30], MUTED = [100,100,100], LIGHT = [240,240,240], GREEN = [22,101,52];
+    let y = 44;
+
+    const setF = (style, size, color) => {
+      doc.setFont('helvetica', style);
+      doc.setFontSize(size);
+      doc.setTextColor(...(color||DARK));
+    };
+    const drawFooter = () => {
+      setF('normal', 8, MUTED);
+      doc.text('NU Laboratories, Inc. | '+(qi.opp||''), ML, PH-18);
+      doc.text('Page 1 | '+(qi.revDate||qi.date||''), PW-MR, PH-18, {align:'right'});
+      doc.setDrawColor(...LIGHT); doc.setLineWidth(0.5);
+      doc.line(ML, PH-26, PW-MR, PH-26);
+    };
+
+    // ── Header ──
+    try { doc.addImage(NU_LOGO_PDF, 'PNG', ML, y, 180, 40); }
+    catch(e) { setF('bold', 14, RED); doc.text('NU LABORATORIES', ML, y+28); }
+    setF('normal', 8.5, DARK);
+    ['312 Old Allerton Road','Annandale, NJ 08801-3206',
+     'Tel: 908-713-9300 | Fax: 908-713-9001','sales@nulabs.com']
+      .forEach((l,i) => doc.text(l, PW-MR, y+14+i*11, {align:'right'}));
+    y += 54;
+    doc.setDrawColor(...RED); doc.setLineWidth(1.5);
+    doc.line(ML, y, PW-MR, y);
+    y += 18;
+
+    // ── Title block ──
+    setF('bold', 13, DARK); doc.text('DC MAGNETICS', ML, y);
+    setF('normal', 8.5, MUTED); doc.text('Test Specifications', ML, y+13);
+    setF('normal', 9, MUTED); doc.text('Date: '+(qi.revDate||qi.date||''), PW-MR, y, {align:'right'});
+    if(qi.opp){ setF('bold',9,DARK); doc.text(qi.opp, PW-MR, y+13, {align:'right'}); }
+    y += 34;
+    doc.setDrawColor(...LIGHT); doc.setLineWidth(0.5);
+    doc.line(ML, y, PW-MR, y);
+    y += 18;
+
+    // ── Test Item Details ──
+    doc.setFillColor(...LIGHT);
+    doc.rect(ML, y-2, TW, 18, 'F');
+    doc.setFillColor(...RED); doc.rect(ML, y-2, 3, 18, 'F');
+    setF('bold', 9, RED); doc.text('TEST ITEM', ML+10, y+10);
+    y += 22;
+
+    const sizeStr = [ti.dimL&&ti.dimL+'"', ti.dimW&&ti.dimW+'"', ti.dimH&&ti.dimH+'"'].filter(Boolean).join(' x ');
+    const pwrParts = [ti.volt&&ti.volt+' V '+(ti.pwrType||'AC'), ti.phase&&ti.phase+' Ph', ti.hz&&ti.hz+' Hz', ti.amps&&ti.amps+' A'].filter(Boolean);
+
+    const tiRows = [
+      ['Unit', ti.item],
+      ['Dimensions', sizeStr],
+      ['Weight', ti.wt&&ti.wt+' lbs'],
+      ['Power', pwrParts.join(', ')],
+    ].filter(r=>r[1]);
+
+    tiRows.forEach(([label, value], i) => {
+      doc.setFillColor(...(i%2===0?[255,255,255]:[247,248,250]));
+      doc.rect(ML, y-2, TW, 16, 'F');
+      setF('bold', 9, MUTED); doc.text(label, ML+8, y+9);
+      setF('normal', 9, DARK); doc.text(String(value), ML+110, y+9);
+      y += 16;
+    });
+    y += 16;
+
+    // ── Test Specification block ──
+    doc.setFillColor(...LIGHT);
+    doc.rect(ML, y-2, TW, 18, 'F');
+    doc.setFillColor(...RED); doc.rect(ML, y-2, 3, 18, 'F');
+    setF('bold', 9, RED); doc.text('TEST SPECIFICATION', ML+10, y+10);
+    y += 28;
+
+    // Spec box — clean bordered card, no fill
+    doc.setFillColor(247,248,250);
+    doc.setDrawColor(...LIGHT);
+    doc.setLineWidth(0.5);
+    doc.rect(ML, y, TW, 90, 'FD');
+    doc.setFillColor(...RED); doc.rect(ML, y, 3, 90, 'F');
+
+    setF('bold', 11, DARK); doc.text('DC Magnetics', ML+14, y+18);
+    setF('normal', 8.5, MUTED); doc.text('DOD-STD-1399 Section 070', ML+14, y+30);
+
+    doc.setDrawColor(220,220,220); doc.setLineWidth(0.4);
+    doc.line(ML+14, y+38, ML+TW-14, y+38);
+
+    const specRows=[['Field Strength','1,600 A/m'],['Positions','Three (3) orthogonal positions']];
+    specRows.forEach(([lbl,val],i)=>{
+      setF('normal',9,MUTED); doc.text(lbl+':', ML+14, y+52+i*18);
+      setF('bold',9,DARK);    doc.text(val,          ML+110, y+52+i*18);
+    });
+    y += 106;
+
+    // ── General Notes ──
+    y += 8;
+    doc.setFillColor(...LIGHT);
+    doc.rect(ML, y-2, TW, 18, 'F');
+    doc.setFillColor(...RED); doc.rect(ML, y-2, 3, 18, 'F');
+    setF('bold', 9, RED); doc.text('GENERAL NOTES', ML+10, y+10);
+    y += 20;
+    const generalNotes = [
+      'Pricing is based on customer-supplied information and the assumptions listed herein.',
+      'Feasibility of testing will be reviewed upon receipt of a purchase order and/or test procedure approval.',
+      'The number of tests required for each test method and/or the number of test positions listed in this document are estimated values. Exact quantities will be determined and documented in the approved test procedure.',
+    ];
+    setF('normal', 9, DARK);
+    generalNotes.forEach(note => {
+      const w = doc.splitTextToSize('\u2022  ' + note, TW - 10);
+      checkY(w.length*13+6);
+      doc.text(w, ML+6, y); y += w.length*13+6;
+    });
+    y += 4;
+
+    // ── DCM instances — spec fields if filled ──
+    const activeDcms = dcms.filter(s=>s.on);
+    if(activeDcms.length>0 && activeDcms.some(s=>s.spec)){
+      y += 8;
+      doc.setFillColor(...LIGHT);
+      doc.rect(ML, y-2, TW, 18, 'F');
+      doc.setFillColor(...RED); doc.rect(ML, y-2, 3, 18, 'F');
+      setF('bold', 9, RED); doc.text('ADDITIONAL NOTES', ML+10, y+10);
+      y += 22;
+      activeDcms.forEach((s,i)=>{
+        if(!s.spec) return;
+        const label = activeDcms.length>1 ? 'Unit #'+(i+1)+(s.identifier?' ('+s.identifier+')':'') : 'Specification';
+        setF('bold',9,MUTED); doc.text(label+':', ML+8, y);
+        setF('normal',9,DARK); doc.text(s.spec, ML+110, y);
+        y += 14;
+      });
+    }
+
+    drawFooter();
+    const fname = (qi.opp||'DC-Mag-Specs')+(qi.rev?' Rev '+qi.rev:'')+'.pdf';
+    doc.save(fname);
+  };
+
+  const exportPq300bPDF = () => {
+    if(window.jspdf){buildPq300bPDF();return;}
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    script.onload = () => buildPq300bPDF();
+    document.head.appendChild(script);
+  };
+
+  const buildPq300bPDF = () => {
+    const {jsPDF} = window.jspdf;
+    const doc = new jsPDF({unit:"pt",format:"letter"});
+    const PW = doc.internal.pageSize.getWidth();
+    const PH = doc.internal.pageSize.getHeight();
+    const ML = 54, MR = 54, TW = PW - ML - MR;
+    const RED = [192,57,43], DARK = [30,30,30], MUTED = [100,100,100], LIGHT = [240,240,240], BLUE = [26,82,118];
+    let y = 44;
+    let pageNum = 1;
+
+    const setF = (style, size, color) => {
+      doc.setFont('helvetica', style);
+      doc.setFontSize(size);
+      doc.setTextColor(...(color||DARK));
+    };
+    const checkY = (need) => {
+      if(y + (need||20) > PH - 52){
+        drawFooter();
+        doc.addPage();
+        pageNum++;
+        y = 54;
+      }
+    };
+    const drawFooter = () => {
+      const p = doc.internal.getCurrentPageInfo().pageNumber;
+      setF('normal', 8, MUTED);
+      doc.text('NU Laboratories, Inc. | '+(qi.opp||''), ML, PH-18);
+      doc.text('Page '+p+' | '+(qi.revDate||qi.date||''), PW-MR, PH-18, {align:'right'});
+      doc.setDrawColor(...LIGHT); doc.setLineWidth(0.5);
+      doc.line(ML, PH-26, PW-MR, PH-26);
+    };
+    const sectionHdr = (title) => {
+      checkY(28);
+      y += 8;
+      doc.setFillColor(...LIGHT);
+      doc.rect(ML, y-2, TW, 18, 'F');
+      doc.setFillColor(...RED); doc.rect(ML, y-2, 3, 18, 'F');
+      setF('bold', 9, RED); doc.text(title.toUpperCase(), ML+10, y+10);
+      y += 22;
+    };
+
+    // ── Header ──
+    try { doc.addImage(NU_LOGO_PDF, 'PNG', ML, y, 180, 40); }
+    catch(e) { setF('bold', 14, RED); doc.text('NU LABORATORIES', ML, y+28); }
+    setF('normal', 8.5, DARK);
+    ['312 Old Allerton Road','Annandale, NJ 08801-3206',
+     'Tel: 908-713-9300 | Fax: 908-713-9001','sales@nulabs.com']
+      .forEach((l,i) => doc.text(l, PW-MR, y+14+i*11, {align:'right'}));
+    y += 54;
+    doc.setDrawColor(...RED); doc.setLineWidth(1.5);
+    doc.line(ML, y, PW-MR, y);
+    y += 18;
+
+    // ── Title ──
+    setF('bold', 13, DARK); doc.text('POWER QUALITY', ML, y);
+    setF('normal', 8.5, MUTED); doc.text('MIL-STD-1399 Section 300B — Test Specifications', ML, y+13);
+    setF('normal', 9, MUTED); doc.text('Date: '+(qi.revDate||qi.date||''), PW-MR, y, {align:'right'});
+    if(qi.opp){ setF('bold',9,DARK); doc.text(qi.opp, PW-MR, y+13, {align:'right'}); }
+    y += 34;
+    doc.setDrawColor(...LIGHT); doc.setLineWidth(0.5);
+    doc.line(ML, y, PW-MR, y);
+    y += 16;
+
+    // ── Test Item ──
+    sectionHdr('Test Item');
+    const sizeStr = [ti.dimL&&ti.dimL+'"',ti.dimW&&ti.dimW+'"',ti.dimH&&ti.dimH+'"'].filter(Boolean).join(' x ');
+    const pwrParts = [ti.volt&&ti.volt+' V '+(ti.pwrType||'AC'),ti.phase&&ti.phase+' Ph',ti.hz&&ti.hz+' Hz',ti.amps&&ti.amps+' A'].filter(Boolean);
+    [['Unit',ti.item],['Dimensions',sizeStr],['Weight',ti.wt&&ti.wt+' lbs'],['Power',pwrParts.join(', ')]]
+      .filter(r=>r[1]).forEach(([label,value],i)=>{
+        doc.setFillColor(...(i%2===0?[255,255,255]:[247,248,250]));
+        doc.rect(ML, y-2, TW, 16, 'F');
+        setF('bold',9,MUTED); doc.text(label, ML+8, y+9);
+        setF('normal',9,DARK); doc.text(String(value), ML+110, y+9);
+        y += 16;
+      });
+    y += 10;
+
+    // ── Full 300B test data ──
+    const PQ_300B_FULL = [
+      {key:"B5.3.1", label:"Voltage and frequency tolerance test",
+       req:"Type 1 single phase (123/107) V ac, (62/57) Hz",
+       ref:"Table II for shipboard and submarine applications",
+       note:null},
+      {key:"B5.3.2", label:"Voltage and frequency transient tolerance and recovery test",
+       req:"138 V ac / 63.3 Hz; 92 V ac / 56.7 Hz",
+       ref:"Table III",
+       note:null},
+      {key:"B5.3.3", label:"Voltage spike test",
+       req:"900 to 1000 V peak line-to-line and line-to-ground, or 2400 to 2500 V peak line-to-line and line-to-ground",
+       ref:"Figure 23, 24 or 25",
+       note:"Voltage spike impulse wave shape using IEC 61000-4-5 1.2/50 \u03bcS open circuit waveform definition. Overshoot may exceed figure. Or voltage spike impulse wave shape of Figure 6 NAVSEA deviation for light fixtures (MIL-DTL-16377 SSL)."},
+      {key:"B5.3.4", label:"Emergency condition test",
+       req:"70 ms dropout, 2 minute dropout; voltage and frequency decay characteristics for half-load curve; 67.2 Hz for 2 minutes / 155.25 V ac for 2 min",
+       ref:"Figure 8, Table VI",
+       note:null},
+      {key:"B5.3.5", label:"Grounding test",
+       req:"100,000-ohm; each lead grounded individually for 5 minutes",
+       ref:null,
+       note:null},
+      {key:"B5.3.6", label:"User equipment power profile test",
+       req:"User voltage and power characteristics per Section 5.3.6 a. through m. as required",
+       ref:null,
+       note:"Inrush current measurement may be limited by the capabilities of the AC source used, which may not cover 10\u00d7 nominal current or higher. If inrush exceeds source capability the measurement cannot be made as desired. Will report what is measured and make a best effort attempt using facility power directly (5 attempts)."},
+      {key:"B5.3.7", label:"Current waveform test",
+       req:"120 Hz to 20 kHz, < 1 kVA limits as applicable",
+       ref:null,
+       note:"Requirement met using MIL-STD-461F/G test method CE101 with frequency extended to 20 kHz. A non-regulated power source may be needed as regulated source switching produces inconsistent current waveform data. Not required for currents < 1 A per NAVSEA."},
+      {key:"B5.3.8", label:"Voltage and frequency modulation test",
+       req:"Frequency modulation 0.5%; voltage modulation 2%. Periods of 17 ms, 75 ms, 250 ms, 500 ms, 1 s, 5 s and 10 s each repeated ten consecutive times",
+       ref:"Table VII",
+       note:null},
+      {key:"B5.3.9", label:"Simulated human body leakage current test",
+       req:"60 Hz to 700 Hz < 5 mA; 700 Hz to 100 kHz < 70 mA",
+       ref:"Figure 28, Figure 31",
+       note:null},
+      {key:"B5.3.10.1", label:"Equipment insulation resistance test",
+       req:"500 V dc for 60 seconds; resistance to ground > 10 M\u03a9",
+       ref:null,
+       note:null},
+      {key:"B5.3.10.2", label:"Active ground detection test",
+       req:"For 440 V rms EUT: AC source 622.2 V peak, DC source 505 VDC. For 115 V rms EUT: AC source 162.6 V peak, DC source 155 VDC.",
+       ref:null,
+       note:"AGD is run on one line only per NAVSEA direction. Verify if legacy requirements apply."},
+    ];
+
+    // Only show rows selected by the user across all active PQ instances
+    const selectedKeys = new Set();
+    pqs.filter(s=>s.on).forEach(s=>{
+      PQ_300B_FULL.forEach(r=>{ if(s.rows?.[r.key]) selectedKeys.add(r.key); });
+    });
+    const activeRows = PQ_300B_FULL.filter(r=>selectedKeys.has(r.key));
+
+    if(activeRows.length===0){
+      setF('normal',10,MUTED); doc.text('No MIL-STD-1399 Section 300B tests selected.', ML, y); y+=20;
+    } else {
+      sectionHdr('MIL-STD-1399 Section 300B — Selected Tests');
+
+      // Table header
+      const cSec=44, cReq=TW*0.38, cRef=TW*0.28, cNoteW=TW-cSec-cReq-cRef;
+      doc.setFillColor(50,50,50); doc.rect(ML,y,TW,16,'F');
+      setF('bold',8,[255,255,255]);
+      doc.text('Section', ML+4, y+11);
+      doc.text('Requirement', ML+cSec+4, y+11);
+      doc.text('Tables / Figures', ML+cSec+cReq+4, y+11);
+      y += 16;
+
+      activeRows.forEach((r,idx)=>{
+        const hdrLines  = doc.splitTextToSize(r.key.replace('B','')+' — '+r.label, TW-12);
+        const reqLines  = doc.splitTextToSize(r.req, TW-16);
+        const refLines  = r.ref ? doc.splitTextToSize('Ref: '+r.ref, TW-16) : [];
+        const noteLines = r.note ? doc.splitTextToSize(r.note, TW-16) : [];
+        const rowH = hdrLines.length*13+4 + reqLines.length*12+3
+          + (refLines.length>0?refLines.length*11+3:0)
+          + (noteLines.length>0?noteLines.length*10+4:0) + 10;
+
+        checkY(rowH+2);
+        // Alternating header bg
+        doc.setFillColor(...(idx%2===0?[240,244,248]:[232,238,244]));
+        doc.rect(ML, y, TW, hdrLines.length*13+8, 'F');
+        doc.setFillColor(...(idx%2===0?[255,255,255]:[250,251,253]));
+        doc.rect(ML, y+hdrLines.length*13+8, TW, rowH-(hdrLines.length*13+8), 'F');
+
+        let ry=y+12;
+        setF('bold',8.5,BLUE); doc.text(hdrLines, ML+8, ry); ry+=hdrLines.length*13+6;
+        setF('normal',8.5,DARK); doc.text(reqLines, ML+10, ry); ry+=reqLines.length*12+3;
+        if(refLines.length>0){ setF('normal',8,MUTED); doc.text(refLines,ML+10,ry); ry+=refLines.length*11+3; }
+        if(noteLines.length>0){ setF('italic',7.5,[100,100,100]); doc.text(noteLines,ML+10,ry); }
+
+        doc.setDrawColor(...LIGHT); doc.setLineWidth(0.4);
+        doc.line(ML, y+rowH, ML+TW, y+rowH);
+        y += rowH;
+      });
+      y += 10;
+    }
+
+    // ── General Notes ──
+    sectionHdr('General Notes');
+    const generalNotes = [
+      'Pricing is based on customer-supplied information and the assumptions listed herein.',
+      'Feasibility of testing will be reviewed upon receipt of a purchase order and/or test procedure approval.',
+      'The number of tests required for each test method and/or the number of test positions listed in this document are estimated values. Exact quantities will be determined and documented in the approved test procedure.',
+    ];
+    setF('normal',9,DARK);
+    generalNotes.forEach(note=>{
+      const w = doc.splitTextToSize('\u2022  '+note, TW-10);
+      checkY(w.length*13+6);
+      doc.text(w, ML+6, y); y += w.length*13+6;
+    });
+    y += 4;
+
+    // Footers on all pages
+    const tp = doc.internal.getNumberOfPages();
+    for(let p=1;p<=tp;p++){ doc.setPage(p); drawFooter(); }
+
+    const fname = (qi.opp||'PQ-300B-Specs')+(qi.rev?' Rev '+qi.rev:'')+'.pdf';
+    doc.save(fname);
+  };
+
+  const exportEmi461fPDF = () => {
+    if(window.jspdf){buildEmi461fPDF();return;}
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    script.onload = () => buildEmi461fPDF();
+    document.head.appendChild(script);
+  };
+
+  const buildEmi461fPDF = () => {
+    const {jsPDF} = window.jspdf;
+    const doc = new jsPDF({unit:"pt",format:"letter"});
+    const PW = doc.internal.pageSize.getWidth();
+    const PH = doc.internal.pageSize.getHeight();
+    const ML = 54, MR = 54, TW = PW - ML - MR;
+    const RED=[192,57,43],DARK=[30,30,30],MUTED=[100,100,100],LIGHT=[240,240,240],BLUE=[26,82,118];
+    let y = 44;
+
+    const setF=(style,size,color)=>{doc.setFont('helvetica',style);doc.setFontSize(size);doc.setTextColor(...(color||DARK));};
+    const checkY=(need)=>{if(y+(need||20)>PH-52){drawFooter();doc.addPage();y=54;}};
+    const drawFooter=()=>{
+      const p=doc.internal.getCurrentPageInfo().pageNumber;
+      setF('normal',8,MUTED);
+      doc.text('NU Laboratories, Inc. | '+(qi.opp||''),ML,PH-18);
+      doc.text('Page '+p+' | '+(qi.revDate||qi.date||''),PW-MR,PH-18,{align:'right'});
+      doc.setDrawColor(...LIGHT);doc.setLineWidth(0.5);doc.line(ML,PH-26,PW-MR,PH-26);
+    };
+    const sectionHdr=(title)=>{
+      checkY(28);y+=8;
+      doc.setFillColor(...LIGHT);doc.rect(ML,y-2,TW,18,'F');
+      doc.setFillColor(...RED);doc.rect(ML,y-2,3,18,'F');
+      setF('bold',9,RED);doc.text(title.toUpperCase(),ML+10,y+10);y+=22;
+    };
+
+    // ── Header ──
+    try{doc.addImage(NU_LOGO_PDF,'PNG',ML,y,180,40);}
+    catch(e){setF('bold',14,RED);doc.text('NU LABORATORIES',ML,y+28);}
+    setF('normal',8.5,DARK);
+    ['312 Old Allerton Road','Annandale, NJ 08801-3206',
+     'Tel: 908-713-9300 | Fax: 908-713-9001','sales@nulabs.com']
+      .forEach((l,i)=>doc.text(l,PW-MR,y+14+i*11,{align:'right'}));
+    y+=54;
+    doc.setDrawColor(...RED);doc.setLineWidth(1.5);doc.line(ML,y,PW-MR,y);y+=18;
+
+    // ── Title ──
+    setF('bold',13,DARK);doc.text('EMI TESTING',ML,y);
+    setF('normal',8.5,MUTED);doc.text('MIL-STD-461F \u2014 Test Specifications',ML,y+13);
+    setF('normal',9,MUTED);doc.text('Date: '+(qi.revDate||qi.date||''),PW-MR,y,{align:'right'});
+    if(qi.opp){setF('bold',9,DARK);doc.text(qi.opp,PW-MR,y+13,{align:'right'});}
+    y+=34;
+    doc.setDrawColor(...LIGHT);doc.setLineWidth(0.5);doc.line(ML,y,PW-MR,y);y+=16;
+
+    // ── Test Item ──
+    sectionHdr('Test Item');
+    const sizeStr=[ti.dimL&&ti.dimL+'"',ti.dimW&&ti.dimW+'"',ti.dimH&&ti.dimH+'"'].filter(Boolean).join(' x ');
+    const pwrParts=[ti.volt&&ti.volt+' V '+(ti.pwrType||'AC'),ti.phase&&ti.phase+' Ph',ti.hz&&ti.hz+' Hz',ti.amps&&ti.amps+' A'].filter(Boolean);
+    [['Unit',ti.item],['Dimensions',sizeStr],['Weight',ti.wt&&ti.wt+' lbs'],['Power',pwrParts.join(', ')]]
+      .filter(r=>r[1]).forEach(([label,value],i)=>{
+        doc.setFillColor(...(i%2===0?[255,255,255]:[247,248,250]));
+        doc.rect(ML,y-2,TW,16,'F');
+        setF('bold',9,MUTED);doc.text(label,ML+8,y+9);
+        setF('normal',9,DARK);doc.text(String(value),ML+110,y+9);
+        y+=16;
+      });
+    y+=10;
+
+    // Compute all positions and test counts from the same math as shift calculations
+    const activeEmi = emis.find(s=>s.on)||(emis[0]||{});
+    const dispL = activeEmi.dimL||ti.dimL||'0';
+    const dispW = activeEmi.dimW||ti.dimW||'0';
+    const dispH = activeEmi.dimH||ti.dimH||'0';
+    const emiCalc = calcEmiShifts({
+      dimL:dispL, dimW:dispW, dimH:dispH,
+      cables:activeEmi.cables||'0',
+      phases:activeEmi.phases||ti.phase||'3'
+    });
+    const c114 = emiCalc.CS114; // has sigTests, pwrTests, totalTests
+    const c116 = emiCalc.CS116;
+    const re102p = emiCalc.RE102.pos;
+    const rs101p = emiCalc.RS101.pos;
+    const rs103p = emiCalc.RS103.pos;
+    const pwrCables = sf(activeEmi.phases||ti.phase||'3',3)===1?3:4;
+    const pos=(n)=>n+' position'+(n!==1?'s':'');
+
+    // Full 461F test definitions — only show tests selected by user
+    const EMI_461F = [
+      {key:"CE101", label:"Conducted Emissions, Power Leads, 30 Hz to 10 kHz",
+       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE101-2, input power < 1 kVA.",
+       note:null},
+      {key:"CE102", label:"Conducted Emissions, Power Leads, 10 kHz to 10 MHz",
+       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE102-1 from 10 kHz to 10 MHz with 6 dB relaxation.",
+       note:null},
+      {key:"CS101", label:"Conducted Susceptibility, Power Leads, 30 Hz to 150 kHz",
+       desc:"Tested on each AC high side for a total of one (1) test. Tested to MIL-STD-461F Figure CS101-1, Curve 1 and Figure CS101-2.",
+       note:null},
+      {key:"CS106", label:"Conducted Susceptibility, Transients, Power Leads",
+       desc:"Tested on each AC high side for a total of two (2) tests. Tested to MIL-STD-461F Figure CS106-1. Testing performed with a test generator compliant with CS06. Tested in charged mode of operation only.",
+       note:"The overshoot on this generator is slightly higher than specified in CS106 but test results are generally accepted as this is considered worst case."},
+      {key:"CS114", label:"Conducted Susceptibility, Bulk Cable Injection, 10 kHz to 200 MHz and 4 kHz to 1 MHz at 77 dB \u03bcA",
+       desc:"Bulk injection on AC power input lead and on one lead individually. Common mode test on input leads for a total of "+c114.pwrTests+" tests for power leads. "+c114.sigTests+" test(s) on signal leads for a total of "+c114.totalTests+" tests. Tested to MIL-STD-461F Figure CS114-1, Curve 2 from 10 kHz to 200 MHz and from 4 kHz to 1 MHz at 77 dB \u03bcA.",
+       note:null},
+      {key:"CS116", label:"Conducted Susceptibility, Damped Sinusoidal Transients, Cables and Power Leads, 10 kHz to 100 MHz",
+       desc:"Bulk injection on AC power input lead and on each lead individually for a total of "+c116.pwrTests+" tests for power leads. "+c116.sigTests+" test(s) on signal leads for a total of "+c116.totalTests+" tests. Tested to MIL-STD-461F Figure CS116-2 at discrete frequencies: 10 kHz, 100 kHz, 1 MHz, 10 MHz, 30 MHz and 100 MHz.",
+       note:null},
+      {key:"RE101", label:"Radiated Emissions, Magnetic Field, 30 Hz to 100 kHz",
+       desc:"Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RE101-2 from 30 Hz to 100 kHz.",
+       note:null},
+      {key:"RE102", label:"Radiated Emissions, Electric Field, 10 kHz to 18 GHz",
+       desc:"Tested to MIL-STD-461F Figure RE102-1 for Metallic Ships below deck applications.",
+       positions:[
+         {range:"10 kHz \u2013 1 GHz",    pos:pos(re102p.sub1GHz)},
+         {range:"1 GHz \u2013 4 GHz",     pos:pos(re102p.b1_4)},
+         {range:"4 GHz \u2013 15 GHz",    pos:pos(re102p.b4_15)},
+         {range:"15 GHz \u2013 18 GHz",   pos:pos(re102p.b15_18)},
+       ],
+       note:"Tested at width and cables only. Testing required to 10\u00d7 the highest operating frequency or 1 GHz (whichever is greater), or if not known, to 18 GHz."},
+      {key:"RS101", label:"Radiated Susceptibility, Magnetic Field, 30 Hz to 100 kHz",
+       desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RS101-1 from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" L\u00d7W + "+rs101p.LH+" L\u00d7H + "+rs101p.WH+" W\u00d7H).",
+       note:"Applicability depends on application."},
+      {key:"RS103", label:"Radiated Susceptibility, Electric Field, 2 MHz to 18 GHz",
+       desc:"Tested to MIL-STD-461F Table VII for Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m.",
+       positions:[
+         {range:"2 MHz \u2013 30 MHz",    pos:pos(rs103p.b2_30)},
+         {range:"30 MHz \u2013 200 MHz",  pos:pos(rs103p.b30_200)},
+         {range:"200 MHz \u2013 1 GHz",   pos:pos(rs103p.b200_1G)},
+         {range:"1 GHz \u2013 4 GHz",     pos:pos(rs103p.b1_4)},
+         {range:"4 GHz \u2013 18 GHz",    pos:pos(rs103p.b4_18)},
+       ],
+       note:null},
+    ];
+
+    // Only show tests selected by user across all active EMI instances
+    const selectedKeys=new Set();
+    emis.filter(s=>s.on).forEach(s=>{
+      Object.entries(s.tests||{}).forEach(([k,v])=>{if(v)selectedKeys.add(k);});
+    });
+    const activeRows=EMI_461F.filter(r=>selectedKeys.has(r.key));
+
+    if(activeRows.length===0){
+      setF('normal',10,MUTED);doc.text('No MIL-STD-461F tests selected.',ML,y);y+=20;
+    } else {
+      sectionHdr('MIL-STD-461F \u2014 Selected Tests');
+
+      activeRows.forEach((r,idx)=>{
+        const labelLines = doc.splitTextToSize(r.key+'  '+r.label, TW-12);
+        const descLines  = r.desc ? doc.splitTextToSize(r.desc, TW-20) : [];
+        const noteLines  = r.note ? doc.splitTextToSize('\u26a0  '+r.note, TW-20) : [];
+        const posH = r.positions ? r.positions.length*12+4 : 0;
+        const contentH = labelLines.length*12 + (descLines.length>0?descLines.length*11+4:0) + posH + (noteLines.length>0?noteLines.length*10+4:0);
+        const rowH = contentH + 14;
+        checkY(rowH+2);
+
+        doc.setFillColor(...(idx%2===0?[255,255,255]:[247,248,250]));
+        doc.rect(ML,y,TW,rowH,'F');
+        let ry = y+12;
+
+        // Key + label on same line(s)
+        setF('bold',8.5,BLUE); doc.text(r.key, ML+6, ry);
+        setF('bold',8.5,DARK);
+        const lblLines = doc.splitTextToSize(r.label, TW-50);
+        doc.text(lblLines, ML+50, ry);
+        ry += lblLines.length*12+3;
+
+        // Description
+        if(descLines.length>0){
+          setF('normal',8.5,DARK); doc.text(descLines,ML+8,ry); ry+=descLines.length*11+3;
+        }
+
+        // Position table (RE102, RS103)
+        if(r.positions){
+          r.positions.forEach(({range,pos})=>{
+            setF('normal',8,[80,80,80]); doc.text('\u2022  '+range+':',ML+12,ry);
+            setF('bold',8,DARK); doc.text(pos,ML+130,ry); ry+=12;
+          });
+          ry+=3;
+        }
+
+        // Note
+        if(noteLines.length>0){
+          setF('italic',7.5,[110,90,50]); doc.text(noteLines,ML+8,ry); ry+=noteLines.length*10+3;
+        }
+
+        doc.setDrawColor(...LIGHT); doc.setLineWidth(0.3);
+        doc.line(ML,y+rowH,ML+TW,y+rowH);
+        y+=rowH;
+      });
+      y+=10;
+    }
+
+    // ── General Notes ──
+    sectionHdr('General Notes');
+    const generalNotes=[
+      'Pricing is based on customer-supplied information and the assumptions listed herein.',
+      'Feasibility of testing will be reviewed upon receipt of a purchase order and/or test procedure approval.',
+      'This quote assumes that susceptibility criteria can be determined in less than 3 seconds during real-time operation of the EUT. Customer to supply cables and all peripheral/monitoring equipment and one mode of operation (operating or standby). Susceptibility determination provided by the customer.',
+      'Pricing and feasibility may be reevaluated upon completion and review of the NU Laboratories Test Configuration Form.',
+      'The number of tests required for each test method and/or the number of test positions listed in this document are estimated values. Exact quantities will be determined and documented in the approved test procedure.',
+    ];
+    setF('normal',9,DARK);
+    generalNotes.forEach(note=>{
+      const w=doc.splitTextToSize('\u2022  '+note,TW-10);
+      checkY(w.length*13+6);doc.text(w,ML+6,y);y+=w.length*13+6;
+    });
+    y+=4;
+
+    const tp=doc.internal.getNumberOfPages();
+    for(let p=1;p<=tp;p++){doc.setPage(p);drawFooter();}
+    const fname=(qi.opp||'EMI-461F-Specs')+(qi.rev?' Rev '+qi.rev:'')+'.pdf';
+    doc.save(fname);
+  };
+
+  const exportEmi461gPDF = () => {
+    if(window.jspdf){buildEmi461gPDF();return;}
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    script.onload = () => buildEmi461gPDF();
+    document.head.appendChild(script);
+  };
+
+  const buildEmi461gPDF = () => {
+    const {jsPDF} = window.jspdf;
+    const doc = new jsPDF({unit:"pt",format:"letter"});
+    const PW = doc.internal.pageSize.getWidth();
+    const PH = doc.internal.pageSize.getHeight();
+    const ML = 54, MR = 54, TW = PW - ML - MR;
+    const RED=[192,57,43],DARK=[30,30,30],MUTED=[100,100,100],LIGHT=[240,240,240],BLUE=[26,82,118];
+    let y = 44;
+
+    const setF=(style,size,color)=>{doc.setFont('helvetica',style);doc.setFontSize(size);doc.setTextColor(...(color||DARK));};
+    const checkY=(need)=>{if(y+(need||20)>PH-52){drawFooter();doc.addPage();y=54;}};
+    const drawFooter=()=>{
+      const p=doc.internal.getCurrentPageInfo().pageNumber;
+      setF('normal',8,MUTED);
+      doc.text('NU Laboratories, Inc. | '+(qi.opp||''),ML,PH-18);
+      doc.text('Page '+p+' | '+(qi.revDate||qi.date||''),PW-MR,PH-18,{align:'right'});
+      doc.setDrawColor(...LIGHT);doc.setLineWidth(0.5);doc.line(ML,PH-26,PW-MR,PH-26);
+    };
+    const sectionHdr=(title)=>{
+      checkY(28);y+=8;
+      doc.setFillColor(...LIGHT);doc.rect(ML,y-2,TW,18,'F');
+      doc.setFillColor(...RED);doc.rect(ML,y-2,3,18,'F');
+      setF('bold',9,RED);doc.text(title.toUpperCase(),ML+10,y+10);y+=22;
+    };
+
+    // ── Header ──
+    try{doc.addImage(NU_LOGO_PDF,'PNG',ML,y,180,40);}
+    catch(e){setF('bold',14,RED);doc.text('NU LABORATORIES',ML,y+28);}
+    setF('normal',8.5,DARK);
+    ['312 Old Allerton Road','Annandale, NJ 08801-3206',
+     'Tel: 908-713-9300 | Fax: 908-713-9001','sales@nulabs.com']
+      .forEach((l,i)=>doc.text(l,PW-MR,y+14+i*11,{align:'right'}));
+    y+=54;
+    doc.setDrawColor(...RED);doc.setLineWidth(1.5);doc.line(ML,y,PW-MR,y);y+=18;
+
+    // ── Title ──
+    setF('bold',13,DARK);doc.text('EMI TESTING',ML,y);
+    setF('normal',8.5,MUTED);doc.text('MIL-STD-461G \u2014 Test Specifications',ML,y+13);
+    setF('normal',9,MUTED);doc.text('Date: '+(qi.revDate||qi.date||''),PW-MR,y,{align:'right'});
+    if(qi.opp){setF('bold',9,DARK);doc.text(qi.opp,PW-MR,y+13,{align:'right'});}
+    y+=34;
+    doc.setDrawColor(...LIGHT);doc.setLineWidth(0.5);doc.line(ML,y,PW-MR,y);y+=16;
+
+    // ── Test Item ──
+    sectionHdr('Test Item');
+    const sizeStr=[ti.dimL&&ti.dimL+'"',ti.dimW&&ti.dimW+'"',ti.dimH&&ti.dimH+'"'].filter(Boolean).join(' x ');
+    const pwrParts=[ti.volt&&ti.volt+' V '+(ti.pwrType||'AC'),ti.phase&&ti.phase+' Ph',ti.hz&&ti.hz+' Hz',ti.amps&&ti.amps+' A'].filter(Boolean);
+    [['Unit',ti.item],['Dimensions',sizeStr],['Weight',ti.wt&&ti.wt+' lbs'],['Power',pwrParts.join(', ')]]
+      .filter(r=>r[1]).forEach(([label,value],i)=>{
+        doc.setFillColor(...(i%2===0?[255,255,255]:[247,248,250]));
+        doc.rect(ML,y-2,TW,16,'F');
+        setF('bold',9,MUTED);doc.text(label,ML+8,y+9);
+        setF('normal',9,DARK);doc.text(String(value),ML+110,y+9);
+        y+=16;
+      });
+    y+=10;
+
+    // ── Compute positions and test counts from calcEmiShifts ──
+    const activeEmi = emis.find(s=>s.on)||(emis[0]||{});
+    const dispL = activeEmi.dimL||ti.dimL||'0';
+    const dispW = activeEmi.dimW||ti.dimW||'0';
+    const dispH = activeEmi.dimH||ti.dimH||'0';
+    const emiCalc = calcEmiShifts({
+      dimL:dispL, dimW:dispW, dimH:dispH,
+      cables:activeEmi.cables||'0',
+      phases:activeEmi.phases||ti.phase||'3'
+    });
+    const c114 = emiCalc.CS114;
+    const c116 = emiCalc.CS116;
+    const re102p = emiCalc.RE102.pos;
+    const rs101p = emiCalc.RS101.pos;
+    const rs103p = emiCalc.RS103.pos;
+    const pos=(n)=>n+' position'+(n!==1?'s':'');
+
+    // CS115: same cable structure as CS114 but fewer power tests (bulk + high side only = pwrCables)
+    const cs115 = emiCalc.CS115;
+    const c109  = emiCalc.CS109;
+
+    // Full 461G test definitions
+    const EMI_461G = [
+      {key:"CE101", label:"Conducted Emissions, Audio Frequency Currents, Power Leads",
+       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE101-2 from 120 Hz to 10 kHz with a relaxation to the limit determined during testing of 20\u00d7Log(fundamental current).",
+       note:null},
+      {key:"CE102", label:"Conducted Emissions, Radio Frequency Potentials, Power Leads",
+       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE102-1 from 10 kHz to 10 MHz, basic curve relaxed by 6 dB.",
+       note:null},
+      {key:"CS101", label:"Conducted Susceptibility, Power Leads, 30 Hz to 150 kHz",
+       desc:"Tested on the AC high side for a total of one (1) test. Tested to MIL-STD-461G Figure CS101-1 Curve 1 and Figure CS101-2 from 30 Hz to 150 kHz.",
+       note:"Exempt from testing for normal operating current >30 A per phase, or if >30 A per phase with sensitivity worse than 1 \u03bcV or operating frequency >150 kHz."},
+      {key:"CS109", label:"Conducted Susceptibility, Structure Current",
+       desc:"Tested to MIL-STD-461G CS109 requirements.",
+       note:"Test not applicable to equipment with an operating sensitivity worse than 1 \u03bcV or operating frequency >100 kHz."},
+      {key:"CS114", label:"Conducted Susceptibility, Bulk Cable Injection, 10 kHz to 200 MHz and 4 kHz to 1 MHz at 77 dB \u03bcA",
+       desc:"Bulk injection on AC power input and on the high side of the AC input leads. Common mode test on input leads for a total of "+c114.pwrTests+" tests for power leads. "+c114.sigTests+" test(s) on signal leads for a total of "+c114.totalTests+" tests. Tested to MIL-STD-461G Figure CS114-1, Curve 2 from 10 kHz to 200 MHz and from 4 kHz to 1 MHz at 77 dB \u03bcA.",
+       note:null},
+      {key:"CS115", label:"Conducted Susceptibility, Bulk Cable Injection, Impulse Excitation",
+       desc:"Bulk injection on AC power input and on the high side individually for a total of "+cs115.pwrTests+" tests for power leads. "+cs115.sigTests+" test(s) on signal leads for a total of "+cs115.totalTests+" tests. Tested to MIL-STD-461G Figure CS115-1 for one minute using 30 ns pulse at 5 amps, 30 Hz.",
+       note:null},
+      {key:"CS116", label:"Conducted Susceptibility, Damped Sinusoidal Transients, Cables and Power Leads",
+       desc:"Bulk injection on AC power input and on the high side and return individually for a total of "+c116.pwrTests+" tests for power leads. "+c116.sigTests+" test(s) on signal leads for a total of "+c116.totalTests+" tests. Tested at discrete frequencies: 10 kHz, 100 kHz, 1 MHz, 10 MHz, 30 MHz and 100 MHz.",
+       note:null},
+      {key:"RE101", label:"Radiated Emissions, Magnetic Field, 30 Hz to 100 kHz",
+       desc:"Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461G Figure RE101-2 from 30 Hz to 100 kHz.",
+       note:null},
+      {key:"RE102", label:"Radiated Emissions, Electric Field, 10 kHz to 18 GHz",
+       desc:"Tested to MIL-STD-461G Figure RE102-1 for Metallic Ships below deck applications.",
+       positions:[
+         {range:"10 kHz \u2013 30 MHz",   pos:pos(1)},
+         {range:"30 MHz \u2013 200 MHz",  pos:pos(1)},
+         {range:"200 MHz \u2013 1 GHz",   pos:pos(re102p.b1_4)},
+         {range:"1 GHz \u2013 15 GHz",    pos:pos(re102p.b4_15)},
+         {range:"15 GHz \u2013 18 GHz",   pos:pos(re102p.b15_18)},
+       ],
+       note:"Tested at width and cables only. Testing required to 10\u00d7 the highest operating frequency or 1 GHz (whichever is greater), or if not known, to 18 GHz."},
+      {key:"RS101", label:"Radiated Susceptibility, Magnetic Field, 30 Hz to 100 kHz",
+       desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461G Figure RS101-1 from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" L\u00d7W + "+rs101p.LH+" L\u00d7H + "+rs101p.WH+" W\u00d7H).",
+       note:"Applicability depends on application. Test not applicable to equipment with an operating sensitivity worse than 1 \u03bcV or operating frequency >100 kHz."},
+      {key:"RS103", label:"Radiated Susceptibility, Electric Field, 2 MHz to 18 GHz",
+       desc:"Tested to MIL-STD-461G Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m.",
+       positions:[
+         {range:"2 MHz \u2013 30 MHz",    pos:pos(rs103p.b2_30)},
+         {range:"30 MHz \u2013 200 MHz",  pos:pos(rs103p.b30_200)},
+         {range:"200 MHz \u2013 1 GHz",   pos:pos(rs103p.b200_1G)},
+         {range:"1 GHz \u2013 15 GHz",    pos:pos(rs103p.b1_4)},
+         {range:"15 GHz \u2013 18 GHz",   pos:pos(rs103p.b4_18)},
+       ],
+       note:null},
+    ];
+
+    // Only show tests selected by user
+    const selectedKeys=new Set();
+    emis.filter(s=>s.on).forEach(s=>{
+      Object.entries(s.tests||{}).forEach(([k,v])=>{if(v)selectedKeys.add(k);});
+    });
+    const activeRows=EMI_461G.filter(r=>selectedKeys.has(r.key));
+
+    if(activeRows.length===0){
+      setF('normal',10,MUTED);doc.text('No MIL-STD-461G tests selected.',ML,y);y+=20;
+    } else {
+      sectionHdr('MIL-STD-461G \u2014 Selected Tests');
+
+      activeRows.forEach((r,idx)=>{
+        const lblLines  = doc.splitTextToSize(r.label, TW-50);
+        const descLines = r.desc ? doc.splitTextToSize(r.desc, TW-20) : [];
+        const noteLines = r.note ? doc.splitTextToSize('\u26a0  '+r.note, TW-20) : [];
+        const posH = r.positions ? r.positions.length*12+4 : 0;
+        const contentH = lblLines.length*12 + (descLines.length>0?descLines.length*11+4:0) + posH + (noteLines.length>0?noteLines.length*10+4:0);
+        const rowH = contentH + 14;
+        checkY(rowH+2);
+
+        doc.setFillColor(...(idx%2===0?[255,255,255]:[247,248,250]));
+        doc.rect(ML,y,TW,rowH,'F');
+        let ry = y+12;
+
+        setF('bold',8.5,BLUE); doc.text(r.key,ML+6,ry);
+        setF('bold',8.5,DARK); doc.text(lblLines,ML+50,ry);
+        ry += lblLines.length*12+3;
+
+        if(descLines.length>0){setF('normal',8.5,DARK);doc.text(descLines,ML+8,ry);ry+=descLines.length*11+3;}
+
+        if(r.positions){
+          r.positions.forEach(({range,pos})=>{
+            setF('normal',8,[80,80,80]); doc.text('\u2022  '+range+':',ML+12,ry);
+            setF('bold',8,DARK); doc.text(pos,ML+130,ry); ry+=12;
+          });
+          ry+=3;
+        }
+
+        if(noteLines.length>0){setF('italic',7.5,[110,90,50]);doc.text(noteLines,ML+8,ry);ry+=noteLines.length*10+3;}
+
+        doc.setDrawColor(...LIGHT);doc.setLineWidth(0.3);
+        doc.line(ML,y+rowH,ML+TW,y+rowH);
+        y+=rowH;
+      });
+      y+=10;
+    }
+
+    // ── General Notes ──
+    sectionHdr('General Notes');
+    const generalNotes=[
+      'Pricing is based on customer-supplied information and the assumptions listed herein.',
+      'Feasibility of testing will be reviewed upon receipt of a purchase order and/or test procedure approval.',
+      'EMI tested in accordance with MIL-STD-461G for Ships metallic below deck applications. Customer to supply cables and all peripheral and monitoring equipment, one mode of operation (operating or standby). Susceptibility determination provided by customer.',
+      'Pricing and feasibility may be reevaluated upon completion and review of the NU Laboratories Test Configuration Form.',
+      'The number of tests required for each test method and/or the number of test positions listed in this document are estimated values. Exact quantities will be determined and documented in the approved test procedure.',
+    ];
+    setF('normal',9,DARK);
+    generalNotes.forEach(note=>{
+      const w=doc.splitTextToSize('\u2022  '+note,TW-10);
+      checkY(w.length*13+6);doc.text(w,ML+6,y);y+=w.length*13+6;
+    });
+    y+=4;
+
+    const tp=doc.internal.getNumberOfPages();
+    for(let p=1;p<=tp;p++){doc.setPage(p);drawFooter();}
+    const fname=(qi.opp||'EMI-461G-Specs')+(qi.rev?' Rev '+qi.rev:'')+'.pdf';
+    doc.save(fname);
+  };
+
+  const exportPq300Part1PDF = () => {
+    if(window.jspdf){buildPq300Part1PDF();return;}
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    script.onload = () => buildPq300Part1PDF();
+    document.head.appendChild(script);
+  };
+
+  const buildPq300Part1PDF = () => {
+    const {jsPDF} = window.jspdf;
+    const doc = new jsPDF({unit:"pt",format:"letter"});
+    const PW = doc.internal.pageSize.getWidth();
+    const PH = doc.internal.pageSize.getHeight();
+    const ML = 54, MR = 54, TW = PW - ML - MR;
+    const RED = [192,57,43], DARK = [30,30,30], MUTED = [100,100,100], LIGHT = [240,240,240], BLUE = [26,82,118];
+    let y = 44;
+    let pageNum = 1;
+
+    const setF = (style, size, color) => {
+      doc.setFont('helvetica', style);
+      doc.setFontSize(size);
+      doc.setTextColor(...(color||DARK));
+    };
+    const checkY = (need) => {
+      if(y + (need||20) > PH - 52){
+        drawFooter();
+        doc.addPage();
+        pageNum++;
+        y = 54;
+      }
+    };
+    const drawFooter = () => {
+      const p = doc.internal.getCurrentPageInfo().pageNumber;
+      setF('normal', 8, MUTED);
+      doc.text('NU Laboratories, Inc. | '+(qi.opp||''), ML, PH-18);
+      doc.text('Page '+p+' | '+(qi.revDate||qi.date||''), PW-MR, PH-18, {align:'right'});
+      doc.setDrawColor(...LIGHT); doc.setLineWidth(0.5);
+      doc.line(ML, PH-26, PW-MR, PH-26);
+    };
+    const sectionHdr = (title) => {
+      checkY(28);
+      y += 8;
+      doc.setFillColor(...LIGHT);
+      doc.rect(ML, y-2, TW, 18, 'F');
+      doc.setFillColor(...RED); doc.rect(ML, y-2, 3, 18, 'F');
+      setF('bold', 9, RED); doc.text(title.toUpperCase(), ML+10, y+10);
+      y += 22;
+    };
+
+    // ── Header ──
+    try { doc.addImage(NU_LOGO_PDF, 'PNG', ML, y, 180, 40); }
+    catch(e) { setF('bold', 14, RED); doc.text('NU LABORATORIES', ML, y+28); }
+    setF('normal', 8.5, DARK);
+    ['312 Old Allerton Road','Annandale, NJ 08801-3206',
+     'Tel: 908-713-9300 | Fax: 908-713-9001','sales@nulabs.com']
+      .forEach((l,i) => doc.text(l, PW-MR, y+14+i*11, {align:'right'}));
+    y += 54;
+    doc.setDrawColor(...RED); doc.setLineWidth(1.5);
+    doc.line(ML, y, PW-MR, y);
+    y += 18;
+
+    // ── Title ──
+    setF('bold', 13, DARK); doc.text('POWER QUALITY', ML, y);
+    setF('normal', 8.5, MUTED); doc.text('MIL-STD-1399 Section 300 Part 1 \u2014 Test Specifications', ML, y+13);
+    setF('normal', 9, MUTED); doc.text('Date: '+(qi.revDate||qi.date||''), PW-MR, y, {align:'right'});
+    if(qi.opp){ setF('bold',9,DARK); doc.text(qi.opp, PW-MR, y+13, {align:'right'}); }
+    y += 34;
+    doc.setDrawColor(...LIGHT); doc.setLineWidth(0.5);
+    doc.line(ML, y, PW-MR, y);
+    y += 16;
+
+    // ── Test Item ──
+    sectionHdr('Test Item');
+    const sizeStr = [ti.dimL&&ti.dimL+'"',ti.dimW&&ti.dimW+'"',ti.dimH&&ti.dimH+'"'].filter(Boolean).join(' x ');
+    const pwrParts = [ti.volt&&ti.volt+' V '+(ti.pwrType||'AC'),ti.phase&&ti.phase+' Ph',ti.hz&&ti.hz+' Hz',ti.amps&&ti.amps+' A'].filter(Boolean);
+    [['Unit',ti.item],['Dimensions',sizeStr],['Weight',ti.wt&&ti.wt+' lbs'],['Power',pwrParts.join(', ')]]
+      .filter(r=>r[1]).forEach(([label,value],i)=>{
+        doc.setFillColor(...(i%2===0?[255,255,255]:[247,248,250]));
+        doc.rect(ML, y-2, TW, 16, 'F');
+        setF('bold',9,MUTED); doc.text(label, ML+8, y+9);
+        setF('normal',9,DARK); doc.text(String(value), ML+110, y+9);
+        y += 16;
+      });
+    y += 10;
+
+    // ── Part 1 test data ──
+    const PQ_P1_FULL = [
+      {key:"5.3.1", label:"Grounding (susceptibility) test",
+       req:"100,000-ohm; each lead grounded individually for 5 minutes",
+       ref:null, note:null},
+      {key:"5.3.2", label:"User equipment power profile test",
+       req:"User voltage and power characteristics per Section 5.3.2 a. through o. as required",
+       ref:null,
+       note:"Inrush current measurement may be limited by the capabilities of the AC source used, which may not cover 10\u00d7 nominal current or higher. If inrush exceeds source capability the measurement cannot be made as desired. Will report what is measured and make a best effort attempt using facility power directly (5 attempts)."},
+      {key:"5.3.3", label:"Voltage and frequency maximum departure tolerance test",
+       req:"Type 1 single phase (127/104) VAC, (63/57) Hz or Type 1 single phase (484/396) VAC, (63/57) Hz",
+       ref:"Table III for shipboard and submarine applications. Tested for 30 minutes in four (4) modes after temperature stability.",
+       note:null},
+      {key:"5.3.4", label:"Voltage and frequency transient tolerance and recovery test",
+       req:"138 VAC / 63.3 Hz; 92 VAC / 56.7 Hz or 528 VAC / 63.3 Hz; 352 VAC / 56.7 Hz",
+       ref:"Table IV, duration 2 seconds",
+       note:null},
+      {key:"5.3.5", label:"Voltage spike (susceptibility) test",
+       req:"900 to 1000 V peak line-to-line and line-to-ground, or 2400 to 2500 V peak line-to-line and line-to-ground",
+       ref:"Figure 28, 29 or 30",
+       note:"Voltage spike impulse wave shape using IEC 61000-4-5 1.2/50 \u03bcS open circuit waveform definition. Overshoot may exceed figure. Or voltage spike impulse wave shape of Figure 6 NAVSEA deviation for light fixtures (MIL-DTL-16377 SSL)."},
+      {key:"5.3.6", label:"Emergency conditions (susceptibility) test",
+       req:"70 ms dropout, 2 minute dropout; voltage and frequency decay for half-load curve; 67.2 Hz for 2 min / 155.25 VAC for 2 min or 594 VAC for 2 min",
+       ref:"Figure 9, Table VII",
+       note:"Tc time to be provided by supplier, otherwise default times shall be used."},
+      {key:"5.3.7", label:"Current waveform (emission) test",
+       req:"Per Section 5.3.7, performed in accordance with CE101 testing",
+       ref:null,
+       note:"Requirement met using MIL-STD-461G test method CE101 with frequency extended to 20 kHz. A non-regulated power source may be needed as regulated source switching produces inconsistent current waveform data. Not required for currents < 1 A per NAVSEA."},
+      {key:"5.3.8", label:"Voltage and frequency modulation (susceptibility) test",
+       req:"Frequency modulation 0.5%; voltage modulation 2%. Periods of 50 ms, 500 ms, 1 s and 10 s each repeated ten consecutive times",
+       ref:"Table VIII",
+       note:null},
+      {key:"5.3.9", label:"Simulated human body impedance ground current test",
+       req:"60 Hz to 700 Hz < 5 mA; 700 Hz to 100 kHz < 70 mA",
+       ref:"Figure 33 through Figure 36 depending on source voltage",
+       note:null},
+      {key:"5.3.10.1", label:"Equipment line-to-ground voltage (susceptibility) test",
+       req:"150 VDC (for 115 VAC) or 500 VDC (for 440 VAC) for 60 seconds; resistance to ground > 10 M\u03a9",
+       ref:null, note:null},
+      {key:"5.3.10.2", label:"Equipment line-to-ground voltage test (AGD)",
+       req:"For 440 V rms EUT: AC source 622.2 V peak, DC source 505 VDC. For 115 V rms EUT: AC source 162.6 V peak, DC source 155 VDC.",
+       ref:null,
+       note:"AGD is run on one line only per NAVSEA direction. Verify if legacy requirements apply."},
+    ];
+
+    // Only rows selected by user across all active PQ instances
+    const selectedKeys = new Set();
+    pqs.filter(s=>s.on).forEach(s=>{
+      PQ_P1_FULL.forEach(r=>{ if(s.rows?.[r.key]) selectedKeys.add(r.key); });
+    });
+    const activeRows = PQ_P1_FULL.filter(r=>selectedKeys.has(r.key));
+
+    if(activeRows.length===0){
+      setF('normal',10,MUTED); doc.text('No MIL-STD-1399 Section 300 Part 1 tests selected.', ML, y); y+=20;
+    } else {
+      sectionHdr('MIL-STD-1399 Section 300 Part 1 \u2014 Selected Tests');
+
+      // Table header
+      const cSec=44, cReq=TW*0.38, cRef=TW*0.28;
+      doc.setFillColor(50,50,50); doc.rect(ML,y,TW,16,'F');
+      setF('bold',8,[255,255,255]);
+      doc.text('Section', ML+4, y+11);
+      doc.text('Requirement', ML+cSec+4, y+11);
+      doc.text('Tables / Figures', ML+cSec+cReq+4, y+11);
+      y += 16;
+
+      activeRows.forEach((r,idx)=>{
+        const hdrLines  = doc.splitTextToSize(r.key+' — '+r.label, TW-12);
+        const reqLines  = doc.splitTextToSize(r.req, TW-16);
+        const refLines  = r.ref ? doc.splitTextToSize('Ref: '+r.ref, TW-16) : [];
+        const noteLines = r.note ? doc.splitTextToSize(r.note, TW-16) : [];
+        const rowH = hdrLines.length*13+4 + reqLines.length*12+3
+          + (refLines.length>0?refLines.length*11+3:0)
+          + (noteLines.length>0?noteLines.length*10+4:0) + 10;
+
+        checkY(rowH+2);
+        doc.setFillColor(...(idx%2===0?[240,244,248]:[232,238,244]));
+        doc.rect(ML, y, TW, hdrLines.length*13+8, 'F');
+        doc.setFillColor(...(idx%2===0?[255,255,255]:[250,251,253]));
+        doc.rect(ML, y+hdrLines.length*13+8, TW, rowH-(hdrLines.length*13+8), 'F');
+
+        let ry=y+12;
+        setF('bold',8.5,BLUE); doc.text(hdrLines, ML+8, ry); ry+=hdrLines.length*13+6;
+        setF('normal',8.5,DARK); doc.text(reqLines, ML+10, ry); ry+=reqLines.length*12+3;
+        if(refLines.length>0){ setF('normal',8,MUTED); doc.text(refLines,ML+10,ry); ry+=refLines.length*11+3; }
+        if(noteLines.length>0){ setF('italic',7.5,[100,100,100]); doc.text(noteLines,ML+10,ry); }
+
+        doc.setDrawColor(...LIGHT); doc.setLineWidth(0.4);
+        doc.line(ML, y+rowH, ML+TW, y+rowH);
+        y += rowH;
+      });
+      y += 10;
+    }
+
+    // ── General Notes ──
+    sectionHdr('General Notes');
+    const generalNotes = [
+      'Pricing is based on customer-supplied information and the assumptions listed herein.',
+      'Feasibility of testing will be reviewed upon receipt of a purchase order and/or test procedure approval.',
+      'The number of tests required for each test method and/or the number of test positions listed in this document are estimated values. Exact quantities will be determined and documented in the approved test procedure.',
+    ];
+    setF('normal',9,DARK);
+    generalNotes.forEach(note=>{
+      const w = doc.splitTextToSize('\u2022  '+note, TW-10);
+      checkY(w.length*13+6);
+      doc.text(w, ML+6, y); y += w.length*13+6;
+    });
+    y += 4;
+
+    const tp = doc.internal.getNumberOfPages();
+    for(let p=1;p<=tp;p++){ doc.setPage(p); drawFooter(); }
+
+    const fname = (qi.opp||'PQ-300-Part1-Specs')+(qi.rev?' Rev '+qi.rev:'')+'.pdf';
+    doc.save(fname);
   };
 
   const buildPDF = (budgetOnly) => {
@@ -2206,7 +3288,7 @@ export default function App({onLogout,currentUser}){
       sectionHdr('Test Item Description');
       y += 4;
       const sizeStr=[ti.dimL&&ti.dimL+'"',ti.dimW&&ti.dimW+'"',ti.dimH&&ti.dimH+'"'].filter(Boolean).join(' x ');
-      const pwrParts=[ti.volt&&ti.volt+' V',ti.phase&&ti.phase+' Ph',ti.hz&&ti.hz+' Hz',ti.amps&&ti.amps+' A'].filter(Boolean);
+      const pwrParts=[ti.volt&&ti.volt+' V '+(ti.pwrType||'AC'),ti.phase&&ti.phase+' Ph',ti.hz&&ti.hz+' Hz',ti.amps&&ti.amps+' A'].filter(Boolean);
       [
         ti.item&&['Test Item', ti.item],
         ti.qty&&ti.qty!=='1'&&['Qty', ti.qty],
@@ -2518,6 +3600,7 @@ export default function App({onLogout,currentUser}){
           style={{background:C.red,border:"none",borderRadius:7,padding:"7px 16px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
           SAVE
         </button>
+
         {/* Submit for Approval — shown to all users when not already pending/approved */}
         {approval.status==="none"||approval.status==="rejected"?(
           <button onClick={()=>setShowApprovalModal(true)}
@@ -2839,7 +3922,21 @@ export default function App({onLogout,currentUser}){
                   </div>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:6}}>
-                  {[["Voltage","volt"],["Phase","phase"],["Hz","hz"],["Inrush (A)","inrush"],["Op. Amps","amps"]].map(([l,k])=>(
+                  <div>
+                    <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Voltage</div>
+                    <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                      <input value={ti.volt||""} onChange={e=>setTi({...ti,volt:e.target.value})} style={{...inp,width:"100%"}}/>
+                      {["AC","DC"].map(t=>(
+                        <label key={t} style={{display:"flex",alignItems:"center",gap:3,cursor:"pointer",flexShrink:0}}>
+                          <input type="checkbox" checked={(ti.pwrType||"AC")===t}
+                            onChange={()=>setTi({...ti,pwrType:t})}
+                            style={{accentColor:C.red,width:11,height:11}}/>
+                          <span style={{fontSize:10,color:(ti.pwrType||"AC")===t?C.red:C.muted,fontWeight:(ti.pwrType||"AC")===t?700:400}}>{t}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  {[["Phase","phase"],["Hz","hz"],["Inrush (A)","inrush"],["Op. Amps","amps"]].map(([l,k])=>(
                     <div key={k}>
                       <div style={{fontSize:9,color:C.dim,marginBottom:2}}>{l}</div>
                       <input value={ti[k]||""} onChange={e=>setTi({...ti,[k]:e.target.value})} style={{...inp,width:"100%"}}/>
@@ -3136,6 +4233,41 @@ export default function App({onLogout,currentUser}){
                       style={{width:"100%",marginTop:6,background:C.accent,border:"none",borderRadius:8,
                         padding:"9px 0",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:1}}>
                       EXPORT BUDGET PDF
+                    </button>
+                  )}
+                  {dcms.some(s=>s.on)&&(
+                    <button onClick={exportDcMagPDF}
+                      style={{width:"100%",marginTop:6,background:"#166534",border:"none",borderRadius:8,
+                        padding:"9px 0",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:1}}>
+                      DC MAGNETICS — TEST SPECIFICATIONS
+                    </button>
+                  )}
+                  {pqs.some(s=>s.on&&Object.entries(s.rows||{}).some(([k,v])=>v&&k.startsWith('B')))&&(
+                    <button onClick={exportPq300bPDF}
+                      style={{width:"100%",marginTop:6,background:"#1a5276",border:"none",borderRadius:8,
+                        padding:"9px 0",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:1}}>
+                      PQ 300B — TEST SPECIFICATIONS
+                    </button>
+                  )}
+                  {pqs.some(s=>s.on&&Object.entries(s.rows||{}).some(([k,v])=>v&&!k.startsWith('B')))&&(
+                    <button onClick={exportPq300Part1PDF}
+                      style={{width:"100%",marginTop:6,background:"#154360",border:"none",borderRadius:8,
+                        padding:"9px 0",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:1}}>
+                      PQ 300 PART 1 — TEST SPECIFICATIONS
+                    </button>
+                  )}
+                  {emis.some(s=>s.on&&Object.values(s.tests||{}).some(v=>v)&&(s.revs?.['Rev F']||!s.revs?.['Rev G']))&&(
+                    <button onClick={exportEmi461fPDF}
+                      style={{width:"100%",marginTop:6,background:"#4a1942",border:"none",borderRadius:8,
+                        padding:"9px 0",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:1}}>
+                      461F — TEST SPECIFICATIONS
+                    </button>
+                  )}
+                  {emis.some(s=>s.on&&Object.values(s.tests||{}).some(v=>v)&&(s.revs?.['Rev G']||!s.revs?.['Rev F']))&&(
+                    <button onClick={exportEmi461gPDF}
+                      style={{width:"100%",marginTop:6,background:"#1a3a4a",border:"none",borderRadius:8,
+                        padding:"9px 0",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:1}}>
+                      461G — TEST SPECIFICATIONS
                     </button>
                   )}
                 </>
