@@ -909,7 +909,7 @@ function EmiForm({s,set,ti}){
             ))}
             <div style={{fontSize:10,color:C.text,fontWeight:600,borderTop:"1px solid "+C.border,marginTop:4,paddingTop:4,display:"flex",justifyContent:"space-between"}}>
               <span>Total (rounded up)</span>
-              <span style={{fontFamily:"monospace"}}>{sh.rounded} shifts = {"$"}{Math.round(sh.rounded*rate).toLocaleString()}</span>
+              <span style={{fontFamily:"monospace"}}>{sh.rounded} shifts = {"$"}{r25(Math.round(sh.rounded*rate)).toLocaleString()}</span>
             </div>
           </div>
         )}
@@ -917,7 +917,7 @@ function EmiForm({s,set,ti}){
     })}
     {selShifts>0&&(
       <div style={{fontSize:11,color:C.redDim,fontWeight:600,marginTop:6,padding:"6px 8px",background:"#fdf3f2",borderRadius:6}}>
-        {"Testing: "}{selShifts}{" shifts x $"}{rate.toLocaleString()}{" = $"}{Math.round(selShifts*rate).toLocaleString()}
+        {"Testing: "}{selShifts}{" shifts x $"}{rate.toLocaleString()}{" = $"}{r25(Math.round(selShifts*rate)).toLocaleString()}
       </div>
     )}
     <ProcReport s={s} set={set} procPrice={3425} reportPrice={2850} sectionCode="21"/>
@@ -959,8 +959,8 @@ function PqForm({s,set,ti}){
   const p1Shifts=PQ_P1.reduce((a,r)=>a+(s.rows?.[r.key]?getShifts(r):0),0);
   const b3Shifts=PQ_300B.reduce((a,r)=>a+(s.rows?.[r.key]?getShifts(r):0),0);
   const totalShifts=p1Shifts+b3Shifts;
-  const su=sf(s.setupShifts,1.5)*rate, td=sf(s.tdShifts,1.0)*rate;
-  const testCost=totalShifts*rate;
+  const su=r25(sf(s.setupShifts,1.5)*rate), td=r25(sf(s.tdShifts,1.0)*rate);
+  const testCost=r25(totalShifts*rate);
   const allP1=PQ_P1.every(r=>s.rows?.[r.key]);
   const allB3=PQ_300B.every(r=>s.rows?.[r.key]);
   const toggleP1=()=>{const v=!allP1;const rows={...s.rows};PQ_P1.forEach(r=>rows[r.key]=v);set({...s,rows});};
