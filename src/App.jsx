@@ -20,6 +20,7 @@ const PQ_ROWS=[
 ];
 
 const money = n => "$"+Math.round(n).toLocaleString();
+const r25 = n => Math.round(n/25)*25;
 const sf = (v,d=0) => { const n=parseFloat(v); return isNaN(n)?d:n; };
 const mwDisc=vs=>{if(vs<=4000)return 1000;if(vs<=5000)return 1250;if(vs<=7000)return 1500;if(vs<=9000)return 1750;return 2000;};
 const lwDisc=vs=>{if(vs<=2000)return 500;if(vs<=3000)return 750;return 1000;};
@@ -1542,7 +1543,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   const lines=[];
   let currentUnit=0;
   let seq=0;
-  const add=(label,val,_bucket,code)=>{const v=Math.round(sf(val));if(v>0)lines.push({label,val:v,code:code||pcode(label),unit:currentUnit,seq:seq++});};
+  const add=(label,val,_bucket,code)=>{const v=r25(sf(val));if(v>0)lines.push({label,val:v,code:code||pcode(label),unit:currentUnit,seq:seq++});};
 
   // Vibration instances
   vibs.filter(s=>s.on).forEach((s,idx)=>{
