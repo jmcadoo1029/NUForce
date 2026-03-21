@@ -690,6 +690,80 @@ function EmiForm({s,set,ti}){
   const REVS=["Rev F","Rev G"];
   const [expanded,setExpanded]=useState({});
 
+  // ── Unit detail values for warning logic ──
+  const eutAmps   = sf(s.phases&&s.phases?s.phases:ti?.phase||'3',3)>=1 ? sf(ti?.amps||'0',0) : 0;
+  const eutHz     = sf(ti?.hz||'0',0);
+  const isSub     = (s.plats||{})['Submarines']||false;
+  const isAboveDeck = (s.locs||{})['Above Deck']||false;
+  const isBelowDeck = (s.locs||{})['Below Deck']||false;
+  const isDC      = (ti?.pwrType||'AC')==='DC';
+
+  // ── Per-test flags: { greyed: bool, greyReason: string, warnings: string[] } ──
+  const getTestFlags=(t)=>{
+    const warnings=[];
+    let greyed=false, greyReason='';
+
+    if(t==='CS101'){
+      if(isRevF && eutAmps>0 && eutAmps>100){
+        greyed=true; greyReason='CS101 generally does not apply for EUT currents >100 A/phase (Rev F).';
+      } else if(isRevG && eutAmps>0 && eutAmps>30 && eutHz>150000){
+        greyed=true; greyReason='CS101 generally does not apply for >30 A/phase when operating frequency >150 kHz (Rev G).';
+      } else if(isRevG && eutAmps>0 && eutAmps>30){
+        warnings.push('Rev G: CS101 applies for >30 A/phase only if operating frequency ≤150 kHz AND sensitivity better than 1 µV. Verify before including.');
+      }
+      if(eutAmps>0 && eutAmps>18){
+        warnings.push('Amplifier limit: transformer secondary current max ~23 A. Feasibility should be checked at time of test if EUT current is close to this limit.');
+      }
+    }
+
+    if(t==='CS109'){
+      // Already has subcontract warning — add applicability note
+      if(eutHz>0 && eutHz>100000){
+        greyed=true; greyReason='CS109 does not apply for operating frequency >100 kHz.';
+      }
+    }
+
+    if(t==='RS101'){
+      if(eutHz>0 && eutHz>100000){
+        greyed=true; greyReason='RS101 does not apply for operating frequency >100 kHz.';
+      } else {
+        warnings.push('RS101 applicability requires operating frequency ≤100 kHz AND sensitivity better than 1 µV. Verify with customer before including.');
+        if(isSub) warnings.push('Army curve is feasible but pushes our Crown 5002 amp to its limits. Navy curve is OK.');
+      }
+    }
+
+    if(t==='RS103'){
+      warnings.push('NU Labs RS103 capability is limited to 10 V/m. Any requirement above 10 V/m requires subcontracting. Max frequency: 18 GHz.');
+      if(isAboveDeck){
+        warnings.push('⚠ Ships above deck / exposed below deck limits may exceed our capabilities — check with production before quoting.');
+      }
+    }
+
+    if(t==='RE102'){
+      if(isAboveDeck){
+        warnings.push('Ships above deck is outside our standard RE102 capability. This test may need to be subcontracted or require a rented high-gain preamp (≥48 dB). Check with production.');
+      }
+      // Subs external warning
+      if(isSub && !isBelowDeck){
+        warnings.push('Subs external RE102 requires subcontracting. Subs internal is within our capability.');
+      }
+    }
+
+    if(t==='RE101'){
+      if(eutHz>0 && eutHz>100000){
+        warnings.push('RE101 applicability should be verified for operating frequency >100 kHz.');
+      }
+    }
+
+    if(isDC){
+      if(['CS101','CS106','CS114','CS115','CS116'].includes(t)){
+        warnings.push('EUT is DC powered — this test still applies but limits may differ. Confirm applicable figure with customer.');
+      }
+    }
+
+    return {greyed, greyReason, warnings};
+  };
+
   // Compute shifts from unit details dimensions
   const shifts=useMemo(()=>calcEmiShifts({dimL:dispL,dimW:dispW,dimH:dispH,cables:s.cables||"0",phases:dispPhases||"3"}),[dispL,dispW,dispH,s.cables,dispPhases]);
 
@@ -765,14 +839,19 @@ function EmiForm({s,set,ti}){
       const on=s.tests?.[t]||false;
       const sh=shifts[t];
       const isExp=expanded[t]||false;
+      const {greyed,greyReason,warnings}=getTestFlags(t);
       return <div key={t} style={{marginBottom:4}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,background:on?"#fdf3f2":C.panel,
-          border:"1px solid "+(on?C.red+"44":C.border),borderRadius:6,padding:"5px 8px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,
+          background:greyed?(on?"#f5f5f5":C.panel):(on?"#fdf3f2":C.panel),
+          border:"1px solid "+(greyed?"#d0d7de":(on?C.red+"44":C.border)),
+          borderRadius:6,padding:"5px 8px",
+          opacity:greyed?0.7:1}}>
           <input type="checkbox" checked={on} onChange={e=>set({...s,tests:{...s.tests,[t]:e.target.checked}})}
             style={{accentColor:C.red,width:13,height:13,flexShrink:0}}/>
-          <span style={{fontSize:11,fontWeight:600,color:on?C.red:C.text,minWidth:50}}>{t}</span>
-          <span style={{fontSize:10,color:on?C.redDim:C.dim,flex:1,marginLeft:2}}>{TEST_LABELS[t]||""}</span>
-          {sh&&<span style={{fontSize:10,color:C.muted,flexShrink:0,marginLeft:4}}>
+          <span style={{fontSize:11,fontWeight:600,color:greyed?C.muted:(on?C.red:C.text),minWidth:50}}>{t}</span>
+          <span style={{fontSize:10,color:greyed?C.dim:(on?C.redDim:C.dim),flex:1,marginLeft:2}}>{TEST_LABELS[t]||""}</span>
+          {greyed&&<span style={{fontSize:9,color:"#6b7a8d",background:"#e8ecf0",borderRadius:4,padding:"1px 5px",flexShrink:0}}>N/A</span>}
+          {sh&&!greyed&&<span style={{fontSize:10,color:C.muted,flexShrink:0,marginLeft:4}}>
             {sh.rounded} shift{sh.rounded!==1?"s":""}
           </span>}
           {t==="RS103"&&on&&(
@@ -788,21 +867,33 @@ function EmiForm({s,set,ti}){
             {isExp?"▲":"▼"}
           </button>}
         </div>
-        {t==="CS109"&&on&&(
+        {/* Grey-out reason banner */}
+        {greyed&&(
+          <div style={{background:"#f0f2f5",border:"1px solid #d0d7de",borderTop:"none",
+            borderRadius:"0 0 6px 6px",padding:"5px 10px",display:"flex",gap:6,alignItems:"flex-start"}}>
+            <span style={{fontSize:12,flexShrink:0}}>ℹ️</span>
+            <span style={{fontSize:10,color:"#6b7a8d",lineHeight:1.5}}>{greyReason}</span>
+          </div>
+        )}
+        {/* Warning banners */}
+        {!greyed&&warnings.length>0&&(
+          <div style={{background:"#fffbeb",border:"1px solid #b7791f",borderTop:"none",
+            borderRadius:"0 0 6px 6px",padding:"6px 10px",display:"flex",flexDirection:"column",gap:4}}>
+            {warnings.map((w,i)=>(
+              <div key={i} style={{display:"flex",gap:6,alignItems:"flex-start"}}>
+                <span style={{fontSize:12,flexShrink:0}}>⚠️</span>
+                <span style={{fontSize:10,color:"#7b4f12",lineHeight:1.5}}>{w}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* CS109 subcontract warning (in addition to grey logic) */}
+        {t==="CS109"&&on&&!greyed&&(
           <div style={{background:"#fffbeb",border:"1px solid #b7791f",borderTop:"none",
             borderRadius:"0 0 6px 6px",padding:"6px 10px",display:"flex",gap:6,alignItems:"flex-start"}}>
             <span style={{fontSize:13,flexShrink:0}}>⚠️</span>
             <span style={{fontSize:10,color:"#7b4f12",lineHeight:1.5}}>
               <b>NU Labs does not perform CS109.</b> If this test is required, it will need to be subcontracted. A separate subcontract line item should be added to this quote.
-            </span>
-          </div>
-        )}
-        {t==="RS103"&&on&&(
-          <div style={{background:"#fffbeb",border:"1px solid #b7791f",borderTop:"none",
-            borderRadius:"0 0 6px 6px",padding:"6px 10px",display:"flex",gap:6,alignItems:"flex-start"}}>
-            <span style={{fontSize:13,flexShrink:0}}>⚠️</span>
-            <span style={{fontSize:10,color:"#7b4f12",lineHeight:1.5}}>
-              <b>NU Labs RS103 capability is limited to 10 V/m.</b> Any requirement above 10 V/m is outside our capabilities and will need to be subcontracted. Add a subcontract line if higher levels are required.
             </span>
           </div>
         )}
@@ -929,6 +1020,34 @@ function PqForm({s,set,ti}){
     {sf(s.rate,PQ_SR)>=440&&(
       <div style={{fontSize:11,color:C.warn,marginBottom:4}}>⚠ 440 VAC — source rental required.</div>
     )}
+    {(()=>{
+      const eutAmps=sf(ti?.amps||'0',0);
+      const numPhases=sf(s.phases||autoPhase||'3',3);
+      const isSubPQ=s.submarine||false;
+      const agdSelected=(s.rows||{})['5.3.10.2']||(s.rows||{})['B5.3.10.2'];
+      const cwSelected=(s.rows||{})['5.3.7']||(s.rows||{})['B5.3.7'];
+      const spikeSelected=(s.rows||{})['5.3.5']||(s.rows||{})['B5.3.3'];
+      const pqWarnings=[];
+      if(eutAmps>0&&eutAmps<1&&cwSelected)
+        pqWarnings.push('Current Waveform test (5.3.7 / B5.3.7) is not required for EUT currents <1 A per NAVSEA. Consider removing this test.');
+      if(agdSelected)
+        pqWarnings.push('AGD test (5.3.10.2 / B5.3.10.2): If required (common for submarines), a high-voltage power supply rental will likely be needed.');
+      if(numPhases>3||sf(ti?.phase||'3',3)>3)
+        pqWarnings.push('Unit has multiple power feeds — discuss with customer which lines require testing and which tests apply to each feed before finalizing scope.');
+      if(spikeSelected)
+        pqWarnings.push('Voltage Spike testing: NU Labs uses an IEC 61000-4-5 waveform instead of the MIL-STD waveform, as noted on the CRoR form.');
+      if(pqWarnings.length===0)return null;
+      return(
+        <div style={{background:"#fffbeb",border:"1px solid #b7791f",borderRadius:7,padding:"8px 10px",marginTop:6,marginBottom:4}}>
+          {pqWarnings.map((w,i)=>(
+            <div key={i} style={{display:"flex",gap:6,alignItems:"flex-start",marginBottom:i<pqWarnings.length-1?5:0}}>
+              <span style={{fontSize:12,flexShrink:0}}>⚠️</span>
+              <span style={{fontSize:10,color:"#7b4f12",lineHeight:1.5}}>{w}</span>
+            </div>
+          ))}
+        </div>
+      );
+    })()}
     <HR/>
     {renderTable(PQ_P1,"MIL-STD-1399 Section 300 Part 1",allP1,toggleP1)}
     {renderTable(PQ_300B,"MIL-STD-1399 Section 300B",allB3,toggleB3)}
