@@ -2681,9 +2681,9 @@ const STANDARD_TERMS = [
       sectionHdr('MIL-STD-1399 Section 300B — Selected Tests');
 
       activeRows.forEach((r,idx)=>{
-        const hdrLines  = doc.splitTextToSize(r.key.replace('B','')+' — '+r.label, TW-16);
-        const reqLines  = r.req ? doc.splitTextToSize(r.req, TW-16) : [];
-        const refLines  = r.ref ? doc.splitTextToSize('Tables / Figures: '+r.ref, TW-16) : [];
+        const hdrLines  = doc.splitTextToSize(r.key.replace('B','')+' — '+r.label, TW-10);
+        const reqLines  = r.req ? doc.splitTextToSize(r.req, TW-12) : [];
+        const refLines  = r.ref ? doc.splitTextToSize('Tables / Figures: '+r.ref, TW-12) : [];
         const noteLines = r.note ? doc.splitTextToSize('⚠  '+r.note, TW-16) : [];
         const rowH = hdrLines.length*13+8
           + (reqLines.length>0 ? reqLines.length*12+5 : 0)
@@ -2722,12 +2722,12 @@ const STANDARD_TERMS = [
       'The number of tests required for each test method and/or the number of test positions listed in this document are estimated values. Exact quantities will be determined and documented in the approved test procedure.',
     ];
     generalNotes.forEach((note,i)=>{
-      const w=doc.splitTextToSize(note, TW-24);
+      const w=doc.splitTextToSize(note, TW-22);
       const blockH=w.length*13+10;
       checkY(blockH+4);
       doc.setFillColor(...LIGHT); doc.circle(ML+8,y+5,5,'F');
       setF('bold',8,MUTED); doc.text(String(i+1),ML+8,y+8,{align:'center'});
-      setF('normal',9.5,DARK); doc.text(w, ML+20, y+8);
+      setF('normal',9,DARK); doc.text(w, ML+20, y+8);
       y+=blockH;
     });
     y+=4;
@@ -2882,8 +2882,8 @@ const STANDARD_TERMS = [
       activeRows.forEach((r,idx)=>{
         // Compute all line counts first so rowH is accurate
         const lblLines  = doc.splitTextToSize(r.label, TW-52);
-        const descLines = r.desc ? doc.splitTextToSize(r.desc, TW-16) : [];
-        const noteLines = r.note ? doc.splitTextToSize('\u26a0  '+r.note, TW-16) : [];
+        const descLines = r.desc ? doc.splitTextToSize(r.desc, TW-12) : [];
+        const noteLines = r.note ? doc.splitTextToSize('\u26a0  '+r.note, TW-12) : [];
         const posH = r.positions ? r.positions.length*13+4 : 0;
         const rowH = lblLines.length*13+6
           + (descLines.length>0 ? descLines.length*12+5 : 0)
@@ -2912,8 +2912,10 @@ const STANDARD_TERMS = [
         // Position table (RE102, RS103)
         if(r.positions){
           r.positions.forEach(({range,pos})=>{
-            setF('normal',8,[80,80,80]); doc.text('\u2022  '+range+':',ML+14,ry);
-            setF('bold',8,DARK); doc.text(pos,ML+145,ry); ry+=13;
+            const rngW=doc.splitTextToSize('\u2022  '+range+':',128);
+            setF('normal',8,[80,80,80]); doc.text(rngW,ML+14,ry);
+            const posW=doc.splitTextToSize(pos,TW-148);
+            setF('bold',8,DARK); doc.text(posW,ML+145,ry); ry+=Math.max(rngW.length,posW.length)*12+1;
           });
           ry+=3;
         }
@@ -2944,13 +2946,12 @@ const STANDARD_TERMS = [
       'The number of tests required for each test method and/or the number of test positions listed in this document are estimated values. Exact quantities will be determined and documented in the approved test procedure.',
     ];
     generalNotes.forEach((note,i)=>{
-      const w=doc.splitTextToSize(note, TW-24);
+      const w=doc.splitTextToSize(note, TW-22);
       const blockH=w.length*13+10;
       checkY(blockH+4);
-      // Note number circle
       doc.setFillColor(...LIGHT); doc.circle(ML+8,y+5,5,'F');
       setF('bold',8,MUTED); doc.text(String(i+1),ML+8,y+8,{align:'center'});
-      setF('normal',9.5,DARK); doc.text(w, ML+20, y+8);
+      setF('normal',9,DARK); doc.text(w, ML+20, y+8);
       y+=blockH;
     });
     y+=4;
@@ -3113,8 +3114,8 @@ const STANDARD_TERMS = [
 
       activeRows.forEach((r,idx)=>{
         const lblLines  = doc.splitTextToSize(r.label, TW-52);
-        const descLines = r.desc ? doc.splitTextToSize(r.desc, TW-16) : [];
-        const noteLines = r.note ? doc.splitTextToSize('\u26a0  '+r.note, TW-16) : [];
+        const descLines = r.desc ? doc.splitTextToSize(r.desc, TW-12) : [];
+        const noteLines = r.note ? doc.splitTextToSize('\u26a0  '+r.note, TW-12) : [];
         const posH = r.positions ? r.positions.length*13+4 : 0;
         const rowH = lblLines.length*13+6
           + (descLines.length>0 ? descLines.length*12+5 : 0)
@@ -3137,8 +3138,10 @@ const STANDARD_TERMS = [
 
         if(r.positions){
           r.positions.forEach(({range,pos})=>{
-            setF('normal',8,[80,80,80]); doc.text('\u2022  '+range+':',ML+14,ry);
-            setF('bold',8,DARK); doc.text(pos,ML+145,ry); ry+=13;
+            const rangeW=doc.splitTextToSize('\u2022  '+range+':',128);
+            setF('normal',8,[80,80,80]); doc.text(rangeW,ML+14,ry);
+            const posW=doc.splitTextToSize(pos,TW-145);
+            setF('bold',8,DARK); doc.text(posW,ML+145,ry); ry+=Math.max(rangeW.length,posW.length)*12+1;
           });
           ry+=3;
         }
@@ -3166,12 +3169,12 @@ const STANDARD_TERMS = [
       'The number of tests required for each test method and/or the number of test positions listed in this document are estimated values. Exact quantities will be determined and documented in the approved test procedure.',
     ];
     generalNotes.forEach((note,i)=>{
-      const w=doc.splitTextToSize(note, TW-24);
+      const w=doc.splitTextToSize(note, TW-22);
       const blockH=w.length*13+10;
       checkY(blockH+4);
       doc.setFillColor(...LIGHT); doc.circle(ML+8,y+5,5,'F');
       setF('bold',8,MUTED); doc.text(String(i+1),ML+8,y+8,{align:'center'});
-      setF('normal',9.5,DARK); doc.text(w, ML+20, y+8);
+      setF('normal',9,DARK); doc.text(w, ML+20, y+8);
       y+=blockH;
     });
     y+=4;
@@ -3326,9 +3329,9 @@ const STANDARD_TERMS = [
       sectionHdr('MIL-STD-1399 Section 300 Part 1 \u2014 Selected Tests');
 
       activeRows.forEach((r,idx)=>{
-        const hdrLines  = doc.splitTextToSize(r.key+' — '+r.label, TW-16);
-        const reqLines  = r.req ? doc.splitTextToSize(r.req, TW-16) : [];
-        const refLines  = r.ref ? doc.splitTextToSize('Tables / Figures: '+r.ref, TW-16) : [];
+        const hdrLines  = doc.splitTextToSize(r.key+' — '+r.label, TW-10);
+        const reqLines  = r.req ? doc.splitTextToSize(r.req, TW-12) : [];
+        const refLines  = r.ref ? doc.splitTextToSize('Tables / Figures: '+r.ref, TW-12) : [];
         const noteLines = r.note ? doc.splitTextToSize('⚠  '+r.note, TW-16) : [];
         const rowH = hdrLines.length*13+8
           + (reqLines.length>0 ? reqLines.length*12+5 : 0)
@@ -3367,12 +3370,12 @@ const STANDARD_TERMS = [
       'The number of tests required for each test method and/or the number of test positions listed in this document are estimated values. Exact quantities will be determined and documented in the approved test procedure.',
     ];
     generalNotes.forEach((note,i)=>{
-      const w=doc.splitTextToSize(note, TW-24);
+      const w=doc.splitTextToSize(note, TW-22);
       const blockH=w.length*13+10;
       checkY(blockH+4);
       doc.setFillColor(...LIGHT); doc.circle(ML+8,y+5,5,'F');
       setF('bold',8,MUTED); doc.text(String(i+1),ML+8,y+8,{align:'center'});
-      setF('normal',9.5,DARK); doc.text(w, ML+20, y+8);
+      setF('normal',9,DARK); doc.text(w, ML+20, y+8);
       y+=blockH;
     });
     y+=4;
@@ -3634,7 +3637,7 @@ const STANDARD_TERMS = [
 
       // T&C header bar
       doc.setFillColor(...RED); doc.rect(ML,y-2,TW,24,'F');
-      setF('bold',13,[255,255,255]); doc.text('TERMS & CONDITIONS',ML+10,y+13); y+=32;
+      setF('bold',13,[255,255,255]); doc.text('NOTES',ML+10,y+13); y+=32;
 
       const TERMS = [
         "All work to be performed during normal business hours unless specifically noted on this quote.",
