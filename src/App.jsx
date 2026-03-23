@@ -593,8 +593,8 @@ function calcEmiShifts(s){
   res.CS114={raw:cs114,rounded:ru(cs114),
     sigTests:cables, pwrTests:pwrCables+1, totalTests:cables+(pwrCables+1),
     bd:[["Setup/Cal",1.5],["Signal cables (120min x "+cables+")",((120*cables)/60)/8],["Power cables ("+pwrCables+"x120min)",((pwrCables*120)/60)/8]]};
-  // CS109 — Structure Current; fixed 1.0 shift placeholder (update when lab time confirmed)
-  res.CS109={raw:1.0,rounded:1.0,bd:[["Placeholder — confirm lab time",1.0]]};
+  // CS109 — Not performed by NU Labs; subcontract only, no shift cost
+  res.CS109={raw:0,rounded:0,bd:[["Not performed at NU Labs -- subcontract required",0]]};
   // CS115 — Impulse Excitation; same test count as CS114, 5 min per test, 0.5 shift setup/cal
   const cs115Total=cables+(pwrCables+1);
   const cs115=0.5+((5*cs115Total)/60)/8;
