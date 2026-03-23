@@ -3866,13 +3866,6 @@ const STANDARD_TERMS = [
             SAVE
           </button>
           {anyOn&&<div style={{fontSize:14,color:"#fff",fontWeight:700,fontFamily:"monospace",marginLeft:4}}>{money(summary.total)}</div>}
-          {approval.status==="none"&&(
-            <button onClick={()=>setShowApprovalModal(true)}
-              style={{background:"#6d28d9",border:"none",borderRadius:7,padding:"6px 12px",
-                color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",letterSpacing:.5}}>
-              📋 SUBMIT
-            </button>
-          )}
           <button onClick={()=>setLocked(l=>!l)}
             style={{background:locked?"#b7791f":"#2d6a4f",border:"none",borderRadius:6,padding:"5px 10px",
               color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
