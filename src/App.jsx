@@ -2225,7 +2225,8 @@ export default function App({onLogout,currentUser}){
       updated=saveQuote(updated,{...q,approval:newApproval});
       await sendDecisionEmail(decision.toUpperCase(),currentUser,queueComments,q.approval?.submittedBy||"");
     }
-    setSavedQuotes(updated);
+    // Re-read from localStorage to ensure UI is fully in sync
+    setSavedQuotes(loadQuotes());
     setQueueSelected(new Set());
     setQueueComments("");
     // If the currently loaded quote was one of these, update its approval state
@@ -3909,11 +3910,11 @@ const STANDARD_TERMS = [
                 📋 History
               </button>
             )}
-            {(approval.status==="none"||approval.status==="rejected")&&(
+            {(approval.status==="none"||approval.status==="rejected"||(approval.status==="approved"&&!locked))&&(
               <button onClick={()=>setShowApprovalModal(true)}
                 style={{background:"#6d28d9",border:"none",borderRadius:6,padding:"4px 12px",
                   color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",letterSpacing:.5}}>
-                📋 SUBMIT
+                📋 {approval.status==="approved"&&!locked?"RE-SUBMIT":"SUBMIT"}
               </button>
             )}
             {isApprover&&approval.status==="pending"&&(
@@ -3934,7 +3935,7 @@ const STANDARD_TERMS = [
             )}
             <div style={{flex:1}}/>
             {isApprover&&(
-              <button onClick={()=>{setShowApprovalQueue(true);setQueueSelected(new Set());}}
+              <button onClick={()=>{setSavedQuotes(loadQuotes());setShowApprovalQueue(true);setQueueSelected(new Set());}}
                 style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.25)",borderRadius:6,
                   padding:"3px 12px",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
                 📥 QUEUE
