@@ -2103,7 +2103,8 @@ export default function App({onLogout,currentUser}){
   const [savedQuotes,setSavedQuotes]=useState(()=>loadQuotes());
 
   // ── Approval system ────────────────────────────────────────────────────────
-  const [approval,setApproval]=useState({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
+  const [approval,setApproval]=useState({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
+  const [showApprovalHistory,setShowApprovalHistory]=useState(false);
   const [approvalComments,setApprovalComments]=useState("");
   const [showApprovalModal,setShowApprovalModal]=useState(false);
   const [wonInfo,setWonInfo]=useState({wonDate:"",jobNum:"",poNum:""});
@@ -2167,7 +2168,8 @@ export default function App({onLogout,currentUser}){
   };
 
   const handleSubmitApproval=async()=>{
-    const newApproval={status:"pending",submittedBy:currentUser,submittedAt:new Date().toISOString(),decidedBy:"",decidedAt:"",comments:""};
+    const evt={event:"submitted",by:currentUser,at:new Date().toISOString(),comments:""};
+    const newApproval={status:"pending",submittedBy:currentUser,submittedAt:new Date().toISOString(),decidedBy:"",decidedAt:"",comments:"",history:[...(approval.history||[]),evt]};
     setApproval(newApproval);
     setLocked(true);
     setShowApprovalModal(false);
@@ -2178,7 +2180,8 @@ export default function App({onLogout,currentUser}){
   };
 
   const handleApprove=async()=>{
-    const newApproval={...approval,status:"approved",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:approvalComments};
+    const evtA={event:"approved",by:currentUser,at:new Date().toISOString(),comments:approvalComments};
+    const newApproval={...approval,status:"approved",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:approvalComments,history:[...(approval.history||[]),evtA]};
     setApproval(newApproval);
     setApprovalComments("");
     const q={id:Date.now(),opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
@@ -2188,7 +2191,8 @@ export default function App({onLogout,currentUser}){
   };
 
   const handleReject=async()=>{
-    const newApproval={...approval,status:"rejected",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:approvalComments};
+    const evtR={event:"rejected",by:currentUser,at:new Date().toISOString(),comments:approvalComments};
+    const newApproval={...approval,status:"rejected",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:approvalComments,history:[...(approval.history||[]),evtR]};
     setApproval(newApproval);
     setLocked(false);
     setApprovalComments("");
@@ -2216,7 +2220,8 @@ export default function App({onLogout,currentUser}){
     for(const id of idsToProcess){
       const q=updated[id];
       if(!q)continue;
-      const newApproval={...q.approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments};
+      const evtQ={event:decision,by:currentUser,at:now,comments:queueComments};
+      const newApproval={...q.approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(q.approval?.history||[]),evtQ]};
       updated=saveQuote(updated,{...q,approval:newApproval});
       await sendDecisionEmail(decision.toUpperCase(),currentUser,queueComments,q.approval?.submittedBy||"");
     }
@@ -2225,7 +2230,8 @@ export default function App({onLogout,currentUser}){
     setQueueComments("");
     // If the currently loaded quote was one of these, update its approval state
     if(currentQuoteId&&idsToProcess.includes(String(currentQuoteId))){
-      const newApproval={...approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments};
+      const evtQL={event:decision,by:currentUser,at:now,comments:queueComments};
+      const newApproval={...approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(approval.history||[]),evtQL]};
       setApproval(newApproval);
       if(decision==="rejected")setLocked(false);
     }
@@ -2285,7 +2291,7 @@ export default function App({onLogout,currentUser}){
     setWonInfo({wonDate:"",jobNum:"",poNum:""});
     setWonLocked(false);
     setCurrentQuoteId(null);
-    setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
+    setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setShowCloneModal(false);
     setCloneOppInput("");
     window.scrollTo({top:0,behavior:"smooth"});
@@ -2312,7 +2318,7 @@ export default function App({onLogout,currentUser}){
     setGlobalPR({procs:[],reps:[],coc:false,cocPrice:"250"});
     setNotes(""); setLineOverrides({}); setLineOrder(null);
     setWonInfo({wonDate:"",jobNum:"",poNum:""}); setWonLocked(false);
-    setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
+    setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null);
     window.scrollTo({top:0,behavior:"smooth"});
   };
@@ -2365,7 +2371,7 @@ export default function App({onLogout,currentUser}){
     if(q.sub)setSub(q.sub);
     if(q.td)setTd(q.td);
     if(q.setup)setSetup(q.setup);
-    if(q.approval)setApproval(q.approval); else setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
+    if(q.approval)setApproval(q.approval); else setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     if(q.wonInfo)setWonInfo(q.wonInfo); else setWonInfo({wonDate:"",jobNum:"",poNum:""});
     setWonLocked(false);
     setCurrentQuoteId(q.id||null);
@@ -3895,6 +3901,14 @@ const STANDARD_TERMS = [
                 {approval.status==="rejected"&&"REJECTED"}
               </div>
             )}
+            {approval.status!=="none"&&(approval.history||[]).length>0&&(
+              <button onClick={()=>setShowApprovalHistory(true)}
+                title="View approval history"
+                style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",
+                  borderRadius:5,padding:"3px 10px",color:"#fff",fontSize:11,cursor:"pointer",fontWeight:600}}>
+                📋 History
+              </button>
+            )}
             {(approval.status==="none"||approval.status==="rejected")&&(
               <button onClick={()=>setShowApprovalModal(true)}
                 style={{background:"#6d28d9",border:"none",borderRadius:6,padding:"4px 12px",
@@ -4103,6 +4117,82 @@ const STANDARD_TERMS = [
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+          {/* ── Approval History Modal ── */}
+          {showApprovalHistory&&(
+            <div style={{position:"fixed",inset:0,zIndex:2000,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}
+              onClick={e=>{if(e.target===e.currentTarget)setShowApprovalHistory(false);}}>
+              <div style={{background:"#fff",borderRadius:14,width:480,maxWidth:"95vw",maxHeight:"75vh",
+                boxShadow:"0 8px 40px rgba(0,0,0,0.3)",display:"flex",flexDirection:"column"}}>
+
+                {/* Header */}
+                <div style={{padding:"18px 24px",borderBottom:"1px solid #e8ecf0",display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700,fontSize:15,color:"#1a2332"}}>📋 Approval History</div>
+                    <div style={{fontSize:11,color:"#6b7a8d",marginTop:2}}>
+                      {qi.opp||"(no opportunity #)"}{qi.rev?` Rev ${qi.rev}`:""}
+                    </div>
+                  </div>
+                  <button onClick={()=>setShowApprovalHistory(false)}
+                    style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#6b7a8d",lineHeight:1}}>×</button>
+                </div>
+
+                {/* Timeline */}
+                <div style={{flex:1,overflowY:"auto",padding:"20px 24px"}}>
+                  {(approval.history||[]).length===0?(
+                    <div style={{textAlign:"center",color:"#6b7a8d",fontSize:13,padding:20}}>No history recorded.</div>
+                  ):(
+                    <div style={{position:"relative"}}>
+                      {/* Vertical line */}
+                      <div style={{position:"absolute",left:14,top:8,bottom:8,width:2,background:"#e8ecf0"}}/>
+                      {(approval.history||[]).map((evt,i)=>{
+                        const isLast=i===(approval.history.length-1);
+                        const color=evt.event==="approved"?"#1e8449":evt.event==="rejected"?"#c0392b":"#6d28d9";
+                        const icon=evt.event==="approved"?"✅":evt.event==="rejected"?"❌":"📤";
+                        const label=evt.event==="approved"?"Approved":evt.event==="rejected"?"Rejected":"Submitted for Approval";
+                        const dt=evt.at?new Date(evt.at):null;
+                        const dateStr=dt?dt.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):"";
+                        const timeStr=dt?dt.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"";
+                        return(
+                          <div key={i} style={{display:"flex",gap:16,marginBottom:i<(approval.history.length-1)?20:0,position:"relative"}}>
+                            {/* Dot */}
+                            <div style={{width:30,height:30,borderRadius:"50%",background:color,
+                              display:"flex",alignItems:"center",justifyContent:"center",
+                              fontSize:14,flexShrink:0,zIndex:1,boxShadow:"0 0 0 3px #fff"}}>
+                              {icon}
+                            </div>
+                            {/* Content */}
+                            <div style={{flex:1,paddingTop:4}}>
+                              <div style={{fontWeight:700,fontSize:13,color:color,marginBottom:2}}>{label}</div>
+                              <div style={{fontSize:12,color:"#1a2332",marginBottom:2}}>
+                                <b>{evt.by||"Unknown"}</b>
+                              </div>
+                              <div style={{fontSize:11,color:"#6b7a8d"}}>
+                                {dateStr}{timeStr?` at ${timeStr}`:""}
+                              </div>
+                              {evt.comments&&(
+                                <div style={{marginTop:6,background:"#f8f9fb",borderRadius:6,padding:"6px 10px",
+                                  fontSize:11,color:"#1a2332",borderLeft:"3px solid "+color}}>
+                                  {evt.comments}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{padding:"12px 24px",borderTop:"1px solid #e8ecf0",textAlign:"right"}}>
+                  <button onClick={()=>setShowApprovalHistory(false)}
+                    style={{background:"#e8ecf0",border:"none",borderRadius:7,padding:"7px 20px",
+                      fontWeight:600,fontSize:12,cursor:"pointer",color:"#1a2332"}}>
+                    Close
+                  </button>
+                </div>
               </div>
             </div>
           )}
