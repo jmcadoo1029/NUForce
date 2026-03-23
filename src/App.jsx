@@ -3816,85 +3816,92 @@ const STANDARD_TERMS = [
     <div style={{height:"100vh",background:C.bg,fontFamily:"Segoe UI,system-ui,sans-serif",color:C.text,display:"flex",flexDirection:"column",fontSize:13}}>
 
       {/* ── Header ── */}
-      <div style={{background:C.accent,padding:"9px 18px",display:"flex",alignItems:"center",gap:12,flexShrink:0,boxShadow:"0 2px 8px rgba(0,0,0,0.15)"}}>
+      <div style={{background:C.accent,flexShrink:0,boxShadow:"0 2px 8px rgba(0,0,0,0.15)"}}>
+        <div style={{padding:"9px 18px",display:"flex",alignItems:"center",gap:10}}>
         <div style={{background:"#fff",borderRadius:20,padding:"4px 12px",display:"flex",alignItems:"center",justifyContent:"center",height:36}}>
                   <img src="data:image/png;base64,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" alt="NU Laboratories" style={{height:28,width:"auto",objectFit:"contain"}}/>
                 </div>
-        <div style={{fontWeight:700,fontSize:13,letterSpacing:1,color:"rgba(255,255,255,0.5)",marginLeft:4}}>VIBRATO</div>
-        <div style={{flex:1}}/>
-        <QuoteSearch onLoad={handleLoad}/>
-        {/* Approval status badge */}
-        {approval.status!="none"&&(
-          <div style={{display:"flex",alignItems:"center",gap:6,borderRadius:7,padding:"5px 12px",fontWeight:700,fontSize:11,letterSpacing:.5,
-            background:approval.status==="pending"?"#b7791f":approval.status==="approved"?"#1e8449":"#c0392b",color:"#fff"}}>
-            {approval.status==="pending"&&"⏳ PENDING APPROVAL"}
-            {approval.status==="approved"&&"✅ APPROVED"}
-            {approval.status==="rejected"&&"❌ REJECTED"}
+          <div style={{fontWeight:700,fontSize:13,letterSpacing:1,color:"rgba(255,255,255,0.5)",marginLeft:4}}>VIBRATO</div>
+          <div style={{flex:1}}/>
+          <QuoteSearch onLoad={handleLoad}/>
+          <button onClick={handleNewQuote} title="Start a fresh blank quote"
+            style={{background:"#2d6a4f",border:"none",borderRadius:7,padding:"7px 14px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
+            + NEW
+          </button>
+          <button onClick={handleClone} title="Clone this quote"
+            style={{background:"#2e6da4",border:"none",borderRadius:7,padding:"7px 14px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
+            CLONE
+          </button>
+          <button onClick={handleSave}
+            style={{background:C.red,border:"none",borderRadius:7,padding:"7px 16px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
+            SAVE
+          </button>
+          {anyOn&&<div style={{fontSize:14,color:"#fff",fontWeight:700,fontFamily:"monospace",marginLeft:4}}>{money(summary.total)}</div>}
+          {approval.status==="none"&&(
+            <button onClick={()=>setShowApprovalModal(true)}
+              style={{background:"#6d28d9",border:"none",borderRadius:7,padding:"6px 12px",
+                color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",letterSpacing:.5}}>
+              📋 SUBMIT
+            </button>
+          )}
+          <button onClick={()=>setLocked(l=>!l)}
+            style={{background:locked?"#b7791f":"#2d6a4f",border:"none",borderRadius:6,padding:"5px 10px",
+              color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+            {locked?"🔒":"🔓"}
+          </button>
+          <div style={{width:1,height:22,background:"rgba(255,255,255,0.2)"}}/>
+          {currentUser&&<div style={{fontSize:10,color:"rgba(255,255,255,0.55)"}}>{currentUser}</div>}
+          {currentQuoteId&&<button onClick={handleDeleteQuote} title="Delete this quote"
+            style={{background:"none",border:"1px solid rgba(255,100,100,0.4)",borderRadius:6,padding:"5px 8px",
+              color:"rgba(255,160,160,0.8)",fontSize:11,cursor:"pointer"}}>
+            🗑
+          </button>}
+          {onLogout&&<button onClick={onLogout}
+            style={{background:"none",border:"1px solid rgba(255,255,255,0.25)",borderRadius:6,padding:"5px 10px",
+              color:"rgba(255,255,255,0.6)",fontSize:11,cursor:"pointer"}}>
+            Sign out
+          </button>}
+        </div>
+        {/* Row 2: approval bar — only shown when a quote has been submitted */}
+        {approval.status!=="none"&&(
+          <div style={{background:"rgba(0,0,0,0.18)",padding:"5px 18px",display:"flex",alignItems:"center",gap:8,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
+            <div style={{borderRadius:5,padding:"3px 10px",fontWeight:700,fontSize:11,letterSpacing:.5,flexShrink:0,
+              background:approval.status==="pending"?"#b7791f":approval.status==="approved"?"#1e8449":"#c0392b",color:"#fff"}}>
+              {approval.status==="pending"&&"PENDING APPROVAL"}
+              {approval.status==="approved"&&"APPROVED"}
+              {approval.status==="rejected"&&"REJECTED"}
+            </div>
+            {(approval.status==="none"||approval.status==="rejected")&&(
+              <button onClick={()=>setShowApprovalModal(true)}
+                style={{background:"#6d28d9",border:"none",borderRadius:6,padding:"4px 12px",
+                  color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",letterSpacing:.5}}>
+                📋 SUBMIT
+              </button>
+            )}
+            {isApprover&&approval.status==="pending"&&(
+              <>
+                <button onClick={handleApproverUnlock}
+                  style={{background:"#b7791f",border:"none",borderRadius:6,padding:"4px 10px",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer"}}>
+                  ✏️ EDIT
+                </button>
+                <button onClick={handleApprove}
+                  style={{background:"#1e8449",border:"none",borderRadius:6,padding:"4px 10px",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer"}}>
+                  ✅ APPROVE
+                </button>
+                <button onClick={handleReject}
+                  style={{background:"#c0392b",border:"none",borderRadius:6,padding:"4px 10px",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer"}}>
+                  ❌ REJECT
+                </button>
+              </>
+            )}
+            <div style={{flex:1}}/>
+            <button onClick={()=>setLocked(l=>!l)}
+              style={{background:locked?"rgba(183,121,31,0.85)":"rgba(45,106,79,0.85)",border:"none",borderRadius:5,padding:"3px 10px",
+                color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+              {locked?"🔒 LOCKED":"🔓 UNLOCKED"}
+            </button>
           </div>
         )}
-        <button onClick={handleNewQuote}
-          title="Start a fresh blank quote"
-          style={{background:"#2d6a4f",border:"none",borderRadius:7,padding:"7px 14px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
-          + NEW
-        </button>
-        <button onClick={handleClone}
-          title="Clone this quote — clears opportunity fields, keeps all test details"
-          style={{background:"#2e6da4",border:"none",borderRadius:7,padding:"7px 14px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
-          CLONE
-        </button>
-        <button onClick={handleSave}
-          style={{background:C.red,border:"none",borderRadius:7,padding:"7px 16px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
-          SAVE
-        </button>
-
-        {/* Submit for Approval — shown to all users when not already pending/approved */}
-        {approval.status==="none"||approval.status==="rejected"?(
-          <button onClick={()=>setShowApprovalModal(true)}
-            style={{background:"#6d28d9",border:"none",borderRadius:7,padding:"7px 14px",
-              color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
-            📋 SUBMIT
-          </button>
-        ):null}
-        {/* Approver action buttons — shown only to approvers when pending */}
-        {isApprover&&approval.status==="pending"&&(
-          <>
-            <button onClick={handleApproverUnlock}
-              title="Unlock to make changes, then approve"
-              style={{background:"#b7791f",border:"none",borderRadius:7,padding:"7px 12px",
-                color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
-              ✏️ EDIT
-            </button>
-            <button onClick={handleApprove}
-              style={{background:"#1e8449",border:"none",borderRadius:7,padding:"7px 12px",
-                color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
-              ✅ APPROVE
-            </button>
-            <button onClick={handleReject}
-              style={{background:"#c0392b",border:"none",borderRadius:7,padding:"7px 12px",
-                color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
-              ❌ REJECT
-            </button>
-          </>
-        )}
-        <button onClick={()=>setLocked(l=>!l)}
-          title={locked?"Unlock form to edit":"Lock form to prevent edits"}
-          style={{background:locked?"#b7791f":"#2d6a4f",border:"none",borderRadius:7,padding:"7px 14px",
-            color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5,display:"flex",alignItems:"center",gap:6}}>
-          {locked?"🔒 LOCKED":"🔓 UNLOCKED"}
-        </button>
-        {anyOn&&<div style={{fontSize:14,color:"#fff",fontWeight:700,fontFamily:"monospace",marginLeft:4}}>{money(summary.total)}</div>}
-        {currentUser&&<div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginLeft:8}}>{currentUser}</div>}
-        {currentQuoteId&&<button onClick={handleDeleteQuote}
-          title="Delete this quote from the repository"
-          style={{background:"none",border:"1px solid rgba(255,100,100,0.4)",borderRadius:6,padding:"5px 10px",
-            color:"rgba(255,160,160,0.8)",fontSize:11,cursor:"pointer",marginLeft:4}}>
-          🗑 Delete
-        </button>}
-        {onLogout&&<button onClick={onLogout}
-          style={{background:"none",border:"1px solid rgba(255,255,255,0.25)",borderRadius:6,padding:"5px 10px",
-            color:"rgba(255,255,255,0.6)",fontSize:11,cursor:"pointer",marginLeft:4}}>
-          Sign out
-        </button>}
       </div>
 
       {/* ── Body: left scroll + right sticky summary ── */}
