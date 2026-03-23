@@ -303,7 +303,7 @@ function VibForm({s,set,setup}){
     <div style={{fontSize:10,background:C.panel,borderRadius:5,padding:"5px 8px",marginBottom:6}}>
       <span style={{color:C.dim}}>Setup: </span>
       <span style={{color:C.text,fontWeight:600}}>{money(setupTotal)}</span>
-      <span style={{color:C.dim,fontSize:9}}>{" = "}{"$"+sf(s.stdSetup||s.setup||1250).toLocaleString()}{dr>0?" + $"+dr.toLocaleString()+" drill":""}{fab>0?" + $"+fab.toLocaleString()+" fab":""}{addl>0?" + $"+addl.toLocaleString()+" addl":""}{pm>1?" × "+pm+" PIA":""}</span>
+      <span style={{color:C.dim,fontSize:9}}>{" = "}{"$"+sf(s.stdSetup||s.setup||1250).toLocaleString()}{dr>0?" + $"+dr.toLocaleString()+" drill":""}{fab>0?" + $"+fab.toLocaleString()+" fab":""}{addl>0?" + $"+addl.toLocaleString()+" addl":""}{pm>1?" x "+pm+" PIA":""}</span>
     </div>
     <ProcReport s={s} set={set} sectionCode="94"/>
   </div>;
@@ -365,7 +365,7 @@ function ShockForm({s,set,vibSetup,setup,ti}){
       <span style={{color:C.text,fontWeight:600}}>{money(setupTotal)}</span>
       {s.fromVib&&vibSetup>0
         ? <span style={{color:C.dim,fontSize:9}}>{" (discounted from vib setup $"+vibSetup.toLocaleString()+")"}</span>
-        : <span style={{color:C.dim,fontSize:9}}>{" = $"+sf(s.stdSetup||s.setup||1500).toLocaleString()+(dr>0?" + $"+dr.toLocaleString()+" drill":"")+(fab>0?" + $"+fab.toLocaleString()+" fab":"")+(addl>0?" + $"+addl.toLocaleString()+" addl":"")+(pm>1?" × "+pm+" PIA":"")}</span>
+        : <span style={{color:C.dim,fontSize:9}}>{" = $"+sf(s.stdSetup||s.setup||1500).toLocaleString()+(dr>0?" + $"+dr.toLocaleString()+" drill":"")+(fab>0?" + $"+fab.toLocaleString()+" fab":"")+(addl>0?" + $"+addl.toLocaleString()+" addl":"")+(pm>1?" x "+pm+" PIA":"")}</span>
       }
     </div>
     <ProcReport s={s} set={set} sectionCode={s.cat==="Medium Weight"?"91":"92"}/>
@@ -623,7 +623,7 @@ function calcEmiShifts(s){
   res.RE102={raw:re102,rounded:ru(re102),pos:re102Pos,
     bd:[["Cal/Test <=1GHz",1.5],["1-4 GHz",p21+p22],["4-15 GHz",p23+p24],["15-18 GHz",p25+p26]]};
 
-  // RS101 — positions based on face areas (each 30cm×30cm = 1 pos)
+  // RS101 — positions based on face areas (each 30cmx30cm = 1 pos)
   const rs101=1.0+(((L*W)*2)/900*22)/60/8+(((L*H)*2)/900*22)/60/8+(((W*H)*2)/900*22)/60/8;
   const rs101Pos={
     LW: Math.max(1,Math.ceil((L*W)/900))*2,
@@ -1157,7 +1157,7 @@ function HfvForm({s,set,setup}){
     <div style={{fontSize:10,background:C.panel,borderRadius:5,padding:"5px 8px",marginBottom:6}}>
       <span style={{color:C.dim}}>Setup: </span>
       <span style={{color:C.text,fontWeight:600}}>{money(setupTotal)}</span>
-      <span style={{color:C.dim,fontSize:9}}>{" = $"+std.toLocaleString()+(fab>0?" + $"+fab.toLocaleString()+" fab":""+(addl>0?" + $"+addl.toLocaleString()+" addl":""))+(pm>1?" × "+pm+" PIA":"")}</span>
+      <span style={{color:C.dim,fontSize:9}}>{" = $"+std.toLocaleString()+(fab>0?" + $"+fab.toLocaleString()+" fab":""+(addl>0?" + $"+addl.toLocaleString()+" addl":""))+(pm>1?" x "+pm+" PIA":"")}</span>
     </div>
     <ProcReport s={s} set={set} sectionCode="52"/>
   </div>;
@@ -1187,7 +1187,7 @@ function ShoForm({s,set,setup}){
     <div style={{fontSize:10,background:C.panel,borderRadius:5,padding:"5px 8px",marginBottom:6}}>
       <span style={{color:C.dim}}>Setup: </span>
       <span style={{color:C.text,fontWeight:600}}>{money(setupTotal)}</span>
-      <span style={{color:C.dim,fontSize:9}}>{" = $"+std.toLocaleString()+(fab>0?" + $"+fab.toLocaleString()+" fab":"")+(addl>0?" + $"+addl.toLocaleString()+" addl":"")+(pm>1?" × "+pm+" PIA":"")}</span>
+      <span style={{color:C.dim,fontSize:9}}>{" = $"+std.toLocaleString()+(fab>0?" + $"+fab.toLocaleString()+" fab":"")+(addl>0?" + $"+addl.toLocaleString()+" addl":"")+(pm>1?" x "+pm+" PIA":"")}</span>
       {fab===0&&<span style={{color:C.dim,fontSize:9}}>{" (25% disc if HFV active)"}</span>}
     </div>
     <ProcReport s={s} set={set} sectionCode="51"/>
@@ -1291,7 +1291,7 @@ function OtForm({s,set}){
         </div>
         <div style={{fontSize:10,color:C.accent,background:"#eef4fb",borderRadius:5,padding:"3px 8px"}}>
           <span style={{fontWeight:600}}>{money(total)}</span>
-          <span style={{color:C.dim}}>{" = $"+min.toLocaleString()+" min call + "+techs+"×"+hrs+"hrs×$"+rate+"/hr"+(isWknd?" (weekend)":"")}</span>
+          <span style={{color:C.dim}}>{" = $"+min.toLocaleString()+" min call + "+techs+"x"+hrs+"hrsx$"+rate+"/hr"+(isWknd?" (weekend)":"")}</span>
         </div>
       </div>
       );
@@ -2225,10 +2225,10 @@ export default function App({onLogout,currentUser}){
     if(pqs.some(s=>s.on&&s.cw))lines.push("Current Waveform testing performed using facility power.");
     if(emis.some(s=>s.on)){
       lines.push("EMI Notes:\n"+
-        "\u2022 This quote assumes that the susceptibility criteria can be determined in less than 3 seconds during real-time operation of the EUT, and that if additional monitoring personnel are needed, they would be provided by the customer. Customer to supply cables and all peripheral and monitoring equipment, and one mode of operation (operating or standby). Susceptibility determination provided by the customer. Pricing is based on customer-supplied information, the assumptions listed here, and acceptance of an approved test procedure.\n"+
-        "\u2022 Pricing and feasibility may be reevaluated upon completion and review of the NU Laboratories Test Configuration Form.\n"+
-        "\u2022 This quote assumes that the number of cables and outside diameter of the cables under test are within NU Laboratories capabilities/limitations.\n"+
-        "\u2022 Pricing assumes the standard list of tests from MIL-STD-461G, and that all testing is performed at NU Labs. Any tests requiring subcontracting will incur additional charges."
+        "* This quote assumes that the susceptibility criteria can be determined in less than 3 seconds during real-time operation of the EUT, and that if additional monitoring personnel are needed, they would be provided by the customer. Customer to supply cables and all peripheral and monitoring equipment, and one mode of operation (operating or standby). Susceptibility determination provided by the customer. Pricing is based on customer-supplied information, the assumptions listed here, and acceptance of an approved test procedure.\n"+
+        "* Pricing and feasibility may be reevaluated upon completion and review of the NU Laboratories Test Configuration Form.\n"+
+        "* This quote assumes that the number of cables and outside diameter of the cables under test are within NU Laboratories capabilities/limitations.\n"+
+        "* Pricing assumes the standard list of tests from MIL-STD-461G, and that all testing is performed at NU Labs. Any tests requiring subcontracting will incur additional charges."
       );
     }
     lines.push("Refer to the notes section at the bottom of this quote for additional details.");
@@ -2355,9 +2355,9 @@ const STANDARD_TERMS = [
     "All equipment, including the UUT, support equipment, test fixtures, mounting brackets, etc. are to be delivered to NU Laboratories no later than (5) business days prior to the scheduled testing start date.",
     "Return shipping arrangements are to be provided prior to the start of testing. If not, storage charges will apply beginning (5) business days after the completion of testing.",
     "If applicable, all import and export documentation is to be provided by the customer.",
-    "Out of scope work including additional efforts and standby charges are to be determined at NU Laboratories\u2019 discretion and will be quoted separately.",
+    "Out of scope work including additional efforts and standby charges are to be determined at NU Laboratories' discretion and will be quoted separately.",
     "This quote does not guarantee a specific testing schedule, nor does it represent a fixed number of testing days. Scheduling will be secured with the receipt of a purchase order and/or test procedure approval.",
-    "The provided quote is based on a pass scenario and does not account for any additional time required due to test item malfunctions or failures. Should the customer\u2019s representative request a retest or engineering evaluation, a separate quote will be issued.",
+    "The provided quote is based on a pass scenario and does not account for any additional time required due to test item malfunctions or failures. Should the customer's representative request a retest or engineering evaluation, a separate quote will be issued.",
     "Any requested lead times are estimated and may be subject to change.",
     "This quote is based on a total purchase and is good for a period of 90 days.",
     "All hardware provided by NU Laboratories is assumed to be SAE Grade 5. All fixturing provided by NU Laboratories is assumed to be A36 Steel. All other hardware and fixture requirements will be quoted separately if not detailed on this quote.",
@@ -2506,7 +2506,7 @@ const STANDARD_TERMS = [
     ];
     setF('normal', 9, DARK);
     generalNotes.forEach(note => {
-      const w = doc.splitTextToSize('\u2022  ' + note, TW - 10);
+      const w = doc.splitTextToSize('*  ' + note, TW - 10);
       checkY(w.length*13+6);
       doc.text(w, ML+6, y); y += w.length*13+6;
     });
@@ -2633,7 +2633,7 @@ const STANDARD_TERMS = [
       {key:"B5.3.3", label:"Voltage spike test",
        req:"900 to 1000 V peak line-to-line and line-to-ground, or 2400 to 2500 V peak line-to-line and line-to-ground",
        ref:"Figure 23, 24 or 25",
-       note:"Voltage spike impulse wave shape using IEC 61000-4-5 1.2/50 \u03bcS open circuit waveform definition. Overshoot may exceed figure. Or voltage spike impulse wave shape of Figure 6 NAVSEA deviation for light fixtures (MIL-DTL-16377 SSL)."},
+       note:"Voltage spike impulse wave shape using IEC 61000-4-5 1.2/50 uS open circuit waveform definition. Overshoot may exceed figure. Or voltage spike impulse wave shape of Figure 6 NAVSEA deviation for light fixtures (MIL-DTL-16377 SSL)."},
       {key:"B5.3.4", label:"Emergency condition test",
        req:"70 ms dropout, 2 minute dropout; voltage and frequency decay characteristics for half-load curve; 67.2 Hz for 2 minutes / 155.25 V ac for 2 min",
        ref:"Figure 8, Table VI",
@@ -2645,7 +2645,7 @@ const STANDARD_TERMS = [
       {key:"B5.3.6", label:"User equipment power profile test",
        req:"User voltage and power characteristics per Section 5.3.6 a. through m. as required",
        ref:null,
-       note:"Inrush current measurement may be limited by the capabilities of the AC source used, which may not cover 10\u00d7 nominal current or higher. If inrush exceeds source capability the measurement cannot be made as desired. Will report what is measured and make a best effort attempt using facility power directly (5 attempts)."},
+       note:"Inrush current measurement may be limited by the capabilities of the AC source used, which may not cover 10x nominal current or higher. If inrush exceeds source capability the measurement cannot be made as desired. Will report what is measured and make a best effort attempt using facility power directly (5 attempts)."},
       {key:"B5.3.7", label:"Current waveform test",
        req:"120 Hz to 20 kHz, < 1 kVA limits as applicable",
        ref:null,
@@ -2659,7 +2659,7 @@ const STANDARD_TERMS = [
        ref:"Figure 28, Figure 31",
        note:null},
       {key:"B5.3.10.1", label:"Equipment insulation resistance test",
-       req:"500 V dc for 60 seconds; resistance to ground > 10 M\u03a9",
+       req:"500 V dc for 60 seconds; resistance to ground > 10 MOhm",
        ref:null,
        note:null},
       {key:"B5.3.10.2", label:"Active ground detection test",
@@ -2781,7 +2781,7 @@ const STANDARD_TERMS = [
 
     // ── Title ──
     setF('bold',13,DARK);doc.text('EMI TESTING',ML,y);
-    setF('normal',8.5,MUTED);doc.text('MIL-STD-461F \u2014 Test Specifications',ML,y+13);
+    setF('normal',8.5,MUTED);doc.text('MIL-STD-461F -- Test Specifications',ML,y+13);
     setF('normal',9,MUTED);doc.text('Date: '+(qi.revDate||qi.date||''),PW-MR,y,{align:'right'});
     if(qi.opp){setF('bold',9,DARK);doc.text(qi.opp,PW-MR,y+13,{align:'right'});}
     y+=34;
@@ -2834,8 +2834,8 @@ const STANDARD_TERMS = [
       {key:"CS106", label:"Conducted Susceptibility, Transients, Power Leads",
        desc:"Tested on each AC high side for a total of two (2) tests. Tested to MIL-STD-461F Figure CS106-1. Testing performed with a test generator compliant with CS06. Tested in charged mode of operation only.",
        note:"The overshoot on this generator is slightly higher than specified in CS106 but test results are generally accepted as this is considered worst case."},
-      {key:"CS114", label:"Conducted Susceptibility, Bulk Cable Injection, 10 kHz to 200 MHz and 4 kHz to 1 MHz at 77 dB \u03bcA",
-       desc:"Bulk injection on AC power input lead and on one lead individually. Common mode test on input leads for a total of "+c114.pwrTests+" tests for power leads. "+c114.sigTests+" test(s) on signal leads for a total of "+c114.totalTests+" tests. Tested to MIL-STD-461F Figure CS114-1, Curve 2 from 10 kHz to 200 MHz and from 4 kHz to 1 MHz at 77 dB \u03bcA.",
+      {key:"CS114", label:"Conducted Susceptibility, Bulk Cable Injection, 10 kHz to 200 MHz and 4 kHz to 1 MHz at 77 dB uA",
+       desc:"Bulk injection on AC power input lead and on one lead individually. Common mode test on input leads for a total of "+c114.pwrTests+" tests for power leads. "+c114.sigTests+" test(s) on signal leads for a total of "+c114.totalTests+" tests. Tested to MIL-STD-461F Figure CS114-1, Curve 2 from 10 kHz to 200 MHz and from 4 kHz to 1 MHz at 77 dB uA.",
        note:null},
       {key:"CS116", label:"Conducted Susceptibility, Damped Sinusoidal Transients, Cables and Power Leads, 10 kHz to 100 MHz",
        desc:"Bulk injection on AC power input lead and on each lead individually for a total of "+c116.pwrTests+" tests for power leads. "+c116.sigTests+" test(s) on signal leads for a total of "+c116.totalTests+" tests. Tested to MIL-STD-461F Figure CS116-2 at discrete frequencies: 10 kHz, 100 kHz, 1 MHz, 10 MHz, 30 MHz and 100 MHz.",
@@ -2846,23 +2846,23 @@ const STANDARD_TERMS = [
       {key:"RE102", label:"Radiated Emissions, Electric Field, 10 kHz to 18 GHz",
        desc:"Tested to MIL-STD-461F Figure RE102-1 for Metallic Ships below deck applications.",
        positions:[
-         {range:"10 kHz \u2013 1 GHz",    pos:pos(re102p.sub1GHz)},
-         {range:"1 GHz \u2013 4 GHz",     pos:pos(re102p.b1_4)},
-         {range:"4 GHz \u2013 15 GHz",    pos:pos(re102p.b4_15)},
-         {range:"15 GHz \u2013 18 GHz",   pos:pos(re102p.b15_18)},
+         {range:"10 kHz - 1 GHz",    pos:pos(re102p.sub1GHz)},
+         {range:"1 GHz - 4 GHz",     pos:pos(re102p.b1_4)},
+         {range:"4 GHz - 15 GHz",    pos:pos(re102p.b4_15)},
+         {range:"15 GHz - 18 GHz",   pos:pos(re102p.b15_18)},
        ],
-       note:"Tested at width and cables only. Testing required to 10\u00d7 the highest operating frequency or 1 GHz (whichever is greater), or if not known, to 18 GHz."},
+       note:"Tested at width and cables only. Testing required to 10x the highest operating frequency or 1 GHz (whichever is greater), or if not known, to 18 GHz."},
       {key:"RS101", label:"Radiated Susceptibility, Magnetic Field, 30 Hz to 100 kHz",
-       desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RS101-1 from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" L\u00d7W + "+rs101p.LH+" L\u00d7H + "+rs101p.WH+" W\u00d7H).",
+       desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RS101-1 from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" LxW + "+rs101p.LH+" LxH + "+rs101p.WH+" WxH).",
        note:"Applicability depends on application."},
       {key:"RS103", label:"Radiated Susceptibility, Electric Field, 2 MHz to 18 GHz",
        desc:"Tested to MIL-STD-461F Table VII for Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m.",
        positions:[
-         {range:"2 MHz \u2013 30 MHz",    pos:pos(rs103p.b2_30)},
-         {range:"30 MHz \u2013 200 MHz",  pos:pos(rs103p.b30_200)},
-         {range:"200 MHz \u2013 1 GHz",   pos:pos(rs103p.b200_1G)},
-         {range:"1 GHz \u2013 4 GHz",     pos:pos(rs103p.b1_4)},
-         {range:"4 GHz \u2013 18 GHz",    pos:pos(rs103p.b4_18)},
+         {range:"2 MHz - 30 MHz",    pos:pos(rs103p.b2_30)},
+         {range:"30 MHz - 200 MHz",  pos:pos(rs103p.b30_200)},
+         {range:"200 MHz - 1 GHz",   pos:pos(rs103p.b200_1G)},
+         {range:"1 GHz - 4 GHz",     pos:pos(rs103p.b1_4)},
+         {range:"4 GHz - 18 GHz",    pos:pos(rs103p.b4_18)},
        ],
        note:null},
     ];
@@ -2877,13 +2877,13 @@ const STANDARD_TERMS = [
     if(activeRows.length===0){
       setF('normal',10,MUTED);doc.text('No MIL-STD-461F tests selected.',ML,y);y+=20;
     } else {
-      sectionHdr('MIL-STD-461F \u2014 Selected Tests');
+      sectionHdr('MIL-STD-461F -- Selected Tests');
 
       activeRows.forEach((r,idx)=>{
         // Compute all line counts first so rowH is accurate
         const lblLines  = doc.splitTextToSize(r.label, TW-52);
         const descLines = r.desc ? doc.splitTextToSize(r.desc, TW-12) : [];
-        const noteLines = r.note ? doc.splitTextToSize('\u26a0  '+r.note, TW-12) : [];
+        const noteLines = r.note ? doc.splitTextToSize('! '+r.note, TW-12) : [];
         const posH = r.positions ? r.positions.length*13+4 : 0;
         const rowH = lblLines.length*13+6
           + (descLines.length>0 ? descLines.length*12+5 : 0)
@@ -2912,7 +2912,7 @@ const STANDARD_TERMS = [
         // Position table (RE102, RS103)
         if(r.positions){
           r.positions.forEach(({range,pos})=>{
-            const rngW=doc.splitTextToSize('\u2022  '+range+':',128);
+            const rngW=doc.splitTextToSize('*  '+range+':',128);
             setF('normal',8,[80,80,80]); doc.text(rngW,ML+14,ry);
             const posW=doc.splitTextToSize(pos,TW-148);
             setF('bold',8,DARK); doc.text(posW,ML+145,ry); ry+=Math.max(rngW.length,posW.length)*12+1;
@@ -3007,7 +3007,7 @@ const STANDARD_TERMS = [
 
     // ── Title ──
     setF('bold',13,DARK);doc.text('EMI TESTING',ML,y);
-    setF('normal',8.5,MUTED);doc.text('MIL-STD-461G \u2014 Test Specifications',ML,y+13);
+    setF('normal',8.5,MUTED);doc.text('MIL-STD-461G -- Test Specifications',ML,y+13);
     setF('normal',9,MUTED);doc.text('Date: '+(qi.revDate||qi.date||''),PW-MR,y,{align:'right'});
     if(qi.opp){setF('bold',9,DARK);doc.text(qi.opp,PW-MR,y+13,{align:'right'});}
     y+=34;
@@ -3052,19 +3052,19 @@ const STANDARD_TERMS = [
     // Full 461G test definitions
     const EMI_461G = [
       {key:"CE101", label:"Conducted Emissions, Audio Frequency Currents, Power Leads",
-       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE101-2 from 120 Hz to 10 kHz with a relaxation to the limit determined during testing of 20\u00d7Log(fundamental current).",
+       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE101-2 from 120 Hz to 10 kHz with a relaxation to the limit determined during testing of 20xLog(fundamental current).",
        note:null},
       {key:"CE102", label:"Conducted Emissions, Radio Frequency Potentials, Power Leads",
        desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE102-1 from 10 kHz to 10 MHz, basic curve relaxed by 6 dB.",
        note:null},
       {key:"CS101", label:"Conducted Susceptibility, Power Leads, 30 Hz to 150 kHz",
        desc:"Tested on the AC high side for a total of one (1) test. Tested to MIL-STD-461G Figure CS101-1 Curve 1 and Figure CS101-2 from 30 Hz to 150 kHz.",
-       note:"Exempt from testing for normal operating current >30 A per phase, or if >30 A per phase with sensitivity worse than 1 \u03bcV or operating frequency >150 kHz."},
+       note:"Exempt from testing for normal operating current >30 A per phase, or if >30 A per phase with sensitivity worse than 1 uV or operating frequency >150 kHz."},
       {key:"CS109", label:"Conducted Susceptibility, Structure Current",
        desc:"Tested to MIL-STD-461G CS109 requirements.",
-       note:"Test not applicable to equipment with an operating sensitivity worse than 1 \u03bcV or operating frequency >100 kHz."},
-      {key:"CS114", label:"Conducted Susceptibility, Bulk Cable Injection, 10 kHz to 200 MHz and 4 kHz to 1 MHz at 77 dB \u03bcA",
-       desc:"Bulk injection on AC power input and on the high side of the AC input leads. Common mode test on input leads for a total of "+c114.pwrTests+" tests for power leads. "+c114.sigTests+" test(s) on signal leads for a total of "+c114.totalTests+" tests. Tested to MIL-STD-461G Figure CS114-1, Curve 2 from 10 kHz to 200 MHz and from 4 kHz to 1 MHz at 77 dB \u03bcA.",
+       note:"Test not applicable to equipment with an operating sensitivity worse than 1 uV or operating frequency >100 kHz."},
+      {key:"CS114", label:"Conducted Susceptibility, Bulk Cable Injection, 10 kHz to 200 MHz and 4 kHz to 1 MHz at 77 dB uA",
+       desc:"Bulk injection on AC power input and on the high side of the AC input leads. Common mode test on input leads for a total of "+c114.pwrTests+" tests for power leads. "+c114.sigTests+" test(s) on signal leads for a total of "+c114.totalTests+" tests. Tested to MIL-STD-461G Figure CS114-1, Curve 2 from 10 kHz to 200 MHz and from 4 kHz to 1 MHz at 77 dB uA.",
        note:null},
       {key:"CS115", label:"Conducted Susceptibility, Bulk Cable Injection, Impulse Excitation",
        desc:"Bulk injection on AC power input and on the high side individually for a total of "+cs115.pwrTests+" tests for power leads. "+cs115.sigTests+" test(s) on signal leads for a total of "+cs115.totalTests+" tests. Tested to MIL-STD-461G Figure CS115-1 for one minute using 30 ns pulse at 5 amps, 30 Hz.",
@@ -3078,24 +3078,24 @@ const STANDARD_TERMS = [
       {key:"RE102", label:"Radiated Emissions, Electric Field, 10 kHz to 18 GHz",
        desc:"Tested to MIL-STD-461G Figure RE102-1 for Metallic Ships below deck applications.",
        positions:[
-         {range:"10 kHz \u2013 30 MHz",   pos:pos(1)},
-         {range:"30 MHz \u2013 200 MHz",  pos:pos(1)},
-         {range:"200 MHz \u2013 1 GHz",   pos:pos(re102p.b1_4)},
-         {range:"1 GHz \u2013 15 GHz",    pos:pos(re102p.b4_15)},
-         {range:"15 GHz \u2013 18 GHz",   pos:pos(re102p.b15_18)},
+         {range:"10 kHz - 30 MHz",   pos:pos(1)},
+         {range:"30 MHz - 200 MHz",  pos:pos(1)},
+         {range:"200 MHz - 1 GHz",   pos:pos(re102p.b1_4)},
+         {range:"1 GHz - 15 GHz",    pos:pos(re102p.b4_15)},
+         {range:"15 GHz - 18 GHz",   pos:pos(re102p.b15_18)},
        ],
-       note:"Tested at width and cables only. Testing required to 10\u00d7 the highest operating frequency or 1 GHz (whichever is greater), or if not known, to 18 GHz."},
+       note:"Tested at width and cables only. Testing required to 10x the highest operating frequency or 1 GHz (whichever is greater), or if not known, to 18 GHz."},
       {key:"RS101", label:"Radiated Susceptibility, Magnetic Field, 30 Hz to 100 kHz",
-       desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461G Figure RS101-1 from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" L\u00d7W + "+rs101p.LH+" L\u00d7H + "+rs101p.WH+" W\u00d7H).",
-       note:"Applicability depends on application. Test not applicable to equipment with an operating sensitivity worse than 1 \u03bcV or operating frequency >100 kHz."},
+       desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461G Figure RS101-1 from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" LxW + "+rs101p.LH+" LxH + "+rs101p.WH+" WxH).",
+       note:"Applicability depends on application. Test not applicable to equipment with an operating sensitivity worse than 1 uV or operating frequency >100 kHz."},
       {key:"RS103", label:"Radiated Susceptibility, Electric Field, 2 MHz to 18 GHz",
        desc:"Tested to MIL-STD-461G Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m.",
        positions:[
-         {range:"2 MHz \u2013 30 MHz",    pos:pos(rs103p.b2_30)},
-         {range:"30 MHz \u2013 200 MHz",  pos:pos(rs103p.b30_200)},
-         {range:"200 MHz \u2013 1 GHz",   pos:pos(rs103p.b200_1G)},
-         {range:"1 GHz \u2013 15 GHz",    pos:pos(rs103p.b1_4)},
-         {range:"15 GHz \u2013 18 GHz",   pos:pos(rs103p.b4_18)},
+         {range:"2 MHz - 30 MHz",    pos:pos(rs103p.b2_30)},
+         {range:"30 MHz - 200 MHz",  pos:pos(rs103p.b30_200)},
+         {range:"200 MHz - 1 GHz",   pos:pos(rs103p.b200_1G)},
+         {range:"1 GHz - 15 GHz",    pos:pos(rs103p.b1_4)},
+         {range:"15 GHz - 18 GHz",   pos:pos(rs103p.b4_18)},
        ],
        note:null},
     ];
@@ -3110,12 +3110,12 @@ const STANDARD_TERMS = [
     if(activeRows.length===0){
       setF('normal',10,MUTED);doc.text('No MIL-STD-461G tests selected.',ML,y);y+=20;
     } else {
-      sectionHdr('MIL-STD-461G \u2014 Selected Tests');
+      sectionHdr('MIL-STD-461G -- Selected Tests');
 
       activeRows.forEach((r,idx)=>{
         const lblLines  = doc.splitTextToSize(r.label, TW-52);
         const descLines = r.desc ? doc.splitTextToSize(r.desc, TW-12) : [];
-        const noteLines = r.note ? doc.splitTextToSize('\u26a0  '+r.note, TW-12) : [];
+        const noteLines = r.note ? doc.splitTextToSize('! '+r.note, TW-12) : [];
         const posH = r.positions ? r.positions.length*13+4 : 0;
         const rowH = lblLines.length*13+6
           + (descLines.length>0 ? descLines.length*12+5 : 0)
@@ -3138,7 +3138,7 @@ const STANDARD_TERMS = [
 
         if(r.positions){
           r.positions.forEach(({range,pos})=>{
-            const rangeW=doc.splitTextToSize('\u2022  '+range+':',128);
+            const rangeW=doc.splitTextToSize('*  '+range+':',128);
             setF('normal',8,[80,80,80]); doc.text(rangeW,ML+14,ry);
             const posW=doc.splitTextToSize(pos,TW-145);
             setF('bold',8,DARK); doc.text(posW,ML+145,ry); ry+=Math.max(rangeW.length,posW.length)*12+1;
@@ -3248,7 +3248,7 @@ const STANDARD_TERMS = [
 
     // ── Title ──
     setF('bold', 13, DARK); doc.text('POWER QUALITY', ML, y);
-    setF('normal', 8.5, MUTED); doc.text('MIL-STD-1399 Section 300 Part 1 \u2014 Test Specifications', ML, y+13);
+    setF('normal', 8.5, MUTED); doc.text('MIL-STD-1399 Section 300 Part 1 -- Test Specifications', ML, y+13);
     setF('normal', 9, MUTED); doc.text('Date: '+(qi.revDate||qi.date||''), PW-MR, y, {align:'right'});
     if(qi.opp){ setF('bold',9,DARK); doc.text(qi.opp, PW-MR, y+13, {align:'right'}); }
     y += 34;
@@ -3278,7 +3278,7 @@ const STANDARD_TERMS = [
       {key:"5.3.2", label:"User equipment power profile test",
        req:"User voltage and power characteristics per Section 5.3.2 a. through o. as required",
        ref:null,
-       note:"Inrush current measurement may be limited by the capabilities of the AC source used, which may not cover 10\u00d7 nominal current or higher. If inrush exceeds source capability the measurement cannot be made as desired. Will report what is measured and make a best effort attempt using facility power directly (5 attempts)."},
+       note:"Inrush current measurement may be limited by the capabilities of the AC source used, which may not cover 10x nominal current or higher. If inrush exceeds source capability the measurement cannot be made as desired. Will report what is measured and make a best effort attempt using facility power directly (5 attempts)."},
       {key:"5.3.3", label:"Voltage and frequency maximum departure tolerance test",
        req:"Type 1 single phase (127/104) VAC, (63/57) Hz or Type 1 single phase (484/396) VAC, (63/57) Hz",
        ref:"Table III for shipboard and submarine applications. Tested for 30 minutes in four (4) modes after temperature stability.",
@@ -3290,7 +3290,7 @@ const STANDARD_TERMS = [
       {key:"5.3.5", label:"Voltage spike (susceptibility) test",
        req:"900 to 1000 V peak line-to-line and line-to-ground, or 2400 to 2500 V peak line-to-line and line-to-ground",
        ref:"Figure 28, 29 or 30",
-       note:"Voltage spike impulse wave shape using IEC 61000-4-5 1.2/50 \u03bcS open circuit waveform definition. Overshoot may exceed figure. Or voltage spike impulse wave shape of Figure 6 NAVSEA deviation for light fixtures (MIL-DTL-16377 SSL)."},
+       note:"Voltage spike impulse wave shape using IEC 61000-4-5 1.2/50 uS open circuit waveform definition. Overshoot may exceed figure. Or voltage spike impulse wave shape of Figure 6 NAVSEA deviation for light fixtures (MIL-DTL-16377 SSL)."},
       {key:"5.3.6", label:"Emergency conditions (susceptibility) test",
        req:"70 ms dropout, 2 minute dropout; voltage and frequency decay for half-load curve; 67.2 Hz for 2 min / 155.25 VAC for 2 min or 594 VAC for 2 min",
        ref:"Figure 9, Table VII",
@@ -3308,7 +3308,7 @@ const STANDARD_TERMS = [
        ref:"Figure 33 through Figure 36 depending on source voltage",
        note:null},
       {key:"5.3.10.1", label:"Equipment line-to-ground voltage (susceptibility) test",
-       req:"150 VDC (for 115 VAC) or 500 VDC (for 440 VAC) for 60 seconds; resistance to ground > 10 M\u03a9",
+       req:"150 VDC (for 115 VAC) or 500 VDC (for 440 VAC) for 60 seconds; resistance to ground > 10 MOhm",
        ref:null, note:null},
       {key:"5.3.10.2", label:"Equipment line-to-ground voltage test (AGD)",
        req:"For 440 V rms EUT: AC source 622.2 V peak, DC source 505 VDC. For 115 V rms EUT: AC source 162.6 V peak, DC source 155 VDC.",
@@ -3326,7 +3326,7 @@ const STANDARD_TERMS = [
     if(activeRows.length===0){
       setF('normal',10,MUTED); doc.text('No MIL-STD-1399 Section 300 Part 1 tests selected.', ML, y); y+=20;
     } else {
-      sectionHdr('MIL-STD-1399 Section 300 Part 1 \u2014 Selected Tests');
+      sectionHdr('MIL-STD-1399 Section 300 Part 1 -- Selected Tests');
 
       activeRows.forEach((r,idx)=>{
         const hdrLines  = doc.splitTextToSize(r.key+' — '+r.label, TW-10);
@@ -3645,11 +3645,11 @@ const STANDARD_TERMS = [
         "All equipment, including the UUT, support equipment, test fixtures, mounting brackets, etc. are to be delivered to NU Laboratories no later than (5) business days prior to the scheduled testing start date.",
         "Return shipping arrangements are to be provided prior to the start of testing. If not, storage charges will apply beginning (5) business days after testing is completed.",
         "If applicable, all import and export documentation is to be provided by the customer.",
-        "Out-of-scope work, including additional efforts and standby charges are to be determined at NU Laboratories\u2019 discretion and will be quoted separately.",
+        "Out-of-scope work, including additional efforts and standby charges are to be determined at NU Laboratories' discretion and will be quoted separately.",
         "This quote does not guarantee a specific testing schedule, nor does it represent a fixed number of testing days. Scheduling will be secured with the receipt of a purchase order and/or test procedure approval.",
         "Testing duration may be affected by factors such as equipment malfunctions or failures, delays in the delivery of customer-supplied equipment, or other unforeseen issues. Such circumstances may result in additional charges.",
-        "Delays caused by NU Laboratories\u2014including, but not limited to, the unavailability of test equipment or personnel\u2014will not result in charges to the customer. However, such delays will not entitle the customer to any discounts, refunds, or price reductions.",
-        "The provided quote is based on a pass scenario and does not account for any additional time required due to test item malfunctions or failures. Should the customer\u2019s representative request a retest or engineering evaluation, a separate quote will be issued.",
+        "Delays caused by NU Laboratories--including, but not limited to, the unavailability of test equipment or personnel--will not result in charges to the customer. However, such delays will not entitle the customer to any discounts, refunds, or price reductions.",
+        "The provided quote is based on a pass scenario and does not account for any additional time required due to test item malfunctions or failures. Should the customer's representative request a retest or engineering evaluation, a separate quote will be issued.",
         "Any requested lead times are estimated and may be subject to change.",
         "This quote is based on a total purchase and is good for a period of 90 days.",
         "All mounting hardware is assumed to be supplied by the customer. If NU Laboratories is asked to supply mounting hardware, it is assumed to be SAE Grade 5. Any other material hardware will be quoted separately and specifically noted within the quote. If no notes pertaining to the type of hardware are present on the quote, the quote reflects Grade 5 hardware. All fixturing provided by NU Laboratories is assumed to be A36 Steel. All other hardware and fixture requirements will be quoted separately if not detailed in this quote.",
@@ -3672,12 +3672,12 @@ const STANDARD_TERMS = [
       setF('bold',9,RED); doc.text('GOVERNMENT SOURCE INSPECTION',ML+10,y+10); y+=22;
       setF('normal', 9, DARK);
       doc.text('If Government Source Inspection is required:', ML, y); y += 14;
-      [['Navy Nuclear','Michael Auchenbach \u2014 michael.a.auchenbach.civ@mail.mil \u2014 T: 908-387-9866  F: 908-387-8694'],
-       ['Non-Nuclear','Tyson Rounsaville, QAR \u2014 tyson.rounsaville.civ@mail.mil \u2014 T: 973-891-3850  F: 973-446-4236'],
+      [['Navy Nuclear','Michael Auchenbach -- michael.a.auchenbach.civ@mail.mil -- T: 908-387-9866  F: 908-387-8694'],
+       ['Non-Nuclear','Tyson Rounsaville, QAR -- tyson.rounsaville.civ@mail.mil -- T: 973-891-3850  F: 973-446-4236'],
       ].forEach(([k,v]) => {
         checkY(18);
-        setF('bold',9,DARK); const kw=doc.getTextWidth('\u2022 '+k+': ');
-        doc.text('\u2022 '+k+': ', ML+4, y);
+        setF('bold',9,DARK); const kw=doc.getTextWidth('* '+k+': ');
+        doc.text('* '+k+': ', ML+4, y);
         setF('normal',9,DARK);
         const vw=doc.splitTextToSize(v, TW-kw-10);
         doc.text(vw, ML+4+kw, y); y += vw.length*12+6;
@@ -4237,13 +4237,13 @@ const STANDARD_TERMS = [
                     onChange={e=>setSetup({...setup,drillTap:e.target.checked})}
                     style={{accentColor:C.red,width:14,height:14}}/>
                   <span style={{fontSize:11,color:setup.drillTap?C.red:C.muted,fontWeight:setup.drillTap?600:400}}>
-                    Drill &amp; Tap (×1.5 on drilling cost)
+                    Drill &amp; Tap (x1.5 on drilling cost)
                   </span>
                 </label>
                 {(sf(setup.holes,0)>0||sf(setup.fabHours,0)>4)&&(
                   <div style={{fontSize:10,color:C.muted,padding:"5px 8px",background:C.panel,borderRadius:5,lineHeight:1.7}}>
-                    {sf(setup.holes,0)>0&&<div>{"Drilling: "}{setup.holes}{" hole(s) × 30 min @ $"}{sf(setup.techRate,175).toLocaleString()}{"/hr"}{setup.drillTap?" × 1.5 (D&T)":""}{" = "}<b>{"$"}{Math.round(sf(setup.holes,0)*0.5*sf(setup.techRate,175)*(setup.drillTap?1.5:1)).toLocaleString()}</b></div>}
-                    {sf(setup.fabHours,0)>0&&<div>{"Fab & Mod: "}{setup.fabHours}{" hr(s) × $"}{sf(setup.techRate,175).toLocaleString()}{"/hr = "}<b>{"$"}{Math.round(sf(setup.fabHours,0)*sf(setup.techRate,175)).toLocaleString()}</b></div>}
+                    {sf(setup.holes,0)>0&&<div>{"Drilling: "}{setup.holes}{" hole(s) x 30 min @ $"}{sf(setup.techRate,175).toLocaleString()}{"/hr"}{setup.drillTap?" x 1.5 (D&T)":""}{" = "}<b>{"$"}{Math.round(sf(setup.holes,0)*0.5*sf(setup.techRate,175)*(setup.drillTap?1.5:1)).toLocaleString()}</b></div>}
+                    {sf(setup.fabHours,0)>0&&<div>{"Fab & Mod: "}{setup.fabHours}{" hr(s) x $"}{sf(setup.techRate,175).toLocaleString()}{"/hr = "}<b>{"$"}{Math.round(sf(setup.fabHours,0)*sf(setup.techRate,175)).toLocaleString()}</b></div>}
                   </div>
                 )}
                 {anyOn&&<div style={{marginTop:8}}><PRow label="Tear Down Override (0=auto)" val={td} onChange={setTd}/></div>}
