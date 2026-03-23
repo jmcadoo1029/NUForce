@@ -2682,9 +2682,13 @@ const STANDARD_TERMS = [
 
       activeRows.forEach((r,idx)=>{
         const WRAP = TW - 20;
+        doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
         const hdrLines  = doc.splitTextToSize(r.key.replace('B','')+' — '+r.label, WRAP);
+        doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
         const reqLines  = r.req ? doc.splitTextToSize(r.req, WRAP) : [];
+        doc.setFont('helvetica','normal'); doc.setFontSize(8);
         const refLines  = r.ref ? doc.splitTextToSize('Tables / Figures: '+r.ref, WRAP) : [];
+        doc.setFont('helvetica','italic'); doc.setFontSize(7.5);
         const noteLines = r.note ? doc.splitTextToSize('Note: '+r.note, WRAP) : [];
         const rowH = hdrLines.length*14+8
           + (reqLines.length>0 ? reqLines.length*12+6 : 0)
@@ -2881,12 +2885,15 @@ const STANDARD_TERMS = [
       sectionHdr('MIL-STD-461F -- Selected Tests');
 
       activeRows.forEach((r,idx)=>{
-        // Split all content first, then compute rowH from actual line counts
-        const WRAP = TW - 20; // conservative wrap width for all body text
+        const WRAP = TW - 20;
+        // Set font BEFORE each splitTextToSize so measurements match rendering
+        doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
         const lblLines  = doc.splitTextToSize(r.label, TW-54);
+        doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
         const descLines = r.desc ? doc.splitTextToSize(r.desc, WRAP) : [];
+        doc.setFont('helvetica','italic'); doc.setFontSize(7.5);
         const noteLines = r.note ? doc.splitTextToSize('Note: '+r.note, WRAP) : [];
-        // Position rows: pre-compute to get accurate height
+        doc.setFont('helvetica','normal'); doc.setFontSize(8);
         const posRows = r.positions ? r.positions.map(({range,pos})=>({
           rng: doc.splitTextToSize(range+':',120),
           pos: doc.splitTextToSize(pos, TW-160)
@@ -3120,9 +3127,13 @@ const STANDARD_TERMS = [
 
       activeRows.forEach((r,idx)=>{
         const WRAP = TW - 20;
+        doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
         const lblLines  = doc.splitTextToSize(r.label, TW-54);
+        doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
         const descLines = r.desc ? doc.splitTextToSize(r.desc, WRAP) : [];
+        doc.setFont('helvetica','italic'); doc.setFontSize(7.5);
         const noteLines = r.note ? doc.splitTextToSize('Note: '+r.note, WRAP) : [];
+        doc.setFont('helvetica','normal'); doc.setFontSize(8);
         const posRows = r.positions ? r.positions.map(({range,pos})=>({
           rng: doc.splitTextToSize(range+':',120),
           pos: doc.splitTextToSize(pos, TW-160)
@@ -3340,9 +3351,13 @@ const STANDARD_TERMS = [
 
       activeRows.forEach((r,idx)=>{
         const WRAP = TW - 20;
+        doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
         const hdrLines  = doc.splitTextToSize(r.key+' — '+r.label, WRAP);
+        doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
         const reqLines  = r.req ? doc.splitTextToSize(r.req, WRAP) : [];
+        doc.setFont('helvetica','normal'); doc.setFontSize(8);
         const refLines  = r.ref ? doc.splitTextToSize('Tables / Figures: '+r.ref, WRAP) : [];
+        doc.setFont('helvetica','italic'); doc.setFontSize(7.5);
         const noteLines = r.note ? doc.splitTextToSize('Note: '+r.note, WRAP) : [];
         const rowH = hdrLines.length*14+8
           + (reqLines.length>0 ? reqLines.length*12+6 : 0)
