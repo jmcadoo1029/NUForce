@@ -893,18 +893,24 @@ function EmiForm({s,set,ti}){
       const sh=shifts[t];
       const isExp=expanded[t]||false;
       const {greyed,greyReason,warnings}=getTestFlags(t);
+      // Determine row state: greyed=N/A (red), hasWarning=amber, else green
+      const hasWarnings=warnings.length>0;
+      const rowBg=greyed?(on?"#fef2f2":C.panel):hasWarnings?(on?"#fffbeb":C.panel):(on?"#f0fdf4":C.panel);
+      const rowBorder=greyed?"#fca5a5":hasWarnings?(on?"#b7791f":C.border):(on?"#86efac":C.border);
+      const keyColor=greyed?C.muted:hasWarnings?(on?"#92400e":C.text):(on?"#166534":C.text);
+      const labelColor=greyed?C.dim:hasWarnings?(on?"#b45309":C.dim):(on?"#15803d":C.dim);
       return <div key={t} style={{marginBottom:4}}>
         <div style={{display:"flex",alignItems:"center",gap:6,
-          background:t==="CS109"?"#fff7ed":(greyed?(on?"#f5f5f5":C.panel):(on?"#fdf3f2":C.panel)),
-          border:"1px solid "+(t==="CS109"?"#b7791f":(greyed?"#d0d7de":(on?C.red+"44":C.border))),
+          background:rowBg,
+          border:"1px solid "+rowBorder,
           borderRadius:6,padding:"5px 8px",
           opacity:greyed?0.7:1}}>
           <input type="checkbox" checked={on}
             onChange={e=>set({...s,tests:{...s.tests,[t]:e.target.checked}})}
             disabled={t==="CS109"}
-            style={{accentColor:C.red,width:13,height:13,flexShrink:0,cursor:t==="CS109"?"not-allowed":"pointer"}}/>
-          <span style={{fontSize:11,fontWeight:600,color:greyed?C.muted:(on?C.red:C.text),minWidth:50}}>{t}</span>
-          <span style={{fontSize:10,color:greyed?C.dim:(on?C.redDim:C.dim),flex:1,marginLeft:2}}>{TEST_LABELS[t]||""}</span>
+            style={{accentColor:greyed?C.red:hasWarnings?"#b7791f":"#166534",width:13,height:13,flexShrink:0,cursor:t==="CS109"?"not-allowed":"pointer"}}/>
+          <span style={{fontSize:11,fontWeight:600,color:keyColor,minWidth:50}}>{t}</span>
+          <span style={{fontSize:10,color:labelColor,flex:1,marginLeft:2}}>{TEST_LABELS[t]||""}</span>
           {greyed&&<span style={{fontSize:9,color:"#6b7a8d",background:"#e8ecf0",borderRadius:4,padding:"1px 5px",flexShrink:0}}>N/A</span>}
           {sh&&!greyed&&<span style={{fontSize:10,color:C.muted,flexShrink:0,marginLeft:4}}>
             {sh.rounded} shift{sh.rounded!==1?"s":""}
@@ -1090,7 +1096,7 @@ function PqForm({s,set,ti}){
       if(numPhases>3||sf(ti?.phase||'3',3)>3)
         pqWarnings.push('Unit has multiple power feeds — discuss with customer which lines require testing and which tests apply to each feed before finalizing scope.');
       if(spikeSelected)
-        pqWarnings.push('Voltage Spike testing: NU Labs uses an IEC 61000-4-5 waveform instead of the MIL-STD waveform, as noted on the CRoR form.');
+        pqWarnings.push('Voltage Spike testing: NU Labs uses an IEC 61000-4-5 waveform instead of the MIL-STD waveform, as noted in the Test Specifications.');
       if(pqWarnings.length===0)return null;
       return(
         <div style={{background:"#fffbeb",border:"1px solid #b7791f",borderRadius:7,padding:"8px 10px",marginTop:6,marginBottom:4}}>
@@ -2672,62 +2678,57 @@ export default function App({onLogout,currentUser}){
     } else {
       sectionHdr('MIL-STD-1399 Section 300B — Selected Tests');
 
-      // Table header
-      const cSec=44, cReq=TW*0.38, cRef=TW*0.28, cNoteW=TW-cSec-cReq-cRef;
-      doc.setFillColor(50,50,50); doc.rect(ML,y,TW,16,'F');
-      setF('bold',8,[255,255,255]);
-      doc.text('Section', ML+4, y+11);
-      doc.text('Requirement', ML+cSec+4, y+11);
-      doc.text('Tables / Figures', ML+cSec+cReq+4, y+11);
-      y += 16;
-
       activeRows.forEach((r,idx)=>{
-        const hdrLines  = doc.splitTextToSize(r.key.replace('B','')+' — '+r.label, TW-12);
-        const reqLines  = doc.splitTextToSize(r.req, TW-16);
-        const refLines  = r.ref ? doc.splitTextToSize('Ref: '+r.ref, TW-16) : [];
-        const noteLines = r.note ? doc.splitTextToSize(r.note, TW-16) : [];
-        const rowH = hdrLines.length*13+4 + reqLines.length*12+3
-          + (refLines.length>0?refLines.length*11+3:0)
-          + (noteLines.length>0?noteLines.length*10+4:0) + 10;
+        const hdrLines  = doc.splitTextToSize(r.key.replace('B','')+' — '+r.label, TW-16);
+        const reqLines  = r.req ? doc.splitTextToSize(r.req, TW-16) : [];
+        const refLines  = r.ref ? doc.splitTextToSize('Tables / Figures: '+r.ref, TW-16) : [];
+        const noteLines = r.note ? doc.splitTextToSize('⚠  '+r.note, TW-16) : [];
+        const rowH = hdrLines.length*13+8
+          + (reqLines.length>0 ? reqLines.length*12+5 : 0)
+          + (refLines.length>0 ? refLines.length*11+4 : 0)
+          + (noteLines.length>0 ? noteLines.length*11+5 : 0)
+          + 10;
 
         checkY(rowH+2);
-        // Alternating header bg
-        doc.setFillColor(...(idx%2===0?[240,244,248]:[232,238,244]));
-        doc.rect(ML, y, TW, hdrLines.length*13+8, 'F');
-        doc.setFillColor(...(idx%2===0?[255,255,255]:[250,251,253]));
-        doc.rect(ML, y+hdrLines.length*13+8, TW, rowH-(hdrLines.length*13+8), 'F');
+        doc.setFillColor(...(idx%2===0?[238,244,250]:[230,238,246]));
+        doc.rect(ML, y, TW, hdrLines.length*13+10, 'F');
+        doc.setFillColor(255,255,255);
+        doc.rect(ML, y+hdrLines.length*13+10, TW, rowH-(hdrLines.length*13+10), 'F');
 
         let ry=y+12;
         setF('bold',8.5,BLUE); doc.text(hdrLines, ML+8, ry); ry+=hdrLines.length*13+6;
-        setF('normal',8.5,DARK); doc.text(reqLines, ML+10, ry); ry+=reqLines.length*12+3;
-        if(refLines.length>0){ setF('normal',8,MUTED); doc.text(refLines,ML+10,ry); ry+=refLines.length*11+3; }
-        if(noteLines.length>0){ setF('italic',7.5,[100,100,100]); doc.text(noteLines,ML+10,ry); }
+        if(reqLines.length>0){ setF('normal',8.5,DARK); doc.text(reqLines, ML+10, ry); ry+=reqLines.length*12+5; }
+        if(refLines.length>0){ setF('normal',8,MUTED); doc.text(refLines, ML+10, ry); ry+=refLines.length*11+4; }
+        if(noteLines.length>0){ setF('italic',7.5,[110,85,40]); doc.text(noteLines, ML+10, ry); }
 
         doc.setDrawColor(...LIGHT); doc.setLineWidth(0.4);
         doc.line(ML, y+rowH, ML+TW, y+rowH);
         y += rowH;
       });
-      y += 10;
+      y += 8;
     }
 
-    // ── General Notes ──
+    // ── General Notes — force new page ──
+    drawFooter();
+    doc.addPage();
+    y=54;
     sectionHdr('General Notes');
+    y+=4;
     const generalNotes = [
       'Pricing is based on customer-supplied information and the assumptions listed herein.',
       'Feasibility of testing will be reviewed upon receipt of a purchase order and/or test procedure approval.',
       'The number of tests required for each test method and/or the number of test positions listed in this document are estimated values. Exact quantities will be determined and documented in the approved test procedure.',
     ];
-    setF('normal',9,DARK);
-    generalNotes.forEach(note=>{
-      const w = doc.splitTextToSize('\u2022  '+note, TW-10);
-      checkY(w.length*13+6);
-      doc.text(w, ML+6, y); y += w.length*13+6;
+    generalNotes.forEach((note,i)=>{
+      const w=doc.splitTextToSize(note, TW-24);
+      const blockH=w.length*13+10;
+      checkY(blockH+4);
+      doc.setFillColor(...LIGHT); doc.circle(ML+8,y+5,5,'F');
+      setF('bold',8,MUTED); doc.text(String(i+1),ML+8,y+8,{align:'center'});
+      setF('normal',9.5,DARK); doc.text(w, ML+20, y+8);
+      y+=blockH;
     });
-    y += 4;
-
-    // Footers on all pages
-    const tp = doc.internal.getNumberOfPages();
-    for(let p=1;p<=tp;p++){ doc.setPage(p); drawFooter(); }
+    y+=4;
 
     const fname = (qi.opp||'PQ-300B-Specs')+(qi.rev?' Rev '+qi.rev:'')+'.pdf';
     doc.save(fname);
@@ -2876,53 +2877,62 @@ export default function App({onLogout,currentUser}){
       sectionHdr('MIL-STD-461F \u2014 Selected Tests');
 
       activeRows.forEach((r,idx)=>{
-        const labelLines = doc.splitTextToSize(r.key+'  '+r.label, TW-12);
-        const descLines  = r.desc ? doc.splitTextToSize(r.desc, TW-20) : [];
-        const noteLines  = r.note ? doc.splitTextToSize('\u26a0  '+r.note, TW-20) : [];
-        const posH = r.positions ? r.positions.length*12+4 : 0;
-        const contentH = labelLines.length*12 + (descLines.length>0?descLines.length*11+4:0) + posH + (noteLines.length>0?noteLines.length*10+4:0);
-        const rowH = contentH + 14;
+        // Compute all line counts first so rowH is accurate
+        const lblLines  = doc.splitTextToSize(r.label, TW-52);
+        const descLines = r.desc ? doc.splitTextToSize(r.desc, TW-16) : [];
+        const noteLines = r.note ? doc.splitTextToSize('\u26a0  '+r.note, TW-16) : [];
+        const posH = r.positions ? r.positions.length*13+4 : 0;
+        const rowH = lblLines.length*13+6
+          + (descLines.length>0 ? descLines.length*12+5 : 0)
+          + posH
+          + (noteLines.length>0 ? noteLines.length*11+5 : 0)
+          + 12;
         checkY(rowH+2);
 
-        doc.setFillColor(...(idx%2===0?[255,255,255]:[247,248,250]));
-        doc.rect(ML,y,TW,rowH,'F');
+        // Row background — blue-tinted header strip, white body
+        doc.setFillColor(...(idx%2===0?[238,244,250]:[230,238,246]));
+        doc.rect(ML,y,TW,lblLines.length*13+10,'F');
+        doc.setFillColor(255,255,255);
+        doc.rect(ML,y+lblLines.length*13+10,TW,rowH-(lblLines.length*13+10),'F');
         let ry = y+12;
 
-        // Key + label on same line(s)
+        // Key (bold blue) + label (bold dark) on same baseline
         setF('bold',8.5,BLUE); doc.text(r.key, ML+6, ry);
-        setF('bold',8.5,DARK);
-        const lblLines = doc.splitTextToSize(r.label, TW-50);
-        doc.text(lblLines, ML+50, ry);
-        ry += lblLines.length*12+3;
+        setF('bold',8.5,DARK); doc.text(lblLines, ML+52, ry);
+        ry += lblLines.length*13+4;
 
-        // Description
+        // Description — indented, normal weight
         if(descLines.length>0){
-          setF('normal',8.5,DARK); doc.text(descLines,ML+8,ry); ry+=descLines.length*11+3;
+          setF('normal',8.5,DARK); doc.text(descLines, ML+10, ry); ry+=descLines.length*12+5;
         }
 
         // Position table (RE102, RS103)
         if(r.positions){
           r.positions.forEach(({range,pos})=>{
-            setF('normal',8,[80,80,80]); doc.text('\u2022  '+range+':',ML+12,ry);
-            setF('bold',8,DARK); doc.text(pos,ML+130,ry); ry+=12;
+            setF('normal',8,[80,80,80]); doc.text('\u2022  '+range+':',ML+14,ry);
+            setF('bold',8,DARK); doc.text(pos,ML+145,ry); ry+=13;
           });
           ry+=3;
         }
 
-        // Note
+        // Note — italic amber
         if(noteLines.length>0){
-          setF('italic',7.5,[110,90,50]); doc.text(noteLines,ML+8,ry); ry+=noteLines.length*10+3;
+          setF('italic',7.5,[110,85,40]); doc.text(noteLines, ML+10, ry); ry+=noteLines.length*11+4;
         }
 
-        doc.setDrawColor(...LIGHT); doc.setLineWidth(0.3);
+        doc.setDrawColor(...LIGHT); doc.setLineWidth(0.4);
         doc.line(ML,y+rowH,ML+TW,y+rowH);
         y+=rowH;
       });
-      y+=10;
+      y+=8;
     }
 
-    // ── General Notes ──
+    // ── General Notes — force new page ──
+    drawFooter();
+    doc.addPage();
+    y=54;
     sectionHdr('General Notes');
+    y+=4;
     const generalNotes=[
       'Pricing is based on customer-supplied information and the assumptions listed herein.',
       'Feasibility of testing will be reviewed upon receipt of a purchase order and/or test procedure approval.',
@@ -2930,10 +2940,15 @@ export default function App({onLogout,currentUser}){
       'Pricing and feasibility may be reevaluated upon completion and review of the NU Laboratories Test Configuration Form.',
       'The number of tests required for each test method and/or the number of test positions listed in this document are estimated values. Exact quantities will be determined and documented in the approved test procedure.',
     ];
-    setF('normal',9,DARK);
-    generalNotes.forEach(note=>{
-      const w=doc.splitTextToSize('\u2022  '+note,TW-10);
-      checkY(w.length*13+6);doc.text(w,ML+6,y);y+=w.length*13+6;
+    generalNotes.forEach((note,i)=>{
+      const w=doc.splitTextToSize(note, TW-24);
+      const blockH=w.length*13+10;
+      checkY(blockH+4);
+      // Note number circle
+      doc.setFillColor(...LIGHT); doc.circle(ML+8,y+5,5,'F');
+      setF('bold',8,MUTED); doc.text(String(i+1),ML+8,y+8,{align:'center'});
+      setF('normal',9.5,DARK); doc.text(w, ML+20, y+8);
+      y+=blockH;
     });
     y+=4;
 
@@ -3093,43 +3108,52 @@ export default function App({onLogout,currentUser}){
       sectionHdr('MIL-STD-461G \u2014 Selected Tests');
 
       activeRows.forEach((r,idx)=>{
-        const lblLines  = doc.splitTextToSize(r.label, TW-50);
-        const descLines = r.desc ? doc.splitTextToSize(r.desc, TW-20) : [];
-        const noteLines = r.note ? doc.splitTextToSize('\u26a0  '+r.note, TW-20) : [];
-        const posH = r.positions ? r.positions.length*12+4 : 0;
-        const contentH = lblLines.length*12 + (descLines.length>0?descLines.length*11+4:0) + posH + (noteLines.length>0?noteLines.length*10+4:0);
-        const rowH = contentH + 14;
+        const lblLines  = doc.splitTextToSize(r.label, TW-52);
+        const descLines = r.desc ? doc.splitTextToSize(r.desc, TW-16) : [];
+        const noteLines = r.note ? doc.splitTextToSize('\u26a0  '+r.note, TW-16) : [];
+        const posH = r.positions ? r.positions.length*13+4 : 0;
+        const rowH = lblLines.length*13+6
+          + (descLines.length>0 ? descLines.length*12+5 : 0)
+          + posH
+          + (noteLines.length>0 ? noteLines.length*11+5 : 0)
+          + 12;
         checkY(rowH+2);
 
-        doc.setFillColor(...(idx%2===0?[255,255,255]:[247,248,250]));
-        doc.rect(ML,y,TW,rowH,'F');
+        doc.setFillColor(...(idx%2===0?[238,244,250]:[230,238,246]));
+        doc.rect(ML,y,TW,lblLines.length*13+10,'F');
+        doc.setFillColor(255,255,255);
+        doc.rect(ML,y+lblLines.length*13+10,TW,rowH-(lblLines.length*13+10),'F');
         let ry = y+12;
 
         setF('bold',8.5,BLUE); doc.text(r.key,ML+6,ry);
-        setF('bold',8.5,DARK); doc.text(lblLines,ML+50,ry);
-        ry += lblLines.length*12+3;
+        setF('bold',8.5,DARK); doc.text(lblLines,ML+52,ry);
+        ry += lblLines.length*13+4;
 
-        if(descLines.length>0){setF('normal',8.5,DARK);doc.text(descLines,ML+8,ry);ry+=descLines.length*11+3;}
+        if(descLines.length>0){setF('normal',8.5,DARK);doc.text(descLines,ML+10,ry);ry+=descLines.length*12+5;}
 
         if(r.positions){
           r.positions.forEach(({range,pos})=>{
-            setF('normal',8,[80,80,80]); doc.text('\u2022  '+range+':',ML+12,ry);
-            setF('bold',8,DARK); doc.text(pos,ML+130,ry); ry+=12;
+            setF('normal',8,[80,80,80]); doc.text('\u2022  '+range+':',ML+14,ry);
+            setF('bold',8,DARK); doc.text(pos,ML+145,ry); ry+=13;
           });
           ry+=3;
         }
 
-        if(noteLines.length>0){setF('italic',7.5,[110,90,50]);doc.text(noteLines,ML+8,ry);ry+=noteLines.length*10+3;}
+        if(noteLines.length>0){setF('italic',7.5,[110,85,40]);doc.text(noteLines,ML+10,ry);ry+=noteLines.length*11+4;}
 
-        doc.setDrawColor(...LIGHT);doc.setLineWidth(0.3);
+        doc.setDrawColor(...LIGHT);doc.setLineWidth(0.4);
         doc.line(ML,y+rowH,ML+TW,y+rowH);
         y+=rowH;
       });
-      y+=10;
+      y+=8;
     }
 
-    // ── General Notes ──
+    // ── General Notes — force new page ──
+    drawFooter();
+    doc.addPage();
+    y=54;
     sectionHdr('General Notes');
+    y+=4;
     const generalNotes=[
       'Pricing is based on customer-supplied information and the assumptions listed herein.',
       'Feasibility of testing will be reviewed upon receipt of a purchase order and/or test procedure approval.',
@@ -3137,10 +3161,14 @@ export default function App({onLogout,currentUser}){
       'Pricing and feasibility may be reevaluated upon completion and review of the NU Laboratories Test Configuration Form.',
       'The number of tests required for each test method and/or the number of test positions listed in this document are estimated values. Exact quantities will be determined and documented in the approved test procedure.',
     ];
-    setF('normal',9,DARK);
-    generalNotes.forEach(note=>{
-      const w=doc.splitTextToSize('\u2022  '+note,TW-10);
-      checkY(w.length*13+6);doc.text(w,ML+6,y);y+=w.length*13+6;
+    generalNotes.forEach((note,i)=>{
+      const w=doc.splitTextToSize(note, TW-24);
+      const blockH=w.length*13+10;
+      checkY(blockH+4);
+      doc.setFillColor(...LIGHT); doc.circle(ML+8,y+5,5,'F');
+      setF('bold',8,MUTED); doc.text(String(i+1),ML+8,y+8,{align:'center'});
+      setF('normal',9.5,DARK); doc.text(w, ML+20, y+8);
+      y+=blockH;
     });
     y+=4;
 
@@ -3293,60 +3321,57 @@ export default function App({onLogout,currentUser}){
     } else {
       sectionHdr('MIL-STD-1399 Section 300 Part 1 \u2014 Selected Tests');
 
-      // Table header
-      const cSec=44, cReq=TW*0.38, cRef=TW*0.28;
-      doc.setFillColor(50,50,50); doc.rect(ML,y,TW,16,'F');
-      setF('bold',8,[255,255,255]);
-      doc.text('Section', ML+4, y+11);
-      doc.text('Requirement', ML+cSec+4, y+11);
-      doc.text('Tables / Figures', ML+cSec+cReq+4, y+11);
-      y += 16;
-
       activeRows.forEach((r,idx)=>{
-        const hdrLines  = doc.splitTextToSize(r.key+' — '+r.label, TW-12);
-        const reqLines  = doc.splitTextToSize(r.req, TW-16);
-        const refLines  = r.ref ? doc.splitTextToSize('Ref: '+r.ref, TW-16) : [];
-        const noteLines = r.note ? doc.splitTextToSize(r.note, TW-16) : [];
-        const rowH = hdrLines.length*13+4 + reqLines.length*12+3
-          + (refLines.length>0?refLines.length*11+3:0)
-          + (noteLines.length>0?noteLines.length*10+4:0) + 10;
+        const hdrLines  = doc.splitTextToSize(r.key+' — '+r.label, TW-16);
+        const reqLines  = r.req ? doc.splitTextToSize(r.req, TW-16) : [];
+        const refLines  = r.ref ? doc.splitTextToSize('Tables / Figures: '+r.ref, TW-16) : [];
+        const noteLines = r.note ? doc.splitTextToSize('⚠  '+r.note, TW-16) : [];
+        const rowH = hdrLines.length*13+8
+          + (reqLines.length>0 ? reqLines.length*12+5 : 0)
+          + (refLines.length>0 ? refLines.length*11+4 : 0)
+          + (noteLines.length>0 ? noteLines.length*11+5 : 0)
+          + 10;
 
         checkY(rowH+2);
-        doc.setFillColor(...(idx%2===0?[240,244,248]:[232,238,244]));
-        doc.rect(ML, y, TW, hdrLines.length*13+8, 'F');
-        doc.setFillColor(...(idx%2===0?[255,255,255]:[250,251,253]));
-        doc.rect(ML, y+hdrLines.length*13+8, TW, rowH-(hdrLines.length*13+8), 'F');
+        doc.setFillColor(...(idx%2===0?[238,244,250]:[230,238,246]));
+        doc.rect(ML, y, TW, hdrLines.length*13+10, 'F');
+        doc.setFillColor(255,255,255);
+        doc.rect(ML, y+hdrLines.length*13+10, TW, rowH-(hdrLines.length*13+10), 'F');
 
         let ry=y+12;
         setF('bold',8.5,BLUE); doc.text(hdrLines, ML+8, ry); ry+=hdrLines.length*13+6;
-        setF('normal',8.5,DARK); doc.text(reqLines, ML+10, ry); ry+=reqLines.length*12+3;
-        if(refLines.length>0){ setF('normal',8,MUTED); doc.text(refLines,ML+10,ry); ry+=refLines.length*11+3; }
-        if(noteLines.length>0){ setF('italic',7.5,[100,100,100]); doc.text(noteLines,ML+10,ry); }
+        if(reqLines.length>0){ setF('normal',8.5,DARK); doc.text(reqLines, ML+10, ry); ry+=reqLines.length*12+5; }
+        if(refLines.length>0){ setF('normal',8,MUTED); doc.text(refLines, ML+10, ry); ry+=refLines.length*11+4; }
+        if(noteLines.length>0){ setF('italic',7.5,[110,85,40]); doc.text(noteLines, ML+10, ry); }
 
         doc.setDrawColor(...LIGHT); doc.setLineWidth(0.4);
         doc.line(ML, y+rowH, ML+TW, y+rowH);
         y += rowH;
       });
-      y += 10;
+      y += 8;
     }
 
-    // ── General Notes ──
+    // ── General Notes — force new page ──
+    drawFooter();
+    doc.addPage();
+    y=54;
     sectionHdr('General Notes');
+    y+=4;
     const generalNotes = [
       'Pricing is based on customer-supplied information and the assumptions listed herein.',
       'Feasibility of testing will be reviewed upon receipt of a purchase order and/or test procedure approval.',
       'The number of tests required for each test method and/or the number of test positions listed in this document are estimated values. Exact quantities will be determined and documented in the approved test procedure.',
     ];
-    setF('normal',9,DARK);
-    generalNotes.forEach(note=>{
-      const w = doc.splitTextToSize('\u2022  '+note, TW-10);
-      checkY(w.length*13+6);
-      doc.text(w, ML+6, y); y += w.length*13+6;
+    generalNotes.forEach((note,i)=>{
+      const w=doc.splitTextToSize(note, TW-24);
+      const blockH=w.length*13+10;
+      checkY(blockH+4);
+      doc.setFillColor(...LIGHT); doc.circle(ML+8,y+5,5,'F');
+      setF('bold',8,MUTED); doc.text(String(i+1),ML+8,y+8,{align:'center'});
+      setF('normal',9.5,DARK); doc.text(w, ML+20, y+8);
+      y+=blockH;
     });
-    y += 4;
-
-    const tp = doc.internal.getNumberOfPages();
-    for(let p=1;p<=tp;p++){ doc.setPage(p); drawFooter(); }
+    y+=4;
 
     const fname = (qi.opp||'PQ-300-Part1-Specs')+(qi.rev?' Rev '+qi.rev:'')+'.pdf';
     doc.save(fname);
@@ -3598,9 +3623,15 @@ export default function App({onLogout,currentUser}){
       doc.text(money(total), PW-MR-4, y+14, {align:'right'});
       y += 26;
 
-      // ── TERMS & CONDITIONS ────────────────────────────────────────────────
-      sectionHdr('Terms & Conditions');
-      y += 4;
+      // ── TERMS & CONDITIONS — force new page ──────────────────────────────
+      drawFooter();
+      doc.addPage();
+      y = 54;
+
+      // T&C header bar
+      doc.setFillColor(...RED); doc.rect(ML,y-2,TW,24,'F');
+      setF('bold',13,[255,255,255]); doc.text('TERMS & CONDITIONS',ML+10,y+13); y+=32;
+
       const TERMS = [
         "All work to be performed during normal business hours unless specifically noted on this quote.",
         "Customer is to supply all installation hardware, cables, hoses, mating connections for power or fluid, electrical/resistive and dummy loads, and specialized monitoring equipment/peripheral equipment unless other arrangements with NU Laboratories, Inc. have been made. No functional testing shall be performed by NU Laboratories or its personnel unless specifically addressed in our quotation.",
@@ -3616,18 +3647,22 @@ export default function App({onLogout,currentUser}){
         "This quote is based on a total purchase and is good for a period of 90 days.",
         "All hardware provided by NU Laboratories is assumed to be SAE Grade 5. All fixturing provided by NU Laboratories is assumed to be A36 Steel. All other hardware and fixture requirements will be quoted separately if not detailed in this quote.",
       ];
-      setF('normal', 9, DARK);
-      TERMS.forEach(t => {
-        const w = doc.splitTextToSize('• '+t, TW-10);
-        checkY(w.length*12+5);
-        doc.text(w, ML+4, y); y += w.length*12+5;
+      TERMS.forEach((t,i) => {
+        const w = doc.splitTextToSize(t, TW-20);
+        const blockH = w.length*12+8;
+        checkY(blockH+4);
+        doc.setFillColor(...LIGHT); doc.circle(ML+7, y+4, 6, 'F');
+        setF('bold',7.5,MUTED); doc.text(String(i+1), ML+7, y+7, {align:'center'});
+        setF('normal', 8.5, DARK); doc.text(w, ML+18, y+8);
+        y += blockH;
       });
-      y += 6;
+      y += 10;
 
       // ── GOVERNMENT SOURCE INSPECTION ─────────────────────────────────────
       checkY(70);
-      sectionHdr('Government Source Inspection');
-      y += 4;
+      doc.setFillColor(...LIGHT); doc.rect(ML,y-2,TW,18,'F');
+      doc.setFillColor(...RED); doc.rect(ML,y-2,3,18,'F');
+      setF('bold',9,RED); doc.text('GOVERNMENT SOURCE INSPECTION',ML+10,y+10); y+=22;
       setF('normal', 9, DARK);
       doc.text('If Government Source Inspection is required:', ML, y); y += 14;
       [['Navy Nuclear','Michael Auchenbach \u2014 michael.a.auchenbach.civ@mail.mil \u2014 T: 908-387-9866  F: 908-387-8694'],
@@ -3638,11 +3673,11 @@ export default function App({onLogout,currentUser}){
         doc.text('\u2022 '+k+': ', ML+4, y);
         setF('normal',9,DARK);
         const vw=doc.splitTextToSize(v, TW-kw-10);
-        doc.text(vw, ML+4+kw, y); y += vw.length*12+5;
+        doc.text(vw, ML+4+kw, y); y += vw.length*12+6;
       });
-      y += 8;
+      y += 12;
 
-      // ── Closing + signature ───────────────────────────────────────────────
+      // ── Closing paragraphs ───────────────────────────────────────────────
       const closingParas = [
         'This is a line item quote. Please have your purchase order reflect each line item and our quote number. Please send the signed Terms and Conditions page and Purchase Orders to Fax: 908-713-9001 or e-mail: sales@nulabs.com, attention Jordan McAdoo.',
         'We appreciate this opportunity to quote on your testing requirements. In the event that we receive a purchase order for the above testing, please acknowledge the enclosed terms and conditions and return with your order. Should you have further questions, please feel free to contact us.',
@@ -3654,10 +3689,17 @@ export default function App({onLogout,currentUser}){
         doc.text(w, ML, y); y += w.length*12+10;
       });
 
-      checkY(70); y += 8;
-      setF('normal', 9, DARK); doc.text('Submitted by:', ML, y); y += 22;
-      doc.setDrawColor(100,100,100); doc.setLineWidth(0.5); doc.line(ML, y, ML+160, y); y += 12;
-      setF('bold', 9, DARK); doc.text('Jordan McAdoo', ML, y); y += 12;
+      // ── Signature block ──────────────────────────────────────────────────
+      checkY(90); y += 16;
+      setF('normal', 8.5, MUTED); doc.text('Submitted by:', ML, y); y += 8;
+      // Cursive-style signature
+      doc.setFont('times','bolditalic'); doc.setFontSize(26); doc.setTextColor(...DARK);
+      doc.text('Jordan McAdoo', ML, y+22);
+      const sigW = doc.getTextWidth('Jordan McAdoo');
+      doc.setDrawColor(...RED); doc.setLineWidth(0.8);
+      doc.line(ML, y+26, ML+sigW+4, y+26);
+      y += 38;
+      setF('bold', 9, DARK); doc.text('Jordan McAdoo', ML, y); y += 13;
       setF('normal', 8.5, MUTED); doc.text('Sales Manager, NU Laboratories, Inc.', ML, y);
 
     }} // end if(!budgetOnly)
