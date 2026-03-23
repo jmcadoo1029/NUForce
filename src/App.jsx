@@ -2681,14 +2681,15 @@ const STANDARD_TERMS = [
       sectionHdr('MIL-STD-1399 Section 300B — Selected Tests');
 
       activeRows.forEach((r,idx)=>{
-        const hdrLines  = doc.splitTextToSize(r.key.replace('B','')+' — '+r.label, TW-10);
-        const reqLines  = r.req ? doc.splitTextToSize(r.req, TW-12) : [];
-        const refLines  = r.ref ? doc.splitTextToSize('Tables / Figures: '+r.ref, TW-12) : [];
-        const noteLines = r.note ? doc.splitTextToSize('⚠  '+r.note, TW-16) : [];
-        const rowH = hdrLines.length*13+8
-          + (reqLines.length>0 ? reqLines.length*12+5 : 0)
-          + (refLines.length>0 ? refLines.length*11+4 : 0)
-          + (noteLines.length>0 ? noteLines.length*11+5 : 0)
+        const WRAP = TW - 20;
+        const hdrLines  = doc.splitTextToSize(r.key.replace('B','')+' — '+r.label, WRAP);
+        const reqLines  = r.req ? doc.splitTextToSize(r.req, WRAP) : [];
+        const refLines  = r.ref ? doc.splitTextToSize('Tables / Figures: '+r.ref, WRAP) : [];
+        const noteLines = r.note ? doc.splitTextToSize('Note: '+r.note, WRAP) : [];
+        const rowH = hdrLines.length*14+8
+          + (reqLines.length>0 ? reqLines.length*12+6 : 0)
+          + (refLines.length>0 ? refLines.length*11+5 : 0)
+          + (noteLines.length>0 ? noteLines.length*12+6 : 0)
           + 10;
 
         checkY(rowH+2);
@@ -2698,10 +2699,10 @@ const STANDARD_TERMS = [
         doc.rect(ML, y+hdrLines.length*13+10, TW, rowH-(hdrLines.length*13+10), 'F');
 
         let ry=y+12;
-        setF('bold',8.5,BLUE); doc.text(hdrLines, ML+8, ry); ry+=hdrLines.length*13+6;
-        if(reqLines.length>0){ setF('normal',8.5,DARK); doc.text(reqLines, ML+10, ry); ry+=reqLines.length*12+5; }
-        if(refLines.length>0){ setF('normal',8,MUTED); doc.text(refLines, ML+10, ry); ry+=refLines.length*11+4; }
-        if(noteLines.length>0){ setF('italic',7.5,[110,85,40]); doc.text(noteLines, ML+10, ry); }
+        setF('bold',8.5,BLUE); doc.text(hdrLines, ML+8, ry); ry+=hdrLines.length*14+4;
+        if(reqLines.length>0){ setF('normal',8.5,DARK); doc.text(reqLines, ML+10, ry); ry+=reqLines.length*12+6; }
+        if(refLines.length>0){ setF('normal',8,MUTED); doc.text(refLines, ML+10, ry); ry+=refLines.length*11+5; }
+        if(noteLines.length>0){ setF('italic',7.5,[110,85,40]); doc.text(noteLines, ML+10, ry); ry+=noteLines.length*12+5; }
 
         doc.setDrawColor(...LIGHT); doc.setLineWidth(0.4);
         doc.line(ML, y+rowH, ML+TW, y+rowH);
@@ -2880,49 +2881,54 @@ const STANDARD_TERMS = [
       sectionHdr('MIL-STD-461F -- Selected Tests');
 
       activeRows.forEach((r,idx)=>{
-        // Compute all line counts first so rowH is accurate
-        const lblLines  = doc.splitTextToSize(r.label, TW-52);
-        const descLines = r.desc ? doc.splitTextToSize(r.desc, TW-12) : [];
-        const noteLines = r.note ? doc.splitTextToSize('! '+r.note, TW-12) : [];
-        const posH = r.positions ? r.positions.length*13+4 : 0;
-        const rowH = lblLines.length*13+6
-          + (descLines.length>0 ? descLines.length*12+5 : 0)
+        // Split all content first, then compute rowH from actual line counts
+        const WRAP = TW - 20; // conservative wrap width for all body text
+        const lblLines  = doc.splitTextToSize(r.label, TW-54);
+        const descLines = r.desc ? doc.splitTextToSize(r.desc, WRAP) : [];
+        const noteLines = r.note ? doc.splitTextToSize('Note: '+r.note, WRAP) : [];
+        // Position rows: pre-compute to get accurate height
+        const posRows = r.positions ? r.positions.map(({range,pos})=>({
+          rng: doc.splitTextToSize(range+':',120),
+          pos: doc.splitTextToSize(pos, TW-160)
+        })) : [];
+        const posH = posRows.reduce((a,pr)=>a+Math.max(pr.rng.length,pr.pos.length)*12+2,0)+(posRows.length>0?4:0);
+        const rowH = lblLines.length*14+8
+          + (descLines.length>0 ? descLines.length*12+6 : 0)
           + posH
-          + (noteLines.length>0 ? noteLines.length*11+5 : 0)
-          + 12;
+          + (noteLines.length>0 ? noteLines.length*12+6 : 0)
+          + 10;
         checkY(rowH+2);
 
-        // Row background — blue-tinted header strip, white body
+        // Row background
         doc.setFillColor(...(idx%2===0?[238,244,250]:[230,238,246]));
-        doc.rect(ML,y,TW,lblLines.length*13+10,'F');
+        doc.rect(ML,y,TW,lblLines.length*14+10,'F');
         doc.setFillColor(255,255,255);
-        doc.rect(ML,y+lblLines.length*13+10,TW,rowH-(lblLines.length*13+10),'F');
-        let ry = y+12;
+        doc.rect(ML,y+lblLines.length*14+10,TW,rowH-(lblLines.length*14+10),'F');
+        let ry = y+13;
 
-        // Key (bold blue) + label (bold dark) on same baseline
+        // Key + label
         setF('bold',8.5,BLUE); doc.text(r.key, ML+6, ry);
         setF('bold',8.5,DARK); doc.text(lblLines, ML+52, ry);
-        ry += lblLines.length*13+4;
+        ry += lblLines.length*14+4;
 
-        // Description — indented, normal weight
+        // Description
         if(descLines.length>0){
-          setF('normal',8.5,DARK); doc.text(descLines, ML+10, ry); ry+=descLines.length*12+5;
+          setF('normal',8.5,DARK); doc.text(descLines, ML+10, ry); ry+=descLines.length*12+6;
         }
 
         // Position table (RE102, RS103)
-        if(r.positions){
-          r.positions.forEach(({range,pos})=>{
-            const rngW=doc.splitTextToSize('*  '+range+':',128);
-            setF('normal',8,[80,80,80]); doc.text(rngW,ML+14,ry);
-            const posW=doc.splitTextToSize(pos,TW-148);
-            setF('bold',8,DARK); doc.text(posW,ML+145,ry); ry+=Math.max(rngW.length,posW.length)*12+1;
+        if(posRows.length>0){
+          posRows.forEach(({rng,pos})=>{
+            const h=Math.max(rng.length,pos.length)*12+2;
+            setF('normal',8,[80,80,80]); doc.text(rng,ML+14,ry);
+            setF('bold',8,DARK); doc.text(pos,ML+145,ry); ry+=h;
           });
-          ry+=3;
+          ry+=4;
         }
 
-        // Note — italic amber
+        // Note
         if(noteLines.length>0){
-          setF('italic',7.5,[110,85,40]); doc.text(noteLines, ML+10, ry); ry+=noteLines.length*11+4;
+          setF('italic',7.5,[110,85,40]); doc.text(noteLines, ML+10, ry); ry+=noteLines.length*12+5;
         }
 
         doc.setDrawColor(...LIGHT); doc.setLineWidth(0.4);
@@ -3113,40 +3119,44 @@ const STANDARD_TERMS = [
       sectionHdr('MIL-STD-461G -- Selected Tests');
 
       activeRows.forEach((r,idx)=>{
-        const lblLines  = doc.splitTextToSize(r.label, TW-52);
-        const descLines = r.desc ? doc.splitTextToSize(r.desc, TW-12) : [];
-        const noteLines = r.note ? doc.splitTextToSize('! '+r.note, TW-12) : [];
-        const posH = r.positions ? r.positions.length*13+4 : 0;
-        const rowH = lblLines.length*13+6
-          + (descLines.length>0 ? descLines.length*12+5 : 0)
+        const WRAP = TW - 20;
+        const lblLines  = doc.splitTextToSize(r.label, TW-54);
+        const descLines = r.desc ? doc.splitTextToSize(r.desc, WRAP) : [];
+        const noteLines = r.note ? doc.splitTextToSize('Note: '+r.note, WRAP) : [];
+        const posRows = r.positions ? r.positions.map(({range,pos})=>({
+          rng: doc.splitTextToSize(range+':',120),
+          pos: doc.splitTextToSize(pos, TW-160)
+        })) : [];
+        const posH = posRows.reduce((a,pr)=>a+Math.max(pr.rng.length,pr.pos.length)*12+2,0)+(posRows.length>0?4:0);
+        const rowH = lblLines.length*14+8
+          + (descLines.length>0 ? descLines.length*12+6 : 0)
           + posH
-          + (noteLines.length>0 ? noteLines.length*11+5 : 0)
-          + 12;
+          + (noteLines.length>0 ? noteLines.length*12+6 : 0)
+          + 10;
         checkY(rowH+2);
 
         doc.setFillColor(...(idx%2===0?[238,244,250]:[230,238,246]));
-        doc.rect(ML,y,TW,lblLines.length*13+10,'F');
+        doc.rect(ML,y,TW,lblLines.length*14+10,'F');
         doc.setFillColor(255,255,255);
-        doc.rect(ML,y+lblLines.length*13+10,TW,rowH-(lblLines.length*13+10),'F');
-        let ry = y+12;
+        doc.rect(ML,y+lblLines.length*14+10,TW,rowH-(lblLines.length*14+10),'F');
+        let ry = y+13;
 
         setF('bold',8.5,BLUE); doc.text(r.key,ML+6,ry);
         setF('bold',8.5,DARK); doc.text(lblLines,ML+52,ry);
-        ry += lblLines.length*13+4;
+        ry += lblLines.length*14+4;
 
-        if(descLines.length>0){setF('normal',8.5,DARK);doc.text(descLines,ML+10,ry);ry+=descLines.length*12+5;}
+        if(descLines.length>0){setF('normal',8.5,DARK);doc.text(descLines,ML+10,ry);ry+=descLines.length*12+6;}
 
-        if(r.positions){
-          r.positions.forEach(({range,pos})=>{
-            const rangeW=doc.splitTextToSize('*  '+range+':',128);
-            setF('normal',8,[80,80,80]); doc.text(rangeW,ML+14,ry);
-            const posW=doc.splitTextToSize(pos,TW-145);
-            setF('bold',8,DARK); doc.text(posW,ML+145,ry); ry+=Math.max(rangeW.length,posW.length)*12+1;
+        if(posRows.length>0){
+          posRows.forEach(({rng,pos})=>{
+            const h=Math.max(rng.length,pos.length)*12+2;
+            setF('normal',8,[80,80,80]); doc.text(rng,ML+14,ry);
+            setF('bold',8,DARK); doc.text(pos,ML+145,ry); ry+=h;
           });
-          ry+=3;
+          ry+=4;
         }
 
-        if(noteLines.length>0){setF('italic',7.5,[110,85,40]);doc.text(noteLines,ML+10,ry);ry+=noteLines.length*11+4;}
+        if(noteLines.length>0){setF('italic',7.5,[110,85,40]);doc.text(noteLines,ML+10,ry);ry+=noteLines.length*12+5;}
 
         doc.setDrawColor(...LIGHT);doc.setLineWidth(0.4);
         doc.line(ML,y+rowH,ML+TW,y+rowH);
@@ -3329,14 +3339,15 @@ const STANDARD_TERMS = [
       sectionHdr('MIL-STD-1399 Section 300 Part 1 -- Selected Tests');
 
       activeRows.forEach((r,idx)=>{
-        const hdrLines  = doc.splitTextToSize(r.key+' — '+r.label, TW-10);
-        const reqLines  = r.req ? doc.splitTextToSize(r.req, TW-12) : [];
-        const refLines  = r.ref ? doc.splitTextToSize('Tables / Figures: '+r.ref, TW-12) : [];
-        const noteLines = r.note ? doc.splitTextToSize('⚠  '+r.note, TW-16) : [];
-        const rowH = hdrLines.length*13+8
-          + (reqLines.length>0 ? reqLines.length*12+5 : 0)
-          + (refLines.length>0 ? refLines.length*11+4 : 0)
-          + (noteLines.length>0 ? noteLines.length*11+5 : 0)
+        const WRAP = TW - 20;
+        const hdrLines  = doc.splitTextToSize(r.key+' — '+r.label, WRAP);
+        const reqLines  = r.req ? doc.splitTextToSize(r.req, WRAP) : [];
+        const refLines  = r.ref ? doc.splitTextToSize('Tables / Figures: '+r.ref, WRAP) : [];
+        const noteLines = r.note ? doc.splitTextToSize('Note: '+r.note, WRAP) : [];
+        const rowH = hdrLines.length*14+8
+          + (reqLines.length>0 ? reqLines.length*12+6 : 0)
+          + (refLines.length>0 ? refLines.length*11+5 : 0)
+          + (noteLines.length>0 ? noteLines.length*12+6 : 0)
           + 10;
 
         checkY(rowH+2);
@@ -3346,10 +3357,10 @@ const STANDARD_TERMS = [
         doc.rect(ML, y+hdrLines.length*13+10, TW, rowH-(hdrLines.length*13+10), 'F');
 
         let ry=y+12;
-        setF('bold',8.5,BLUE); doc.text(hdrLines, ML+8, ry); ry+=hdrLines.length*13+6;
-        if(reqLines.length>0){ setF('normal',8.5,DARK); doc.text(reqLines, ML+10, ry); ry+=reqLines.length*12+5; }
-        if(refLines.length>0){ setF('normal',8,MUTED); doc.text(refLines, ML+10, ry); ry+=refLines.length*11+4; }
-        if(noteLines.length>0){ setF('italic',7.5,[110,85,40]); doc.text(noteLines, ML+10, ry); }
+        setF('bold',8.5,BLUE); doc.text(hdrLines, ML+8, ry); ry+=hdrLines.length*14+4;
+        if(reqLines.length>0){ setF('normal',8.5,DARK); doc.text(reqLines, ML+10, ry); ry+=reqLines.length*12+6; }
+        if(refLines.length>0){ setF('normal',8,MUTED); doc.text(refLines, ML+10, ry); ry+=refLines.length*11+5; }
+        if(noteLines.length>0){ setF('italic',7.5,[110,85,40]); doc.text(noteLines, ML+10, ry); ry+=noteLines.length*12+5; }
 
         doc.setDrawColor(...LIGHT); doc.setLineWidth(0.4);
         doc.line(ML, y+rowH, ML+TW, y+rowH);
