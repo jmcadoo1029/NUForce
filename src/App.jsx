@@ -687,17 +687,41 @@ function EmiForm({s,set,ti}){
     RS105:"Radiated Susceptibility, Transients (461F)",
   };
   const PLATS=["Surface Ships","Submarines"];
-  const LOCS=["Below Deck","Above Deck","Hanger Deck"];
+  const LOCS_CAN=[
+    "Below Deck","Subs Internal",
+    "Aircraft Fixed Wing Internal ≥25m",
+    "Ground Navy Fixed","Ground Air Force","Space System Internal",
+  ];
+  const LOCS_TBD=[
+    "High-Gain Preamp (≥48 dB) — Feasibility TBD",
+  ];
+  const LOCS_CANT=[
+    "Above Deck","Subs External",
+    "Aircraft Fixed Wing Internal <25m","Aircraft Fixed Wing External",
+    "Ground Navy Mobile","Ground Army",
+  ];
+  const LOCS=[...LOCS_CAN,...LOCS_TBD,...LOCS_CANT];
   const REVS=["Rev F","Rev G"];
   const [expanded,setExpanded]=useState({});
 
   // ── Unit detail values for warning logic ──
   const eutAmps   = sf(s.phases&&s.phases?s.phases:ti?.phase||'3',3)>=1 ? sf(ti?.amps||'0',0) : 0;
   const eutHz     = sf(ti?.hz||'0',0);
-  const isSub     = (s.plats||{})['Submarines']||false;
-  const isAboveDeck = (s.locs||{})['Above Deck']||false;
-  const isBelowDeck = (s.locs||{})['Below Deck']||false;
-  const isDC      = (ti?.pwrType||'AC')==='DC';
+  const isSub          = (s.plats||{})['Submarines']||false;
+  const isAboveDeck    = (s.locs||{})['Above Deck']||false;
+  const isBelowDeck    = (s.locs||{})['Below Deck']||false;
+  const isSubsInternal = (s.locs||{})['Subs Internal']||false;
+  const isSubsExternal = (s.locs||{})['Subs External']||false;
+  const isGndNavyFixed = (s.locs||{})['Ground Navy Fixed']||false;
+  const isGndNavyMob   = (s.locs||{})['Ground Navy Mobile']||false;
+  const isGndArmy      = (s.locs||{})['Ground Army']||false;
+  const isGndAF        = (s.locs||{})['Ground Air Force']||false;
+  const isAircraftIntBig  = (s.locs||{})['Aircraft Fixed Wing Internal ≥25m']||false;
+  const isAircraftIntSm   = (s.locs||{})['Aircraft Fixed Wing Internal <25m']||false;
+  const isAircraftExt  = (s.locs||{})['Aircraft Fixed Wing External']||false;
+  const isSpaceInt     = (s.locs||{})['Space System Internal']||false;
+  const isPreampTBD    = (s.locs||{})['High-Gain Preamp (≥48 dB) — Feasibility TBD']||false;
+  const isDC           = (ti?.pwrType||'AC')==='DC';
 
   // ── Per-test flags: { greyed: bool, greyReason: string, warnings: string[] } ──
   const getTestFlags=(t)=>{
@@ -718,10 +742,11 @@ function EmiForm({s,set,ti}){
     }
 
     if(t==='CS109'){
-      // Already has subcontract warning — add applicability note
-      if(eutHz>0 && eutHz>100000){
-        greyed=true; greyReason='CS109 does not apply for operating frequency >100 kHz.';
-      }
+      // CS109 is never performed by NU Labs — always show as non-selectable
+      greyed=true;
+      greyReason=eutHz>0&&eutHz>100000
+        ?'CS109 does not apply for operating frequency >100 kHz.'
+        :'NU Labs does not perform CS109. This test must be subcontracted if required.';
     }
 
     if(t==='RS101'){
@@ -734,19 +759,29 @@ function EmiForm({s,set,ti}){
     }
 
     if(t==='RS103'){
-      warnings.push('NU Labs RS103 capability is limited to 10 V/m. Any requirement above 10 V/m requires subcontracting. Max frequency: 18 GHz.');
+      warnings.push('NU Labs RS103 capability is limited to 10 V/m (Ships metallic below deck / Subs internal). Max frequency: 18 GHz.');
       if(isAboveDeck){
-        warnings.push('⚠ Ships above deck / exposed below deck limits may exceed our capabilities — check with production before quoting.');
+        warnings.push('Ships above deck / exposed below deck (50 V/m 2–30 MHz) requires a rented 500 W amp — subcontract or add rental cost.');
+      }
+      if(isSubsExternal||isAircraftExt||isGndNavyMob||isGndArmy){
+        warnings.push('Selected location may require higher field strengths (>10 V/m) — verify limits with customer. Subcontracting may be required.');
       }
     }
 
     if(t==='RE102'){
-      if(isAboveDeck){
-        warnings.push('Ships above deck is outside our standard RE102 capability. This test may need to be subcontracted or require a rented high-gain preamp (≥48 dB). Check with production.');
-      }
-      // Subs external warning
-      if(isSub && !isBelowDeck){
-        warnings.push('Subs external RE102 requires subcontracting. Subs internal is within our capability.');
+      const re102Sub = isAboveDeck||isSubsExternal||isAircraftIntSm||isAircraftExt||isGndNavyMob||isGndArmy;
+      if(re102Sub){
+        greyed=true;
+        greyReason='RE102 subcontract required for selected location(s): '
+          +[isAboveDeck&&'Ships Above Deck',isSubsExternal&&'Subs External',
+            isAircraftIntSm&&'Aircraft Fixed Wing Internal <25m',isAircraftExt&&'Aircraft Fixed Wing External',
+            isGndNavyMob&&'Ground Navy Mobile',isGndArmy&&'Ground Army'].filter(Boolean).join(', ')+'.';
+      } else {
+        if(isAircraftIntBig) warnings.push('Aircraft Fixed Wing Internal ≥25 m: NU Labs can perform this in-house. Verify nose-to-tail length before quoting.');
+        if(isSpaceInt) warnings.push('Space System Internal: May be doable — verify limits with production before committing.');
+        if(isPreampTBD) warnings.push('High-gain preamp (≥48 dB) may extend RE102 capability for some limits. Feasibility not yet confirmed — check with production.');
+        const re102CanDo=isBelowDeck||isSubsInternal||isGndNavyFixed||isGndAF||isAircraftIntBig||isSpaceInt||isPreampTBD;
+        if(!re102CanDo) warnings.push('No location selected — verify RE102 applicability and limits with customer.');
       }
     }
 
@@ -820,10 +855,27 @@ function EmiForm({s,set,ti}){
       </div>
     </div>
     <div style={{marginBottom:8}}>
-      <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Location</div>
-      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-        {LOCS.map(l=><Toggle key={l} small checked={(s.locs||{})[l]||false}
-          onChange={v=>set({...s,locs:{...(s.locs||{}),[l]:v}})} label={l}/>)}
+      <div style={{fontSize:11,color:C.muted,marginBottom:6}}>Location / RE102 Limits</div>
+      <div style={{marginBottom:6}}>
+        <div style={{fontSize:9,color:"#166534",fontWeight:700,marginBottom:4,letterSpacing:.5}}>✓ IN-HOUSE CAPABLE</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {LOCS_CAN.map(l=><Toggle key={l} small checked={(s.locs||{})[l]||false}
+            onChange={v=>set({...s,locs:{...(s.locs||{}),[l]:v}})} label={l}/>)}
+        </div>
+      </div>
+      <div style={{marginBottom:6}}>
+        <div style={{fontSize:9,color:"#b7791f",fontWeight:700,marginBottom:4,letterSpacing:.5}}>? FEASIBILITY TBD</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {LOCS_TBD.map(l=><Toggle key={l} small checked={(s.locs||{})[l]||false}
+            onChange={v=>set({...s,locs:{...(s.locs||{}),[l]:v}})} label={l}/>)}
+        </div>
+      </div>
+      <div>
+        <div style={{fontSize:9,color:C.red,fontWeight:700,marginBottom:4,letterSpacing:.5}}>✗ SUBCONTRACT REQUIRED</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {LOCS_CANT.map(l=><Toggle key={l} small checked={(s.locs||{})[l]||false}
+            onChange={v=>set({...s,locs:{...(s.locs||{}),[l]:v}})} label={l}/>)}
+        </div>
       </div>
     </div>
     <Pia s={s} set={set}/>
@@ -843,12 +895,14 @@ function EmiForm({s,set,ti}){
       const {greyed,greyReason,warnings}=getTestFlags(t);
       return <div key={t} style={{marginBottom:4}}>
         <div style={{display:"flex",alignItems:"center",gap:6,
-          background:greyed?(on?"#f5f5f5":C.panel):(on?"#fdf3f2":C.panel),
-          border:"1px solid "+(greyed?"#d0d7de":(on?C.red+"44":C.border)),
+          background:t==="CS109"?"#fff7ed":(greyed?(on?"#f5f5f5":C.panel):(on?"#fdf3f2":C.panel)),
+          border:"1px solid "+(t==="CS109"?"#b7791f":(greyed?"#d0d7de":(on?C.red+"44":C.border))),
           borderRadius:6,padding:"5px 8px",
           opacity:greyed?0.7:1}}>
-          <input type="checkbox" checked={on} onChange={e=>set({...s,tests:{...s.tests,[t]:e.target.checked}})}
-            style={{accentColor:C.red,width:13,height:13,flexShrink:0}}/>
+          <input type="checkbox" checked={on}
+            onChange={e=>set({...s,tests:{...s.tests,[t]:e.target.checked}})}
+            disabled={t==="CS109"}
+            style={{accentColor:C.red,width:13,height:13,flexShrink:0,cursor:t==="CS109"?"not-allowed":"pointer"}}/>
           <span style={{fontSize:11,fontWeight:600,color:greyed?C.muted:(on?C.red:C.text),minWidth:50}}>{t}</span>
           <span style={{fontSize:10,color:greyed?C.dim:(on?C.redDim:C.dim),flex:1,marginLeft:2}}>{TEST_LABELS[t]||""}</span>
           {greyed&&<span style={{fontSize:9,color:"#6b7a8d",background:"#e8ecf0",borderRadius:4,padding:"1px 5px",flexShrink:0}}>N/A</span>}
@@ -888,13 +942,13 @@ function EmiForm({s,set,ti}){
             ))}
           </div>
         )}
-        {/* CS109 subcontract warning (in addition to grey logic) */}
-        {t==="CS109"&&on&&!greyed&&(
-          <div style={{background:"#fffbeb",border:"1px solid #b7791f",borderTop:"none",
-            borderRadius:"0 0 6px 6px",padding:"6px 10px",display:"flex",gap:6,alignItems:"flex-start"}}>
-            <span style={{fontSize:13,flexShrink:0}}>⚠️</span>
-            <span style={{fontSize:10,color:"#7b4f12",lineHeight:1.5}}>
-              <b>NU Labs does not perform CS109.</b> If this test is required, it will need to be subcontracted. A separate subcontract line item should be added to this quote.
+        {/* CS109 — always subcontracted, prominent banner under greyed row */}
+        {t==="CS109"&&greyed&&(
+          <div style={{background:"#fef2f2",border:"1px solid #dc2626",borderTop:"none",
+            borderRadius:"0 0 6px 6px",padding:"8px 10px",display:"flex",gap:8,alignItems:"flex-start"}}>
+            <span style={{fontSize:15,flexShrink:0}}>🚫</span>
+            <span style={{fontSize:10,color:"#7f1d1d",lineHeight:1.6}}>
+              <b>NU Labs does not perform CS109.</b> If this test is required by the specification, it must be <b>subcontracted</b>. Add a separate subcontract line item to this quote and notify the customer.
             </span>
           </div>
         )}
