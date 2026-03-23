@@ -2184,9 +2184,10 @@ export default function App({onLogout,currentUser}){
     const newApproval={...approval,status:"approved",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:approvalComments,history:[...(approval.history||[]),evtA]};
     setApproval(newApproval);
     setApprovalComments("");
-    const q={id:Date.now(),opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
+    const q={id:currentQuoteId||Date.now(),opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,wonInfo,approval:newApproval};
-    setSavedQuotes(saveQuote(savedQuotes,q));
+    saveQuote(savedQuotes,q);
+    setSavedQuotes(loadQuotes());
     await sendDecisionEmail("APPROVED",currentUser,approvalComments,approval.submittedBy);
   };
 
@@ -2196,9 +2197,10 @@ export default function App({onLogout,currentUser}){
     setApproval(newApproval);
     setLocked(false);
     setApprovalComments("");
-    const q={id:Date.now(),opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
+    const q={id:currentQuoteId||Date.now(),opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,wonInfo,approval:newApproval};
-    setSavedQuotes(saveQuote(savedQuotes,q));
+    saveQuote(savedQuotes,q);
+    setSavedQuotes(loadQuotes());
     await sendDecisionEmail("REJECTED",currentUser,approvalComments,approval.submittedBy);
   };
 
