@@ -1657,6 +1657,12 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   vibs.filter(s=>s.on).forEach((s,idx)=>{
     const pre=idx>0?" #"+(idx+1)+(s.identifier?" ("+s.identifier+")":""):"";
     const pm=s.pia||1;
+    // Fixture Fabrication — first line for this test block
+    if(s.fixtureFab?.on){
+      const fabLabel="Fixture Fabrication – Vibration"+(pre?pre:"");
+      const laborAmt=r25(sf(s.fixtureFab.hours,0)*sf(s.fixtureFab.techRate,175));
+      lines.push({label:fabLabel,val:laborAmt,code:"94",unit:currentUnit,seq:seq++,isFabLine:true});
+    }
     if(s.hydroPre)add("Vib"+pre+" – Pre-Test Hydrostatic",sf(s.hydroPrice||500),null,"95");
     if(s.circ)add("Circulating System",2500,null,"94");
     add("Vibration"+pre+" – Setup",sectionSetup(s,globalSetup)*pm,null,"94");
@@ -1668,13 +1674,6 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     add("Vibration"+pre+" – Testing",sf(s.testing)*pm,null,"94");
     if(s.hydroPost)add("Vib"+pre+" – Post-Test Hydrostatic",sf(s.hydroPrice||500),null,"95");
     (s.customRows||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Custom",r.price,null,r.code||pcode(r.label||""));});
-    // Fixture Fabrication — labor + any budget rows rolled into this line
-    if(s.fixtureFab?.on){
-      const fabLabel="Fixture Fabrication – Vibration"+(pre?pre:"");
-      const laborAmt=r25(sf(s.fixtureFab.hours,0)*sf(s.fixtureFab.techRate,175));
-      // Budget rollup will add to this line later; push with labor cost now
-      lines.push({label:fabLabel,val:laborAmt,code:"94",unit:currentUnit,seq:seq++,isFabLine:true});
-    }
   });
 
   // Shock instances (from-vib discount uses first active vib setup)
@@ -1687,6 +1686,12 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     const code=isMW?"91":"92";
     let su=sectionSetup(s,globalSetup);
     if(s.fromVib&&firstVibSetup>0)su=isMW?mwDisc(firstVibSetup):lwDisc(firstVibSetup);
+    // Fixture Fabrication — first line for this test block
+    if(s.fixtureFab?.on){
+      const fabLabel="Fixture Fabrication – Shock"+(pre?pre:"");
+      const laborAmt=r25(sf(s.fixtureFab.hours,0)*sf(s.fixtureFab.techRate,175));
+      lines.push({label:fabLabel,val:laborAmt,code:code,unit:currentUnit,seq:seq++,isFabLine:true});
+    }
     if(s.hydroPre)add("Shock"+pre+" – Pre-Test Hydrostatic",sf(s.hydroPrice||500),null,"95");
     const shockSetupLabel="Shock"+pre+" – Setup"+(s.fromVib&&firstVibSetup>0?" (disc.)":"");
     const shockSetupDesc=s.fromVib&&firstVibSetup>0?"Pricing assumes the unit is coming directly from vibration testing.":null;
@@ -1700,12 +1705,6 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     add("Shock"+pre+" – Testing",sf(s.testing)*pm,null,code);
     if(s.hydroPost)add("Shock"+pre+" – Post-Test Hydrostatic",sf(s.hydroPrice||500),null,"95");
     (s.customRows||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Custom",r.price,null,r.code||pcode(r.label||""));});
-    // Fixture Fabrication — labor + any budget rows rolled into this line
-    if(s.fixtureFab?.on){
-      const fabLabel="Fixture Fabrication – Shock"+(pre?pre:"");
-      const laborAmt=r25(sf(s.fixtureFab.hours,0)*sf(s.fixtureFab.techRate,175));
-      lines.push({label:fabLabel,val:laborAmt,code:code,unit:currentUnit,seq:seq++,isFabLine:true});
-    }
   });
 
   // Noise instances
