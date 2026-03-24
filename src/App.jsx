@@ -2173,9 +2173,12 @@ export default function App({onLogout,currentUser}){
     setApproval(newApproval);
     setLocked(true);
     setShowApprovalModal(false);
-    const q={id:Date.now(),opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
+    const id=currentQuoteId||Date.now();
+    const q={id,opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,wonInfo,approval:newApproval};
-    setSavedQuotes(saveQuote(savedQuotes,q));
+    saveQuote(savedQuotes,q);
+    setCurrentQuoteId(id);
+    setSavedQuotes(loadQuotes());
     await sendSubmitEmail(currentUser);
   };
 
