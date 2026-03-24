@@ -305,6 +305,30 @@ function VibForm({s,set,setup}){
       <span style={{color:C.text,fontWeight:600}}>{money(setupTotal)}</span>
       <span style={{color:C.dim,fontSize:9}}>{" = "}{"$"+sf(s.stdSetup||s.setup||1250).toLocaleString()}{dr>0?" + $"+dr.toLocaleString()+" drill":""}{fab>0?" + $"+fab.toLocaleString()+" fab":""}{addl>0?" + $"+addl.toLocaleString()+" addl":""}{pm>1?" x "+pm+" PIA":""}</span>
     </div>
+    <div style={{borderTop:"1px solid "+C.border,paddingTop:8,marginTop:6}}>
+      <Toggle small checked={(s.fixtureFab||{}).on||false}
+        onChange={v=>set({...s,fixtureFab:{...(s.fixtureFab||{hours:"0",techRate:"175"}),on:v}})}
+        label="Fixture Fabrication"/>
+      {(s.fixtureFab||{}).on&&(
+        <div style={{background:C.panel,borderRadius:6,padding:"8px 10px",marginTop:6}}>
+          <div style={{fontSize:9,color:C.dim,fontWeight:700,letterSpacing:.5,marginBottom:6}}>FIXTURE FAB LABOR</div>
+          <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+            <div>
+              <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Hours</div>
+              <Inp value={(s.fixtureFab||{}).hours||"0"} onChange={v=>set({...s,fixtureFab:{...(s.fixtureFab||{}),hours:v}})} width={60} right/>
+            </div>
+            <div>
+              <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Tech Rate</div>
+              <Inp value={(s.fixtureFab||{}).techRate||"175"} onChange={v=>set({...s,fixtureFab:{...(s.fixtureFab||{}),techRate:v}})} width={65} right/>
+            </div>
+            <div style={{fontSize:10,color:C.muted,marginTop:12}}>
+              {"= $"+Math.round(sf((s.fixtureFab||{}).hours,0)*sf((s.fixtureFab||{}).techRate,175)).toLocaleString()+" labor"}
+            </div>
+          </div>
+          <div style={{fontSize:9,color:C.dim,marginTop:6}}>Add budget materials and set "Roll Into" to "Fixture Fabrication – Vibration" to include them in this line.</div>
+        </div>
+      )}
+    </div>
     <ProcReport s={s} set={set} sectionCode="94"/>
   </div>;
 }
@@ -367,6 +391,30 @@ function ShockForm({s,set,vibSetup,setup,ti}){
         ? <span style={{color:C.dim,fontSize:9}}>{" (discounted from vib setup $"+vibSetup.toLocaleString()+")"}</span>
         : <span style={{color:C.dim,fontSize:9}}>{" = $"+sf(s.stdSetup||s.setup||1500).toLocaleString()+(dr>0?" + $"+dr.toLocaleString()+" drill":"")+(fab>0?" + $"+fab.toLocaleString()+" fab":"")+(addl>0?" + $"+addl.toLocaleString()+" addl":"")+(pm>1?" x "+pm+" PIA":"")}</span>
       }
+    </div>
+    <div style={{borderTop:"1px solid "+C.border,paddingTop:8,marginTop:6}}>
+      <Toggle small checked={(s.fixtureFab||{}).on||false}
+        onChange={v=>set({...s,fixtureFab:{...(s.fixtureFab||{hours:"0",techRate:"175"}),on:v}})}
+        label="Fixture Fabrication"/>
+      {(s.fixtureFab||{}).on&&(
+        <div style={{background:C.panel,borderRadius:6,padding:"8px 10px",marginTop:6}}>
+          <div style={{fontSize:9,color:C.dim,fontWeight:700,letterSpacing:.5,marginBottom:6}}>FIXTURE FAB LABOR</div>
+          <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+            <div>
+              <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Hours</div>
+              <Inp value={(s.fixtureFab||{}).hours||"0"} onChange={v=>set({...s,fixtureFab:{...(s.fixtureFab||{}),hours:v}})} width={60} right/>
+            </div>
+            <div>
+              <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Tech Rate</div>
+              <Inp value={(s.fixtureFab||{}).techRate||"175"} onChange={v=>set({...s,fixtureFab:{...(s.fixtureFab||{}),techRate:v}})} width={65} right/>
+            </div>
+            <div style={{fontSize:10,color:C.muted,marginTop:12}}>
+              {"= $"+Math.round(sf((s.fixtureFab||{}).hours,0)*sf((s.fixtureFab||{}).techRate,175)).toLocaleString()+" labor"}
+            </div>
+          </div>
+          <div style={{fontSize:9,color:C.dim,marginTop:6}}>Add budget materials and set "Roll Into" to "Fixture Fabrication – Shock" to include them in this line.</div>
+        </div>
+      )}
     </div>
     <ProcReport s={s} set={set} sectionCode={s.cat==="Medium Weight"?"91":"92"}/>
   </div>;
@@ -1384,13 +1432,13 @@ function SbForm({s,set,setup}){
   </div>;
 }
 
-function BudgetSection({budget,setBudget,setupLines}){
+function BudgetSection({budget,setBudget,setupLines,fixtureFabLines}){
   const add=()=>setBudget({...budget,rows:[...budget.rows,{desc:"",qty:"1",unitCost:"0",rollInto:"SEPARATE"}]});
   const rem=i=>setBudget({...budget,rows:budget.rows.filter((_,j)=>j!==i)});
   const upd=(i,k,v)=>setBudget({...budget,rows:budget.rows.map((r,j)=>j===i?{...r,[k]:v}:r)});
   const mp=sf(budget.markup,25)/100;
   const total=budget.rows.reduce((s,r)=>s+sf(r.qty,1)*sf(r.unitCost,0),0);
-  const rollOpts=["SEPARATE",...(setupLines||[])];
+  const rollOpts=["SEPARATE",...(setupLines||[]),...(fixtureFabLines||[])];
 
   if(!budget.on) return(
     <div style={{marginBottom:10}}>
@@ -1549,8 +1597,8 @@ function QuoteSearch({onLoad}){
 // ── Initial state factories ───────────────────────────────────────────────────
 const newAb=()=>({id:Date.now(),on:false,spec:"",rev:"1474",testing:"2850",stdSetup:"1000",addlCosts:"0",proc:false,report:false});
 const newSb=()=>({id:Date.now(),on:false,spec:"",rev:"167 Type II",testing:"2650",stdSetup:"850",addlCosts:"0",proc:false,report:false});
-const newVib=()=>({id:Date.now(),on:false,cat:"LAB Vibration (MIL-STD-167)",spec:"",freqRange:"",circ:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"3250",stdSetup:"1250",addlCosts:"0",proc:false,report:false});
-const newShock=()=>({id:Date.now(),on:false,cat:"Medium Weight",spec:"",grade:"A",class_:"I",type_:"A",location:"Hull",submarine:false,orientation:"Unrestricted",blows:"",fromVib:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"4575",stdSetup:"1500",addlCosts:"0",proc:false,report:false});
+const newVib=()=>({id:Date.now(),on:false,cat:"LAB Vibration (MIL-STD-167)",spec:"",freqRange:"",circ:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"3250",stdSetup:"1250",addlCosts:"0",proc:false,report:false,fixtureFab:{on:false,hours:"0",techRate:"175"}});
+const newShock=()=>({id:Date.now(),on:false,cat:"Medium Weight",spec:"",grade:"A",class_:"I",type_:"A",location:"Hull",submarine:false,orientation:"Unrestricted",blows:"",fromVib:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"4575",stdSetup:"1500",addlCosts:"0",proc:false,report:false,fixtureFab:{on:false,hours:"0",techRate:"175"}});
 const newNoise=()=>({id:Date.now(),on:false,spec:"",level:"<=140dB",oaspl:"",chamber:"Speakerbox",durVal:"30",durUnit:"minutes",compBudget:"0",pia:0,testing:"3950",stdSetup:"1000",addlCosts:"0",proc:false,report:false});
 const newEnv=()=>({id:Date.now(),on:false,spec:"",items:{},thDur:"0 to 1 Day",thType:"Temperature & Humidity",proc:false,report:false});
 const newEmi=()=>({id:Date.now(),on:false,spec:"",rate:"1600",addl:"0",setupShifts:"3.0",tdShifts:"1.0",dimL:"",dimW:"",dimH:"",weight:"",cables:"0",rs103amp:"",plats:{},locs:{},revs:{},pia:0,tests:{},proc:false,report:false});
@@ -1599,7 +1647,7 @@ function pcode(label){
   return "";
 }
 
-function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,globalSetup,splitProcReport){
+function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,globalSetup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal){
   const lines=[];
   let currentUnit=0;
   let seq=0;
@@ -1620,6 +1668,13 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     add("Vibration"+pre+" – Testing",sf(s.testing)*pm,null,"94");
     if(s.hydroPost)add("Vib"+pre+" – Post-Test Hydrostatic",sf(s.hydroPrice||500),null,"95");
     (s.customRows||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Custom",r.price,null,r.code||pcode(r.label||""));});
+    // Fixture Fabrication — labor + any budget rows rolled into this line
+    if(s.fixtureFab?.on){
+      const fabLabel="Fixture Fabrication – Vibration"+(pre?pre:"");
+      const laborAmt=r25(sf(s.fixtureFab.hours,0)*sf(s.fixtureFab.techRate,175));
+      // Budget rollup will add to this line later; push with labor cost now
+      lines.push({label:fabLabel,val:laborAmt,code:"94",unit:currentUnit,seq:seq++,isFabLine:true});
+    }
   });
 
   // Shock instances (from-vib discount uses first active vib setup)
@@ -1645,6 +1700,12 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     add("Shock"+pre+" – Testing",sf(s.testing)*pm,null,code);
     if(s.hydroPost)add("Shock"+pre+" – Post-Test Hydrostatic",sf(s.hydroPrice||500),null,"95");
     (s.customRows||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Custom",r.price,null,r.code||pcode(r.label||""));});
+    // Fixture Fabrication — labor + any budget rows rolled into this line
+    if(s.fixtureFab?.on){
+      const fabLabel="Fixture Fabrication – Shock"+(pre?pre:"");
+      const laborAmt=r25(sf(s.fixtureFab.hours,0)*sf(s.fixtureFab.techRate,175));
+      lines.push({label:fabLabel,val:laborAmt,code:code,unit:currentUnit,seq:seq++,isFabLine:true});
+    }
   });
 
   // Noise instances
@@ -1830,7 +1891,6 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   // Budget materials: add marked-up total to the selected setup line
   if(budget&&budget.on&&budget.rows.length>0){
     const mp=sf(budget.markup,25)/100;
-    // Group rows by rollInto target
     const rollGroups={};
     budget.rows.forEach(r=>{
       const target=r.rollInto||"_none";
@@ -1842,10 +1902,15 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
       if(target==="SEPARATE"||target==="_none"){
         add("Budget Materials",amt,null,"");
       } else {
-        // Find matching line and add to its val
+        // Find matching line (setup or fixture fab) and add to its val
         const idx=lines.findIndex(l=>l.label===target);
-        if(idx>=0)lines[idx]={...lines[idx],val:Math.round(lines[idx].val+amt)};
-        else add("Budget ("+target+")",amt,null,"");
+        if(idx>=0){
+          // For fixture fab lines that have zero labor, ensure they appear with budget amt
+          const cur=lines[idx];
+          lines[idx]={...cur,val:Math.round(cur.val+amt)};
+        } else {
+          add("Budget ("+target+")",amt,null,"");
+        }
       }
     });
   }
@@ -1924,11 +1989,19 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   (globalPR?.procs||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Test Procedure",r.price,null,"42");});
   (globalPR?.reps||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Test Report",r.price,null,"41");});
   if(globalPR?.coc)add("Certificate of Compliance",globalPR.cocPrice||"250",null,"41");
+  // Fixture Drawing (code 42, sorts before modal analysis and EMI/PQ/DCM procs)
+  if(fixtureDrawing?.on)add("Fixture Drawings",fixtureDrawing.price||"2950",null,"42");
+  // Modal Analysis (code 67, sorts after fixture drawing, before EMI/PQ/DCM procs)
+  if(modalAnalysis?.on){
+    // If in-stock modal applies to a proc line, bump that proc's price to 3750
+    // (handled by inStockModal state on the proc side — modal analysis itself is always added)
+    add("Modal Analysis",modalAnalysis.price||"6250",null,"67");
+  }
   if(sub.on)sub.rows.forEach(r=>{if(sf(r.price)>0)add(r.desc||"Subcontract Item",r.price,null,"98");});
   // Sort: procs first, then test lines grouped by unit, then reports last
   const procLines=lines.filter(l=>l.code==="42"||l.code==="44"||l.label.toLowerCase().includes("procedure"));
   const repLines=lines.filter(l=>l.code==="41"||l.code==="43"||l.label.toLowerCase().includes("test report")||l.label.toLowerCase().includes("combined test report"));
-  const mainLines=lines.filter(l=>!procLines.includes(l)&&!repLines.includes(l));
+  const mainLines=lines.filter(l=>!procLines.includes(l)&&!repLines.includes(l)&&l.code!=="67");
 
   // Separate Tear Down from mainLines — it needs special placement
   const tdLine=mainLines.find(l=>l.label==="Tear Down");
@@ -1950,12 +2023,16 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   // Tear Down goes after all mechanical lines, before shift-based lines
   const sortedMain=[...mechLines,...(tdLine?[tdLine]:[]),...shiftLines];
   // Proc order: general procs (42) first, then EMI (44), then DCM (44), then PQ (44)
-  const sortedProcs=procLines.sort((a,b)=>{
+  // Fixture drawings and modal analysis use codes 42 and 67 — sort them between regular procs and EMI/PQ/DCM
+  const allProcAndSpecial=[...procLines,...lines.filter(l=>l.code==="67")];
+  const sortedProcs=allProcAndSpecial.sort((a,b)=>{
     const order=l=>{
-      if(l.label.toLowerCase().includes("emi"))return 2;
-      if(l.label.toLowerCase().includes("dc mag")||l.label.toLowerCase().includes("dcm"))return 3;
-      if(l.label.toLowerCase().includes("pq")||l.label.toLowerCase().includes("power quality"))return 4;
-      return 1;
+      if(l.label.toLowerCase().includes("fixture drawing"))return 1;
+      if(l.code==="67"||l.label.toLowerCase().includes("modal analysis"))return 2;
+      if(l.label.toLowerCase().includes("emi"))return 3;
+      if(l.label.toLowerCase().includes("dc mag")||l.label.toLowerCase().includes("dcm"))return 4;
+      if(l.label.toLowerCase().includes("pq")||l.label.toLowerCase().includes("power quality"))return 5;
+      return 0;
     };
     return order(a)-order(b);
   });
@@ -1969,7 +2046,12 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     };
     return order(a)-order(b);
   });
-  const sorted=[...sortedProcs,...sortedMain,...sortedReps];
+  const sorted=[...sortedProcs,...sortedMain,...sortedReps].filter(l=>l.val>0);
+  // Apply in-stock modal analysis price override to the targeted procedure line
+  if(inStockModal?.on&&inStockModal.targetProc){
+    const target=sorted.find(l=>l.label===inStockModal.targetProc);
+    if(target){target.val=3750;target.display="$3,750";}
+  }
   const setupLineLabels=sorted.filter(l=>l.label.toLowerCase().includes("setup")).map(l=>l.label);
   return{lines:sorted,total:sorted.reduce((s,l)=>s+l.val,0),setupLineLabels};
 }
@@ -2098,6 +2180,9 @@ export default function App({onLogout,currentUser}){
   const [sbs,setSbs]=useState([newSb()]);
   const [locked,setLocked]=useState(false);
   const [splitProcReport,setSplitProcReport]=useState(false);
+  const [modalAnalysis,setModalAnalysis]=useState({on:false,price:"6250"});
+  const [fixtureDrawing,setFixtureDrawing]=useState({on:false,price:"2950"});
+  const [inStockModal,setInStockModal]=useState({on:false,targetProc:""});
   // persist to saves
   const splitProcReportRef=splitProcReport;
   const [savedQuotes,setSavedQuotes]=useState(()=>loadQuotes());
@@ -2105,6 +2190,7 @@ export default function App({onLogout,currentUser}){
   // ── Approval system ────────────────────────────────────────────────────────
   const [approval,setApproval]=useState({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
   const [showApprovalHistory,setShowApprovalHistory]=useState(false);
+  const [showFabGuide,setShowFabGuide]=useState(false);
   const [approvalComments,setApprovalComments]=useState("");
   const [showApprovalModal,setShowApprovalModal]=useState(false);
   const [wonInfo,setWonInfo]=useState({wonDate:"",jobNum:"",poNum:""});
@@ -2175,7 +2261,7 @@ export default function App({onLogout,currentUser}){
     setShowApprovalModal(false);
     const id=currentQuoteId||Date.now();
     const q={id,opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,wonInfo,approval:newApproval};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval};
     saveQuote(savedQuotes,q);
     setCurrentQuoteId(id);
     setSavedQuotes(loadQuotes());
@@ -2188,7 +2274,7 @@ export default function App({onLogout,currentUser}){
     setApproval(newApproval);
     setApprovalComments("");
     const q={id:currentQuoteId||Date.now(),opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,wonInfo,approval:newApproval};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval};
     saveQuote(savedQuotes,q);
     setSavedQuotes(loadQuotes());
     await sendDecisionEmail("APPROVED",currentUser,approvalComments,approval.submittedBy);
@@ -2201,7 +2287,7 @@ export default function App({onLogout,currentUser}){
     setLocked(false);
     setApprovalComments("");
     const q={id:currentQuoteId||Date.now(),opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,wonInfo,approval:newApproval};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval};
     saveQuote(savedQuotes,q);
     setSavedQuotes(loadQuotes());
     await sendDecisionEmail("REJECTED",currentUser,approvalComments,approval.submittedBy);
@@ -2250,8 +2336,8 @@ export default function App({onLogout,currentUser}){
 
   const vibSetup=vibs.find(v=>v.on)?sf(vibs.find(v=>v.on).setup):0;
 
-  const summary=useMemo(()=>calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport),
-    [vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport]);
+  const summary=useMemo(()=>calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal),
+    [vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal]);
 
   // Reset line order when summary length changes (new lines added/removed)
   useEffect(()=>setLineOrder(null),[summary.lines.length]);
@@ -2272,9 +2358,12 @@ export default function App({onLogout,currentUser}){
         "* Pricing assumes the standard list of tests from MIL-STD-461G, and that all testing is performed at NU Labs. Any tests requiring subcontracting will incur additional charges."
       );
     }
+    if(inStockModal?.on)lines.push("The test procedure will include an in-stock modal analysis of the proposed test fixture. Any additional analysis or alterations to the proposed test setup or fixture may incur additional charges.");
+    if(modalAnalysis?.on)lines.push("The modal analysis reflects the initial run of the analysis. Additional runs may incur additional charges.");
+    if(fixtureDrawing?.on)lines.push("Test fixture drawings represent the initial design. Alterations to the design of the proposed test fixture may incur additional charges. These changes also may affect the price of test fixture fabrication.");
     lines.push("Refer to the notes section at the bottom of this quote for additional details.");
     return lines.join("\n\n");
-  },[noises,pqs,emis,abs,sbs]);
+  },[noises,pqs,emis,abs,sbs,modalAnalysis,fixtureDrawing,inStockModal]);
 
   const anyOn=vibs.some(s=>s.on)||shocks.some(s=>s.on)||noises.some(s=>s.on)||envs.some(s=>s.on)||
     hfvs.some(s=>s.on)||shos.some(s=>s.on)||dcms.some(s=>s.on)||pqs.some(s=>s.on)||emis.some(s=>s.on)||
@@ -2285,7 +2374,7 @@ export default function App({onLogout,currentUser}){
     const result=window.confirm("Save the current quote before cloning?\n\nClick OK to save first, or Cancel to clone without saving.");
     if(result){
       const q={id:Date.now(),opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
-        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,wonInfo};
+        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo};
       setSavedQuotes(saveQuote(savedQuotes,q));
     }
     setCloneOppInput("");
@@ -2309,7 +2398,7 @@ export default function App({onLogout,currentUser}){
     if(result){
       const id=currentQuoteId||Date.now();
       const q={id,opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
-        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,wonInfo};
+        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo};
       setSavedQuotes(saveQuote(savedQuotes,q));
     }
     // Reset all state to blank defaults
@@ -2323,6 +2412,7 @@ export default function App({onLogout,currentUser}){
     setTd("0"); setSetup({techRate:"175",fabHours:"4",holes:"0",cables:"0",drillTap:false});
     setGlobalPR({procs:[],reps:[],coc:false,cocPrice:"250"});
     setNotes(""); setLineOverrides({}); setLineOrder(null);
+    setModalAnalysis({on:false,price:"6250"}); setFixtureDrawing({on:false,price:"2950"}); setInStockModal({on:false,targetProc:""});
     setWonInfo({wonDate:"",jobNum:"",poNum:""}); setWonLocked(false);
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null);
@@ -2334,7 +2424,7 @@ export default function App({onLogout,currentUser}){
     const id=currentQuoteId||Date.now();
     setCurrentQuoteId(id);
     const q={id,opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,wonInfo};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo};
     const updated=saveQuote(savedQuotes,q);
     setSavedQuotes(updated);
     alert("Quote saved: "+(qi.opp||"Untitled"));
@@ -2368,6 +2458,9 @@ export default function App({onLogout,currentUser}){
     if(q.sbs)setSbs(q.sbs);
     if(q.globalPR)setGlobalPR(q.globalPR);
     if(q.splitProcReport!==undefined)setSplitProcReport(q.splitProcReport);
+    if(q.modalAnalysis)setModalAnalysis(q.modalAnalysis); else setModalAnalysis({on:false,price:"6250"});
+    if(q.fixtureDrawing)setFixtureDrawing(q.fixtureDrawing); else setFixtureDrawing({on:false,price:"2950"});
+    if(q.inStockModal)setInStockModal(q.inStockModal); else setInStockModal({on:false,targetProc:""});
     if(q.notes)setNotes(q.notes);
     if(q.inst)setInst(q.inst);
     if(q.ot)setOt(q.ot);
@@ -4202,6 +4295,102 @@ const STANDARD_TERMS = [
               </div>
             </div>
           )}
+          {/* ── Fab Guide Modal ── */}
+          {showFabGuide&&(
+            <div style={{position:"fixed",inset:0,zIndex:2000,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}
+              onClick={e=>{if(e.target===e.currentTarget)setShowFabGuide(false);}}>
+              <div style={{background:"#fff",borderRadius:14,width:640,maxWidth:"96vw",maxHeight:"88vh",
+                boxShadow:"0 8px 40px rgba(0,0,0,0.3)",display:"flex",flexDirection:"column"}}>
+                <div style={{padding:"16px 22px",borderBottom:"1px solid #e8ecf0",display:"flex",alignItems:"center"}}>
+                  <div style={{flex:1,fontWeight:700,fontSize:15,color:"#1a2332"}}>Estimated fab times per test</div>
+                  <button onClick={()=>setShowFabGuide(false)}
+                    style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#6b7a8d",lineHeight:1}}>×</button>
+                </div>
+                <div style={{flex:1,overflowY:"auto",padding:"12px 16px"}}>
+                  {[
+                    {hdr:"Medium weight shock",rows:[
+                      ["Standard","4 holes","Up to 8 hrs"],
+                      ["Standard","8 holes","Up to 12 hrs"],
+                      ["Standard","16 holes","16 hrs"],
+                      ["Standard",">16 holes",">16 hrs"],
+                      ["Bookend (in stock)","Up to 12\" valves","8 – 12 hrs"],
+                      ["Bookend (in stock)",">12\" valves",">12 hrs"],
+                    ]},
+                    {hdr:"Lightweight shock",rows:[
+                      ["Standard","4 holes","4 hrs"],
+                      ["Standard","6 – 8 holes","6 hrs"],
+                      ["Standard","8+ holes","8 hrs"],
+                      ["Bookend (in stock)","Any","8 hrs or less"],
+                    ]},
+                    {hdr:"Vibration — with MWS (use MWS rules)",rows:[
+                      ["Standard","4 holes","Up to 8 hrs"],
+                      ["Standard","8 holes","Up to 12 hrs"],
+                      ["Standard","16 holes","16 hrs"],
+                      ["Standard",">16 holes",">16 hrs"],
+                      ["Bookend (in stock)","Up to 12\" valves","8 – 12 hrs"],
+                      ["Bookend (in stock)",">12\" valves",">12 hrs"],
+                    ]},
+                    {hdr:"Vibration — with LWS or standalone <250 lbs (use LWS rules)",rows:[
+                      ["Standard","4 holes","4 hrs"],
+                      ["Standard","6 – 8 holes","6 hrs"],
+                      ["Standard","8+ holes","8 hrs"],
+                      ["Bookend (in stock)","Any","8 hrs or less"],
+                    ]},
+                    {hdr:"Vibration — standalone >250 lbs (use MWS rules)",rows:[
+                      ["Standard","4 holes","Up to 8 hrs"],
+                      ["Standard","8 holes","Up to 12 hrs"],
+                      ["Standard","16 holes","16 hrs"],
+                      ["Standard",">16 holes",">16 hrs"],
+                    ]},
+                    {hdr:"AB / SB noise — <250 lbs (use LWS rules)",rows:[
+                      ["Standard","4 holes","4 hrs"],
+                      ["Standard","6 – 8 holes","6 hrs"],
+                      ["Standard","8+ holes","8 hrs"],
+                    ]},
+                    {hdr:"AB / SB noise — >250 lbs (use MWS rules)",rows:[
+                      ["Standard","4 holes","Up to 8 hrs"],
+                      ["Standard","8 holes","Up to 12 hrs"],
+                      ["Standard","16 holes","16 hrs"],
+                      ["Standard",">16 holes",">16 hrs"],
+                    ]},
+                    {hdr:"HFV / shock (other)",rows:[
+                      ["Standard","4 holes","4 hrs"],
+                      ["Standard","6 – 8 holes","6 hrs"],
+                      ["Standard","8+ holes","8 hrs"],
+                    ]},
+                  ].map((section,si)=>(
+                    <div key={si} style={{marginBottom:12}}>
+                      <div style={{background:"#e8f0fb",padding:"4px 10px",fontSize:11,fontWeight:700,
+                        color:"#1a5276",borderRadius:4,marginBottom:0}}>
+                        {section.hdr}
+                      </div>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                        <tbody>
+                          {section.rows.map((row,ri)=>(
+                            <tr key={ri} style={{background:ri%2===0?"#fff":"#f8f9fb"}}>
+                              <td style={{padding:"4px 10px",borderBottom:"1px solid #f0f2f5",color:"#6b7a8d",width:"30%"}}>{row[0]}</td>
+                              <td style={{padding:"4px 10px",borderBottom:"1px solid #f0f2f5",width:"35%"}}>{row[1]}</td>
+                              <td style={{padding:"4px 10px",borderBottom:"1px solid #f0f2f5",fontWeight:600,width:"35%"}}>{row[2]}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                  <div style={{fontSize:10,color:"#6b7a8d",padding:"6px 4px"}}>
+                    All estimates assume standard materials and normal geometry. Review with engineering for unusual cases.
+                  </div>
+                </div>
+                <div style={{padding:"10px 22px",borderTop:"1px solid #e8ecf0",textAlign:"right"}}>
+                  <button onClick={()=>setShowFabGuide(false)}
+                    style={{background:"#e8ecf0",border:"none",borderRadius:7,padding:"7px 20px",
+                      fontWeight:600,fontSize:12,cursor:"pointer",color:"#1a2332"}}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {/* ── Clone modal — enter new opportunity # ── */}
           {showCloneModal&&(
             <div style={{position:"fixed",inset:0,zIndex:2000,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}
@@ -4510,7 +4699,16 @@ const STANDARD_TERMS = [
                     <Inp value={setup.techRate} onChange={v=>setSetup({...setup,techRate:v})} width={70} right/>
                   </div>
                   <div>
-                    <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Fab &amp; Mod Hours</div>
+                    <div style={{fontSize:9,color:C.dim,marginBottom:2,display:"flex",alignItems:"center",gap:5}}>
+                      Fab &amp; Mod Hours
+                      <button onClick={()=>setShowFabGuide(true)}
+                        title="Estimated fab times per test"
+                        style={{background:"none",border:"1px solid "+C.border,borderRadius:"50%",width:14,height:14,
+                          padding:0,cursor:"pointer",fontSize:8,color:C.muted,lineHeight:"12px",display:"flex",
+                          alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        ?
+                      </button>
+                    </div>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <Inp value={setup.fabHours} onChange={v=>setSetup({...setup,fabHours:v})} width={60} right/>
                       <span style={{fontSize:10,color:C.muted}}>{"= $"+Math.round(sf(setup.fabHours,4)*sf(setup.techRate,175)).toLocaleString()}</span>
@@ -4547,7 +4745,10 @@ const STANDARD_TERMS = [
 
               {/* Budget + Subcontracting stacked */}
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                <BudgetSection budget={budget} setBudget={setBudget} setupLines={summary.setupLineLabels||[]}/>
+                <BudgetSection budget={budget} setBudget={setBudget} setupLines={summary.setupLineLabels||[]} fixtureFabLines={[
+                  ...vibs.filter(s=>s.on&&s.fixtureFab?.on).map((s,i)=>"Fixture Fabrication – Vibration"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):"")),
+                  ...shocks.filter(s=>s.on&&s.fixtureFab?.on).map((s,i)=>"Fixture Fabrication – Shock"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):"")),
+                ]}/>
                 <div style={{...card}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:sub.on?8:0}}>
                     <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2}}>SUBCONTRACTING</div>
@@ -4625,7 +4826,34 @@ const STANDARD_TERMS = [
               <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2,marginBottom:6}}>QUOTE SUMMARY</div>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,flexWrap:"wrap"}}>
                 <Toggle small checked={splitProcReport} onChange={setSplitProcReport} label="List Proc/Reports Individually"/>
+                <Toggle small checked={inStockModal.on||false}
+                  onChange={v=>{
+                    setInStockModal({...inStockModal,on:v});
+                    // When enabled, bump matching proc price to 3750
+                  }}
+                  label="Includes In-Stock Modal Analysis"/>
               </div>
+              {inStockModal.on&&(
+                <div style={{background:C.panel,borderRadius:7,padding:"8px 10px",marginBottom:8,fontSize:11}}>
+                  <div style={{fontSize:9,color:C.dim,fontWeight:700,marginBottom:5,letterSpacing:.5}}>APPLY IN-STOCK MODAL TO PROCEDURE</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                    {(()=>{
+                      const procOpts=summary.lines.filter(l=>l.code==="42"||l.code==="44"||(l.label||"").toLowerCase().includes("procedure"));
+                      if(procOpts.length===0)return <span style={{color:C.muted,fontSize:10}}>No procedure lines — add a test procedure first.</span>;
+                      return procOpts.map((l,i)=>(
+                        <label key={i} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+                          <input type="radio" name="inStockModalTarget"
+                            checked={inStockModal.targetProc===l.label}
+                            onChange={()=>setInStockModal({...inStockModal,targetProc:l.label})}
+                            style={{accentColor:C.accent}}/>
+                          <span style={{fontSize:11,color:C.text}}>{l.label}</span>
+                          <span style={{fontSize:10,color:C.muted,marginLeft:"auto"}}>→ $3,750</span>
+                        </label>
+                      ));
+                    })()}
+                  </div>
+                </div>
+              )}
               {qi.opp&&<div style={{fontSize:13,color:C.red,fontWeight:600,marginBottom:2}}>
                 {qi.opp}{qi.rev?" Rev "+qi.rev:""}
               </div>}
@@ -4920,7 +5148,7 @@ const STANDARD_TERMS = [
                       + Add test report
                     </button>
                     <div style={{borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
-                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
                         <Toggle small checked={pr.coc||false} onChange={v=>setGlobalPR({...pr,coc:v})}
                           label="Certificate of Compliance"/>
                         {pr.coc&&(
@@ -4929,6 +5157,30 @@ const STANDARD_TERMS = [
                               padding:"2px 5px",fontFamily:"monospace",border:"1px solid "+C.border}}>41</span>
                             <span style={{fontSize:11,color:C.muted}}>$</span>
                             <Inp value={pr.cocPrice||"250"} onChange={v=>setGlobalPR({...pr,cocPrice:v})} width={70} right/>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                        <Toggle small checked={modalAnalysis.on||false} onChange={v=>setModalAnalysis({...modalAnalysis,on:v})}
+                          label="Modal Analysis"/>
+                        {modalAnalysis.on&&(
+                          <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}>
+                            <span style={{fontSize:9,background:"#e8ecf0",color:C.muted,borderRadius:3,
+                              padding:"2px 5px",fontFamily:"monospace",border:"1px solid "+C.border}}>67</span>
+                            <span style={{fontSize:11,color:C.muted}}>$</span>
+                            <Inp value={modalAnalysis.price||"6250"} onChange={v=>setModalAnalysis({...modalAnalysis,price:v})} width={70} right/>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <Toggle small checked={fixtureDrawing.on||false} onChange={v=>setFixtureDrawing({...fixtureDrawing,on:v})}
+                          label="Fixture Drawings"/>
+                        {fixtureDrawing.on&&(
+                          <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}>
+                            <span style={{fontSize:9,background:"#e8ecf0",color:C.muted,borderRadius:3,
+                              padding:"2px 5px",fontFamily:"monospace",border:"1px solid "+C.border}}>42</span>
+                            <span style={{fontSize:11,color:C.muted}}>$</span>
+                            <Inp value={fixtureDrawing.price||"2950"} onChange={v=>setFixtureDrawing({...fixtureDrawing,price:v})} width={70} right/>
                           </div>
                         )}
                       </div>
