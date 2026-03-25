@@ -1280,10 +1280,18 @@ function InstForm({s,set}){
 
 function OtForm({s,set}){
   const PCODE_OPTS=[
-    {code:"94",label:"Vibration"},
-    {code:"91",label:"Medium Weight Shock"},
-    {code:"92",label:"Lightweight Shock"},
     {code:"11",label:"Noise Susceptibility"},
+    {code:"12",label:"Airborne / Structureborne"},
+    {code:"32",label:"High Speed Video"},
+    {code:"33",label:"Instrumentation"},
+    {code:"41",label:"CoC / Test Report"},
+    {code:"42",label:"Test Procedure"},
+    {code:"43",label:"EMI Report"},
+    {code:"43",label:"DC Mag Report"},
+    {code:"43",label:"PQ Report"},
+    {code:"44",label:"EMI Procedure"},
+    {code:"44",label:"DC Mag Procedure"},
+    {code:"44",label:"PQ Procedure"},
     {code:"51",label:"EMI Testing"},
     {code:"52",label:"HFV / Shock Other"},
     {code:"53",label:"Temp & Humidity"},
@@ -1292,14 +1300,13 @@ function OtForm({s,set}){
     {code:"56",label:"Altitude / Decomp"},
     {code:"57",label:"Acceleration"},
     {code:"58",label:"Drip / Sub / Spray"},
-    {code:"12",label:"Airborne / Structureborne"},
+    {code:"59",label:"Insulation Resistance & Dielectric Strength"},
+    {code:"91",label:"Medium Weight Shock"},
+    {code:"92",label:"Lightweight Shock"},
+    {code:"93",label:"Inclination"},
+    {code:"94",label:"Vibration"},
     {code:"95",label:"Hydrostatic"},
     {code:"96",label:"Tear Down"},
-    {code:"33",label:"Instrumentation"},
-    {code:"41",label:"CoC / Test Report"},
-    {code:"42",label:"Test Procedure"},
-    {code:"43",label:"EMI/DCM/PQ Report"},
-    {code:"44",label:"EMI/DCM/PQ Procedure"},
     {code:"98",label:"Subcontract"},
   ];
   // Weekday: $300 min call + $262.50/tech/hr | Weekend: $825 min call + $350/tech/hr
@@ -1356,13 +1363,18 @@ function OtForm({s,set}){
 
 function CustomForm({s,set}){
   const PCODE_OPTS=[
-    {code:"94",label:"Vibration"},{code:"91",label:"MW Shock"},{code:"92",label:"LW Shock"},
-    {code:"11",label:"Noise"},{code:"51",label:"EMI"},{code:"52",label:"HFV/Shock Other"},
+    {code:"11",label:"Noise"},{code:"12",label:"AB/SB Noise"},
+    {code:"32",label:"High Speed Video"},{code:"33",label:"Instrumentation"},
+    {code:"41",label:"Report/CoC"},{code:"42",label:"Procedure"},
+    {code:"43",label:"EMI Report"},{code:"43",label:"DC Mag Report"},{code:"43",label:"PQ Report"},
+    {code:"44",label:"EMI Procedure"},{code:"44",label:"DC Mag Procedure"},{code:"44",label:"PQ Procedure"},
+    {code:"51",label:"EMI"},{code:"52",label:"HFV/Shock Other"},
     {code:"53",label:"T&H"},{code:"54",label:"ESS"},{code:"55",label:"Salt Fog"},
     {code:"56",label:"Altitude"},{code:"57",label:"Acceleration"},{code:"58",label:"Drip/Sub/Spray"},
-    {code:"12",label:"AB/SB Noise"},{code:"95",label:"Hydrostatic"},{code:"96",label:"Tear Down"},
-    {code:"33",label:"Instrumentation"},{code:"41",label:"Report/CoC"},{code:"42",label:"Procedure"},
-    {code:"43",label:"EMI/PQ/DCM Report"},{code:"44",label:"EMI/PQ/DCM Proc"},{code:"98",label:"Subcontract"},
+    {code:"59",label:"Insulation Resistance"},
+    {code:"91",label:"MW Shock"},{code:"92",label:"LW Shock"},{code:"93",label:"Inclination"},
+    {code:"94",label:"Vibration"},{code:"95",label:"Hydrostatic"},{code:"96",label:"Tear Down"},
+    {code:"98",label:"Subcontract"},
   ];
   const add=()=>set({...s,rows:[...s.rows,{label:"Custom Item",price:"0",pcode:"94"}]});
   const rem=i=>set({...s,rows:s.rows.filter((_,j)=>j!==i)});
