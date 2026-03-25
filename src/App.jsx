@@ -1750,7 +1750,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     }
     if(s.circ)add("Circulating System",2500,null,code);
     if(s.hydroPre)add("Shock"+pre+" – Pre-Test Hydrostatic",sf(s.hydroPrice||500),null,"95");
-    const shockCat=isMW?"Mediumweight Shock":"Lightweight Shock";
+    const shockCat=isMW?"Medium Weight Shock":"Lightweight Shock";
     const shockSetupLabel=shockCat+pre+" – Setup"+(s.fromVib&&firstVibSetup>0?" (disc.)":"");
     const shockSetupDesc=s.fromVib&&firstVibSetup>0?"Pricing assumes the unit is coming directly from vibration testing.":null;
     {const v=Math.round(sf(su*pm));if(v>0){const u=currentUnit;const sq=seq++;lines.push({label:shockSetupLabel,val:v,code:code,desc:shockSetupDesc,unit:u,seq:sq});}}
