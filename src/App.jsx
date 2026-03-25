@@ -2695,6 +2695,8 @@ export default function App({onLogout,currentUser}){
     setWonLocked(false);
     console.log("[handleLoad] q.id =", q.id, "type:", typeof q.id);
     setCurrentQuoteId(q.id||null);
+    if(q.id){localStorage.setItem("vibrato_last_quote_id",String(q.id));}
+    else{localStorage.removeItem("vibrato_last_quote_id");}
     setCurrentQuoteSource(q.source||"vibrato");
     if(q.source==="salesforce")setLocked(true);
     // ── Salesforce imported quotes: load line items into custom section ──
