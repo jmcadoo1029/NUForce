@@ -2327,9 +2327,25 @@ export default function App({onLogout,currentUser}){
     document.title=label;
   },[qi.opp,qi.rev]);
 
-  // ── Load saved quotes on startup so approval queue count is ready ──────────
+  // ── Persist last open quote ID to localStorage ───────────────────────────
   useEffect(()=>{
-    loadQuotesFromSupabase().then(q=>setSavedQuotes(q));
+    if(currentQuoteId){
+      localStorage.setItem("vibrato_last_quote_id",String(currentQuoteId));
+    } else {
+      localStorage.removeItem("vibrato_last_quote_id");
+    }
+  },[currentQuoteId]);
+
+  // ── Load saved quotes on startup + restore last open quote ─────────────────
+  useEffect(()=>{
+    loadQuotesFromSupabase().then(q=>{
+      setSavedQuotes(q);
+      // Restore last open quote if available
+      const lastId=localStorage.getItem("vibrato_last_quote_id");
+      if(lastId&&q[lastId]){
+        handleLoad(q[lastId]);
+      }
+    });
   },[]);
 
   const loadEmailJS=()=>new Promise((res,rej)=>{
