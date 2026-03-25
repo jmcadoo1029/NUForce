@@ -1559,7 +1559,7 @@ async function loadQuotesFromSupabase() {
       rfq:         row.rfq         || q.rfq,
       total:       row.total       || q.total,
       savedAt:     row.updated_at,
-      approval:    q.approval || { status: row.approval_status || "none" },
+      approval:    { ...(q.approval||{}), status: row.approval_status || q.approval?.status || "none" },
     };
   });
   return map;
@@ -2240,6 +2240,8 @@ export default function App({onLogout,currentUser}){
   const [openQuotesPanel,setOpenQuotesPanel]=useState(false);
   const [openQuotesList,setOpenQuotesList]=useState([]);
   const [openQuotesLoading,setOpenQuotesLoading]=useState(false);
+  const [dragOverId,setDragOverId]=useState(null);
+  const dragRowId=useRef(null);
   const [modalAnalysis,setModalAnalysis]=useState({on:false,price:"6250"});
   const [fixtureDrawing,setFixtureDrawing]=useState({on:false,price:"2950"});
   const [inStockModal,setInStockModal]=useState({on:false,targetProc:""});
@@ -2403,14 +2405,22 @@ export default function App({onLogout,currentUser}){
   // ── Open Quotes panel handlers ───────────────────────────────────────────────
   const loadOpenQuotes=async()=>{
     setOpenQuotesLoading(true);
-    const {data,error}=await supabase.from("open_quotes").select("*").order("created_at",{ascending:false});
+    const {data,error}=await supabase.from("open_quotes").select("*").order("sort_order",{ascending:true}).order("created_at",{ascending:true});
     if(!error)setOpenQuotesList(data||[]);
     setOpenQuotesLoading(false);
   };
 
   const addOpenQuoteRow=async()=>{
-    const {data,error}=await supabase.from("open_quotes").insert({opportunity:"",account:"",description:""}).select().single();
-    if(!error&&data)setOpenQuotesList(prev=>[data,...prev]);
+    setOpenQuotesList(prev=>{
+      const maxOrder=prev.length>0?Math.max(...prev.map(r=>r.sort_order||0)):0;
+      const optimistic={id:"temp-"+Date.now(),opportunity:"",account:"",description:"",sort_order:maxOrder+1};
+      supabase.from("open_quotes").insert({opportunity:"",account:"",description:"",sort_order:maxOrder+1}).select().single()
+        .then(({data,error})=>{
+          if(error){alert("Could not add row: "+error.message);setOpenQuotesList(p=>p.filter(r=>r.id!==optimistic.id));return;}
+          if(data)setOpenQuotesList(p=>p.map(r=>r.id===optimistic.id?data:r));
+        });
+      return [...prev,optimistic];
+    });
   };
 
   const updateOpenQuoteRow=async(id,field,value)=>{
@@ -2421,6 +2431,31 @@ export default function App({onLogout,currentUser}){
   const deleteOpenQuoteRow=async(id)=>{
     setOpenQuotesList(prev=>prev.filter(r=>r.id!==id));
     await supabase.from("open_quotes").delete().eq("id",id);
+  };
+
+  const handleOpenQuoteDragStart=(id)=>{
+    dragRowId.current=id;
+  };
+
+  const handleOpenQuoteDrop=async(targetId)=>{
+    const fromId=dragRowId.current;
+    if(!fromId||fromId===targetId)return;
+    dragRowId.current=null;
+    setDragOverId(null);
+    setOpenQuotesList(prev=>{
+      const list=[...prev];
+      const fromIdx=list.findIndex(r=>r.id===fromId);
+      const toIdx=list.findIndex(r=>r.id===targetId);
+      if(fromIdx<0||toIdx<0)return prev;
+      const [moved]=list.splice(fromIdx,1);
+      list.splice(toIdx,0,moved);
+      const reordered=list.map((r,i)=>({...r,sort_order:i+1}));
+      // Persist all sort_orders to Supabase
+      reordered.forEach(r=>{
+        supabase.from("open_quotes").update({sort_order:r.sort_order}).eq("id",r.id);
+      });
+      return reordered;
+    });
   };
 
   const handleOpenQuoteClick=async(row)=>{
@@ -5354,13 +5389,24 @@ const STANDARD_TERMS = [
             <div style={{textAlign:"center",color:"#9aa5b1",fontSize:12,padding:30,lineHeight:1.8}}>No open quotes yet.<br/>Click + Add Row to get started.</div>
           )}
           {openQuotesList.map(row=>(
-            <div key={row.id} style={{marginBottom:8,background:"#e8ecf0",borderRadius:7,padding:"8px 10px",border:"1px solid #d0d7de"}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 28px",gap:4,marginBottom:4,alignItems:"center"}}>
-                <input value={row.account||""} onChange={e=>updateOpenQuoteRow(row.id,"account",e.target.value)} placeholder="Account" style={{background:"#f8f9fa",border:"1px solid #d0d7de",borderRadius:6,padding:"4px 8px",fontSize:11,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
-                <input value={row.description||""} onChange={e=>updateOpenQuoteRow(row.id,"description",e.target.value)} placeholder="Brief description" style={{background:"#f8f9fa",border:"1px solid #d0d7de",borderRadius:6,padding:"4px 8px",fontSize:11,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
-                <button onClick={()=>deleteOpenQuoteRow(row.id)} style={{background:"none",border:"none",color:"#9aa5b1",cursor:"pointer",fontSize:13,padding:0,textAlign:"center"}} title="Remove row">✕</button>
+            <div key={row.id}
+              draggable
+              onDragStart={()=>handleOpenQuoteDragStart(row.id)}
+              onDragOver={e=>{e.preventDefault();setDragOverId(row.id);}}
+              onDragLeave={()=>setDragOverId(null)}
+              onDrop={()=>handleOpenQuoteDrop(row.id)}
+              style={{marginBottom:8,background:dragOverId===row.id?"#d0e8f7":"#e8ecf0",borderRadius:7,padding:"8px 10px",
+                border:"1px solid "+(dragOverId===row.id?"#1a5276":"#d0d7de"),
+                cursor:"grab",transition:"background 0.15s,border 0.15s"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                <span style={{color:"#b0b8c4",fontSize:13,cursor:"grab",flexShrink:0}}>⠿</span>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 28px",gap:4,flex:1,alignItems:"center"}}>
+                  <input value={row.account||""} onChange={e=>updateOpenQuoteRow(row.id,"account",e.target.value)} placeholder="Account" style={{background:"#f8f9fa",border:"1px solid #d0d7de",borderRadius:6,padding:"4px 8px",fontSize:11,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
+                  <input value={row.description||""} onChange={e=>updateOpenQuoteRow(row.id,"description",e.target.value)} placeholder="Brief description" style={{background:"#f8f9fa",border:"1px solid #d0d7de",borderRadius:6,padding:"4px 8px",fontSize:11,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
+                  <button onClick={()=>deleteOpenQuoteRow(row.id)} style={{background:"none",border:"none",color:"#9aa5b1",cursor:"pointer",fontSize:13,padding:0,textAlign:"center"}} title="Remove row">✕</button>
+                </div>
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,paddingLeft:19}}>
                 <span
                   onClick={()=>handleOpenQuoteClick(row)}
                   title={row.opportunity?"Load quote: "+row.opportunity:"Enter an opportunity number first"}
