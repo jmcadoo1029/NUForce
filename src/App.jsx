@@ -2302,6 +2302,7 @@ export default function App({onLogout,currentUser}){
   const [showCloneModal,setShowCloneModal]=useState(false);
   const [cloneOppInput,setCloneOppInput]=useState("");
   const [currentQuoteId,setCurrentQuoteId]=useState(null);
+  const [currentQuoteSource,setCurrentQuoteSource]=useState("vibrato");
 
   // EmailJS config — fill in after setting up emailjs.com
   const EMAILJS_SERVICE_ID  = "YOUR_SERVICE_ID";
@@ -2316,6 +2317,7 @@ export default function App({onLogout,currentUser}){
   ];
   const APPROVER_EMAILS=APPROVERS.map(a=>a.email);
   const isApprover=APPROVER_EMAILS.includes(currentUser);
+  const isSalesforce=currentQuoteSource==="salesforce";
 
   // ── Browser tab title ──────────────────────────────────────────────────────
   useEffect(()=>{
@@ -2619,7 +2621,7 @@ export default function App({onLogout,currentUser}){
     setModalAnalysis({on:false,price:"6250"}); setFixtureDrawing({on:false,price:"2950"}); setInStockModal({on:false,targetProc:""});
     setWonInfo({wonDate:"",jobNum:"",poNum:""}); setWonLocked(false);
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
-    setLocked(false); setCurrentQuoteId(null);
+    setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("vibrato");
     window.scrollTo({top:0,behavior:"smooth"});
   };
 
@@ -2679,6 +2681,7 @@ export default function App({onLogout,currentUser}){
     if(q.wonInfo)setWonInfo(q.wonInfo); else setWonInfo({wonDate:"",jobNum:"",poNum:""});
     setWonLocked(false);
     setCurrentQuoteId(q.id||null);
+    setCurrentQuoteSource(q.source||"vibrato");
     // ── Salesforce imported quotes: load line items into custom section ──
     if(q.source==="salesforce"){
       const sfLines=(q.summary?.lines||[]).filter(l=>l.val>0);
@@ -2688,6 +2691,10 @@ export default function App({onLogout,currentUser}){
           price:String(Math.round(l.val)),
           pcode:l.code||"",
         }))});
+      }
+      // Closed Won — populate won details (Job # and PO # not in Salesforce export, left blank)
+      if(q.qi?.stage==="Closed Won"){
+        setWonInfo({wonDate:q.qi?.date||"",jobNum:"",poNum:""});
       }
     }
   };
@@ -4729,7 +4736,7 @@ const STANDARD_TERMS = [
               </span>
             </div>
           )}
-          {locked&&approval.status==="none"&&(
+          {locked&&approval.status==="none"&&!isSalesforce&&(
             <div style={{position:"sticky",top:0,zIndex:100,background:"rgba(183,121,31,0.12)",
               border:"1px solid #b7791f",borderRadius:8,padding:"8px 14px",marginBottom:10,
               display:"flex",alignItems:"center",gap:8}}>
@@ -4739,8 +4746,20 @@ const STANDARD_TERMS = [
               </span>
             </div>
           )}
+          {isSalesforce&&(
+            <div style={{position:"sticky",top:0,zIndex:100,background:"rgba(26,82,118,0.08)",
+              border:"1px solid #1a5276",borderRadius:8,padding:"8px 14px",marginBottom:10,
+              display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:16}}>📥</span>
+                <span style={{fontSize:12,color:"#1a5276",fontWeight:600}}>
+                  Imported from Salesforce — read only. Clone to create an editable Vibrato quote.
+                </span>
+              </div>
+            </div>
+          )}
 
-          <div style={{pointerEvents:locked?"none":"auto",opacity:locked?0.65:1,transition:"opacity 0.2s"}}>
+          <div style={{pointerEvents:(locked||isSalesforce)?"none":"auto",opacity:(locked||isSalesforce)?0.65:1,transition:"opacity 0.2s"}}>
 
             {/* ── Row 1: Quote Info | Test Item Description ── */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
