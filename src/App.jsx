@@ -1586,19 +1586,49 @@ async function deleteQuoteFromSupabase(id) {
 
 function QuoteSearch({onLoad}){
   const [search,setSearch]=useState("");
-  const [quotes,setQuotes]=useState({});
+  const [results,setResults]=useState([]);
   const [open,setOpen]=useState(false);
   const [loading,setLoading]=useState(false);
   const ref=useRef(null);
+  const searchTimer=useRef(null);
 
-  const fetchQuotes=async()=>{
+  const doSearch=async(term)=>{
     setLoading(true);
-    const q=await loadQuotesFromSupabase();
-    setQuotes(q);
+    let query=supabase
+      .from("quotes")
+      .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, updated_at, data")
+      .order("updated_at",{ascending:false})
+      .limit(50);
+    if(term.trim()){
+      query=query.or(
+        `opportunity.ilike.%${term}%,customer.ilike.%${term}%,rfq.ilike.%${term}%`
+      );
+    }
+    const {data,error}=await query;
+    if(!error&&data){
+      setResults(data.map(row=>{
+        const q=row.data||{};
+        return{
+          ...q,
+          id:row.id,
+          opp:row.opportunity||q.opp,
+          customer:row.customer||q.customer,
+          rfq:row.rfq||q.rfq,
+          total:row.total||q.total,
+          savedAt:row.updated_at,
+          approval:{...(q.approval||{}),status:row.approval_status||q.approval?.status||"none"},
+        };
+      }));
+    }
     setLoading(false);
   };
 
-  useEffect(()=>{if(open)fetchQuotes();},[open]);
+  useEffect(()=>{
+    if(!open)return;
+    clearTimeout(searchTimer.current);
+    searchTimer.current=setTimeout(()=>doSearch(search),300);
+    return()=>clearTimeout(searchTimer.current);
+  },[open,search]);
 
   // Close on outside click
   useEffect(()=>{
@@ -1607,11 +1637,7 @@ function QuoteSearch({onLoad}){
     return()=>document.removeEventListener("mousedown",h);
   },[]);
 
-  const filtered=Object.values(quotes).filter(q=>{
-    if(!search.trim())return true;
-    const s=search.toLowerCase();
-    return(q.opp||"").toLowerCase().includes(s)||(q.customer||"").toLowerCase().includes(s)||(q.rfq||"").toLowerCase().includes(s);
-  }).sort((a,b)=>new Date(b.savedAt||0)-new Date(a.savedAt||0));
+  const filtered=results;
 
   return(
     <div ref={ref} style={{position:"relative"}}>
@@ -1630,7 +1656,7 @@ function QuoteSearch({onLoad}){
           display:"flex",flexDirection:"column"}}>
           <div style={{padding:"8px 12px",borderBottom:"1px solid "+C.border,
             fontSize:11,color:C.muted,fontWeight:600}}>
-            {loading?"Loading…":filtered.length+" quote"+(filtered.length!==1?"s":"")+" found"}
+            {loading?"Searching…":filtered.length+" quote"+(filtered.length!==1?"s":"")+" found"+(filtered.length===50?" (showing top 50)":"")}
           </div>
           <div style={{overflowY:"auto",flex:1}}>
             {!loading&&filtered.length===0&&(
