@@ -2422,9 +2422,7 @@ export default function App({onLogout,currentUser}){
       handleLoad(match);
       setOpenQuotesPanel(false);
     } else {
-      const create=window.confirm("No quote found for \""+row.opportunity+"\"
-
-Would you like to create a new quote with this opportunity number?");
+      const create=window.confirm("No quote found for \""+row.opportunity+"\"\n\nWould you like to create a new quote with this opportunity number?");
       if(create){
         setQi({opp:row.opportunity,account:row.account||"",billTo:"",billToCity:"",contact:"",email:"",prepby:"",rev:"",revDate:"",date:new Date().toLocaleDateString("en-US"),rfq:"",stage:"Proposal/Price Quote",type:"New Business",relatedOpps:""});
         setTi({item:"",qty:"1",model:"",drawing:"",loads:"",dimL:"",dimW:"",dimH:"",wt:"",volt:"",pwrType:"AC",phase:"",hz:"",inrush:"",amps:"",mounting:"",pressureFlow:"",gsi:"Unknown",witness:"Unknown",docRestriction:"None",dpas:"",tiSpecs:"",tiNotes:""});
