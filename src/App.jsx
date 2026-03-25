@@ -2693,10 +2693,13 @@ export default function App({onLogout,currentUser}){
     if(q.approval)setApproval(q.approval); else setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     if(q.wonInfo)setWonInfo(q.wonInfo); else setWonInfo({wonDate:"",jobNum:"",poNum:""});
     setWonLocked(false);
-    console.log("[handleLoad] q.id =", q.id, "type:", typeof q.id);
-    setCurrentQuoteId(q.id||null);
-    if(q.id){localStorage.setItem("vibrato_last_quote_id",String(q.id));}
+    console.log("[handleLoad] q.id =", q.id, "type:", typeof q.id, "full keys:", Object.keys(q).slice(0,10));
+    const _quoteId = q.id||null;
+    setCurrentQuoteId(_quoteId);
+    console.log("[handleLoad] setting localStorage to:", _quoteId);
+    if(_quoteId){localStorage.setItem("vibrato_last_quote_id",String(_quoteId));}
     else{localStorage.removeItem("vibrato_last_quote_id");}
+    console.log("[handleLoad] localStorage now:", localStorage.getItem("vibrato_last_quote_id"));
     setCurrentQuoteSource(q.source||"vibrato");
     if(q.source==="salesforce")setLocked(true);
     // ── Salesforce imported quotes: load line items into custom section ──
