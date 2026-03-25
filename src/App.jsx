@@ -5275,7 +5275,7 @@ const STANDARD_TERMS = [
                     </span>
                   </div>
                   <div style={{padding:"12px 14px 14px",background:"#fff"}}>
-                    <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:1,marginBottom:6}}>PROCEDURES — CODE 42 / 44</div>
+                    <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:1,marginBottom:6}}>PROCEDURES — CODE 42</div>
                     {pr.procs.map((r,i)=>(
                       <div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:5,
                         background:C.panel,borderRadius:7,padding:"6px 8px"}}>
@@ -5288,18 +5288,11 @@ const STANDARD_TERMS = [
                           color:C.dim,cursor:"pointer",fontSize:13,marginLeft:"auto"}}>✕</button>
                       </div>
                     ))}
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={addProc} style={{background:"none",border:"none",color:C.accent,
-                        cursor:"pointer",fontSize:11,padding:0,marginBottom:10}}>
-                        + Add procedure (42)
-                      </button>
-                      <button onClick={()=>setGlobalPR({...pr,procs:[...pr.procs,{label:"",price:String(PROC_BASE),code:"44"}]})}
-                        style={{background:"none",border:"none",color:"#7c3aed",
-                          cursor:"pointer",fontSize:11,padding:0,marginBottom:10}}>
-                        + Add EMI/PQ/DCM procedure (44)
-                      </button>
-                    </div>
-                    <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:1,marginBottom:6,marginTop:4}}>REPORTS — CODE 41 / 43</div>
+                    <button onClick={addProc} style={{background:"none",border:"none",color:C.accent,
+                      cursor:"pointer",fontSize:11,padding:0,marginBottom:10}}>
+                      + Add test procedure
+                    </button>
+                    <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:1,marginBottom:6,marginTop:4}}>REPORTS — CODE 41</div>
                     {pr.reps.map((r,i)=>(
                       <div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:5,
                         background:C.panel,borderRadius:7,padding:"6px 8px"}}>
@@ -5312,17 +5305,10 @@ const STANDARD_TERMS = [
                           color:C.dim,cursor:"pointer",fontSize:13,marginLeft:"auto"}}>✕</button>
                       </div>
                     ))}
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={addRep} style={{background:"none",border:"none",color:C.accent,
-                        cursor:"pointer",fontSize:11,padding:0,marginBottom:10}}>
-                        + Add report (41)
-                      </button>
-                      <button onClick={()=>setGlobalPR({...pr,reps:[...pr.reps,{label:"",price:String(REPORT_BASE),code:"43"}]})}
-                        style={{background:"none",border:"none",color:"#7c3aed",
-                          cursor:"pointer",fontSize:11,padding:0,marginBottom:10}}>
-                        + Add EMI/PQ/DCM report (43)
-                      </button>
-                    </div>
+                    <button onClick={addRep} style={{background:"none",border:"none",color:C.accent,
+                      cursor:"pointer",fontSize:11,padding:0,marginBottom:10}}>
+                      + Add test report
+                    </button>
                     <div style={{borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
                       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
                         <Toggle small checked={pr.coc||false} onChange={v=>setGlobalPR({...pr,coc:v})}
