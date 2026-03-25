@@ -278,7 +278,7 @@ function MultiSection({title,instances,onAdd,onRemove,onUpdate,tag,newInstance,F
 // ── Form components ───────────────────────────────────────────────────────────
 function VibForm({s,set,setup}){
   const pm=s.pia||1;
-  const std=sf(s.stdSetup||s.setup||1250);
+  const std=sf(s.stdSetup||s.setup||900);
   const dr=Math.round(sf(setup.holes)*0.5*sf(setup.techRate,175)*(setup.drillTap?1.5:1));
   const fab=Math.round(sf(setup.fabHours)*sf(setup.techRate,175));
   const addl=sf(s.addlCosts,0);
@@ -296,14 +296,14 @@ function VibForm({s,set,setup}){
       <Toggle small checked={s.hydroPost||false} onChange={v=>set({...s,hydroPost:v})} label="Post-Test Hydrostatic"/>
     </div>
     <HR/>
-    <PRow label="Std Setup" val={s.stdSetup||s.setup||"1250"} onChange={v=>set({...s,stdSetup:v})}/>
+    <PRow label="Std Setup" val={s.stdSetup||s.setup||"900"} onChange={v=>set({...s,stdSetup:v})}/>
     <PRow label="Add'l Costs" val={s.addlCosts||"0"} onChange={v=>set({...s,addlCosts:v})}/>
     <PRow label={"Testing"+(pm>1?" (x"+pm+")":"")} val={s.testing} onChange={v=>set({...s,testing:v})}/>
     {(s.hydroPre||s.hydroPost)&&<PRow label="Hydrostatic" val={s.hydroPrice||"500"} onChange={v=>set({...s,hydroPrice:v})}/>}
     <div style={{fontSize:10,background:C.panel,borderRadius:5,padding:"5px 8px",marginBottom:6}}>
       <span style={{color:C.dim}}>Setup: </span>
       <span style={{color:C.text,fontWeight:600}}>{money(setupTotal)}</span>
-      <span style={{color:C.dim,fontSize:9}}>{" = "}{"$"+sf(s.stdSetup||s.setup||1250).toLocaleString()}{dr>0?" + $"+dr.toLocaleString()+" drill":""}{fab>0?" + $"+fab.toLocaleString()+" fab":""}{addl>0?" + $"+addl.toLocaleString()+" addl":""}{pm>1?" x "+pm+" PIA":""}</span>
+      <span style={{color:C.dim,fontSize:9}}>{" = "}{"$"+sf(s.stdSetup||s.setup||900).toLocaleString()}{dr>0?" + $"+dr.toLocaleString()+" drill":""}{fab>0?" + $"+fab.toLocaleString()+" fab":""}{addl>0?" + $"+addl.toLocaleString()+" addl":""}{pm>1?" x "+pm+" PIA":""}</span>
     </div>
     <div style={{borderTop:"1px solid "+C.border,paddingTop:8,marginTop:6}}>
       <Toggle small checked={(s.fixtureFab||{}).on||false}
@@ -344,7 +344,7 @@ function ShockForm({s,set,vibSetup,setup,ti}){
   return <div>
     <Row label="Spec"><Inp value={s.spec||""} onChange={v=>set({...s,spec:v})} width={200}/></Row>
     <Row label="Category">
-      <Sel value={s.cat} onChange={v=>set({...s,cat:v,testing:v==="Medium Weight"?"4575":"1350",stdSetup:v==="Medium Weight"?"1500":"1250"})}
+      <Sel value={s.cat} onChange={v=>set({...s,cat:v,testing:v==="Medium Weight"?"4575":"1350",stdSetup:v==="Medium Weight"?"1500":"900"})}
         options={["Medium Weight","Lightweight"]} width={160}/>
     </Row>
     <Row label="Grade"><Inp value={s.grade||""} onChange={v=>set({...s,grade:v})} width={60}/></Row>
@@ -1653,7 +1653,7 @@ function QuoteSearch({onLoad}){
 // ── Initial state factories ───────────────────────────────────────────────────
 const newAb=()=>({id:Date.now(),on:false,spec:"",rev:"1474",testing:"2850",stdSetup:"1000",addlCosts:"0",proc:false,report:false});
 const newSb=()=>({id:Date.now(),on:false,spec:"",rev:"167 Type II",testing:"2650",stdSetup:"850",addlCosts:"0",proc:false,report:false});
-const newVib=()=>({id:Date.now(),on:false,cat:"LAB Vibration (MIL-STD-167)",spec:"",freqRange:"",circ:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"3250",stdSetup:"1250",addlCosts:"0",proc:false,report:false,fixtureFab:{on:false,hours:"0",techRate:"175"}});
+const newVib=()=>({id:Date.now(),on:false,cat:"LAB Vibration (MIL-STD-167)",spec:"",freqRange:"",circ:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"3250",stdSetup:"900",addlCosts:"0",proc:false,report:false,fixtureFab:{on:false,hours:"0",techRate:"175"}});
 const newShock=()=>({id:Date.now(),on:false,cat:"Medium Weight",spec:"",grade:"A",class_:"I",type_:"A",location:"Hull",submarine:false,orientation:"Unrestricted",blows:"",fromVib:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"4575",stdSetup:"1500",addlCosts:"0",proc:false,report:false,fixtureFab:{on:false,hours:"0",techRate:"175"}});
 const newNoise=()=>({id:Date.now(),on:false,spec:"",level:"<=140dB",oaspl:"",chamber:"Speakerbox",durVal:"30",durUnit:"minutes",compBudget:"0",pia:0,testing:"3950",stdSetup:"1000",addlCosts:"0",proc:false,report:false});
 const newEnv=()=>({id:Date.now(),on:false,spec:"",items:{},thDur:"0 to 1 Day",thType:"Temperature & Humidity",proc:false,report:false});
@@ -1748,8 +1748,10 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
       const laborAmt=r25(sf(s.fixtureFab.hours,0)*sf(s.fixtureFab.techRate,175));
       lines.push({label:fabLabel,val:laborAmt,code:code,unit:currentUnit,seq:seq++,isFabLine:true});
     }
+    if(s.circ)add("Circulating System",2500,null,code);
     if(s.hydroPre)add("Shock"+pre+" – Pre-Test Hydrostatic",sf(s.hydroPrice||500),null,"95");
-    const shockSetupLabel="Shock"+pre+" – Setup"+(s.fromVib&&firstVibSetup>0?" (disc.)":"");
+    const shockCat=isMW?"Mediumweight Shock":"Lightweight Shock";
+    const shockSetupLabel=shockCat+pre+" – Setup"+(s.fromVib&&firstVibSetup>0?" (disc.)":"");
     const shockSetupDesc=s.fromVib&&firstVibSetup>0?"Pricing assumes the unit is coming directly from vibration testing.":null;
     {const v=Math.round(sf(su*pm));if(v>0){const u=currentUnit;const sq=seq++;lines.push({label:shockSetupLabel,val:v,code:code,desc:shockSetupDesc,unit:u,seq:sq});}}
     // Shock instrumentation + HSV: between setup and testing
@@ -1758,7 +1760,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
       if(inst.items?.cmShock?.on)add("Contact Monitoring (Shock)",350*sf(inst.items.cmShock.channels,1),null,"33");
       if(inst.items?.hsv?.on)add("High Speed Video",1950,null,"32");
     }
-    add("Shock"+pre+" – Testing",sf(s.testing)*pm,null,code);
+    add(shockCat+pre+" – Testing",sf(s.testing)*pm,null,code);
     if(s.hydroPost)add("Shock"+pre+" – Post-Test Hydrostatic",sf(s.hydroPrice||500),null,"95");
     (s.customRows||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Custom",r.price,null,r.code||pcode(r.label||""));});
   });
@@ -2271,6 +2273,14 @@ export default function App({onLogout,currentUser}){
   ];
   const APPROVER_EMAILS=APPROVERS.map(a=>a.email);
   const isApprover=APPROVER_EMAILS.includes(currentUser);
+
+  // ── Browser tab title ──────────────────────────────────────────────────────
+  useEffect(()=>{
+    const opp=qi.opp||"";
+    const rev=qi.rev||"";
+    const label=opp?(opp+(rev?" – Rev "+rev:"")):"Vibrato";
+    document.title=label;
+  },[qi.opp,qi.rev]);
 
   const loadEmailJS=()=>new Promise((res,rej)=>{
     if(window.emailjs){res();return;}
@@ -5320,8 +5330,8 @@ const STANDARD_TERMS = [
       )}
       <div
         onClick={()=>{if(!openQuotesPanel){setOpenQuotesPanel(true);loadOpenQuotes();}else setOpenQuotesPanel(false);}}
-        style={{position:"fixed",left:openQuotesPanel?380:0,top:"50%",transform:"translateY(-50%)",zIndex:1200,background:"#1a5276",color:"#fff",borderRadius:"0 8px 8px 0",padding:"14px 8px",cursor:"pointer",transition:"left 0.3s ease",writingMode:"vertical-rl",textOrientation:"mixed",fontSize:11,fontWeight:700,letterSpacing:1.5,boxShadow:"2px 0 8px rgba(0,0,0,0.2)",userSelect:"none",display:"flex",alignItems:"center",gap:6}}>
-        <span style={{fontSize:14}}>📂</span>
+        style={{position:"fixed",left:openQuotesPanel?380:0,top:"50%",transform:"translateY(-50%)",zIndex:1200,background:"#1a5276",color:"#fff",borderRadius:"0 6px 6px 0",padding:"8px 5px",cursor:"pointer",transition:"left 0.3s ease",writingMode:"vertical-rl",textOrientation:"mixed",fontSize:9,fontWeight:700,letterSpacing:1,boxShadow:"2px 0 8px rgba(0,0,0,0.2)",userSelect:"none",display:"flex",alignItems:"center",gap:4}}>
+        <span style={{fontSize:11}}>📂</span>
         <span>OPEN QUOTES</span>
       </div>
       <div style={{position:"fixed",left:openQuotesPanel?0:-400,top:0,bottom:0,width:380,background:"#ffffff",zIndex:1150,boxShadow:"4px 0 24px rgba(0,0,0,0.18)",transition:"left 0.3s ease",display:"flex",flexDirection:"column",fontFamily:"Segoe UI,system-ui,sans-serif"}}>
