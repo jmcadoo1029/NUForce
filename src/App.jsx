@@ -1598,6 +1598,7 @@ function QuoteSearch({onLoad}){
       .from("quotes")
       .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, updated_at, data")
       .order("updated_at",{ascending:false})
+      .order("opportunity",{ascending:false})
       .limit(50);
     if(term.trim()){
       query=query.or(
