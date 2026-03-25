@@ -2282,6 +2282,11 @@ export default function App({onLogout,currentUser}){
     document.title=label;
   },[qi.opp,qi.rev]);
 
+  // ── Load saved quotes on startup so approval queue count is ready ──────────
+  useEffect(()=>{
+    loadQuotesFromSupabase().then(q=>setSavedQuotes(q));
+  },[]);
+
   const loadEmailJS=()=>new Promise((res,rej)=>{
     if(window.emailjs){res();return;}
     const s=document.createElement("script");
