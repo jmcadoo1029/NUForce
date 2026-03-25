@@ -4095,11 +4095,7 @@ const STANDARD_TERMS = [
             SAVE
           </button>
           {anyOn&&<div style={{fontSize:14,color:"#fff",fontWeight:700,fontFamily:"monospace",marginLeft:4}}>{money(summary.total)}</div>}
-          <button onClick={()=>setLocked(l=>!l)}
-            style={{background:locked?"#b7791f":"#2d6a4f",border:"none",borderRadius:6,padding:"5px 10px",
-              color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-            {locked?"🔒":"🔓"}
-          </button>
+
           <div style={{width:1,height:22,background:"rgba(255,255,255,0.2)"}}/>
           {currentUser&&<div style={{fontSize:10,color:"rgba(255,255,255,0.55)"}}>{currentUser}</div>}
           {currentQuoteId&&<button onClick={handleDeleteQuote} title="Delete this quote"
