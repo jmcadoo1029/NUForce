@@ -2725,13 +2725,15 @@ export default function App({onLogout,currentUser}){
   // ── Restore last open quote on refresh ──────────────────────────────────────
   useEffect(()=>{
     const lastId=localStorage.getItem("vibrato_last_quote_id");
+    console.log("[Restore] lastId from localStorage:", lastId);
     if(!lastId)return;
     supabase.from("quotes")
       .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, updated_at, data, source")
       .eq("id",lastId)
       .single()
       .then(({data,error})=>{
-        if(error||!data)return;
+        console.log("[Restore] Supabase result:", {data, error});
+        if(error||!data){console.log("[Restore] Aborting - no data or error");return;}
         const q=data.data||{};
         const restored={
           ...q,
@@ -2744,6 +2746,7 @@ export default function App({onLogout,currentUser}){
           source:data.source||"vibrato",
           approval:{...(q.approval||{}),status:data.approval_status||q.approval?.status||"none"},
         };
+        console.log("[Restore] Calling handleLoad with:", restored.opp);
         handleLoad(restored);
       });
   },[]);
