@@ -344,7 +344,7 @@ function ShockForm({s,set,vibSetup,setup,ti}){
   return <div>
     <Row label="Spec"><Inp value={s.spec||""} onChange={v=>set({...s,spec:v})} width={200}/></Row>
     <Row label="Category">
-      <Sel value={s.cat} onChange={v=>set({...s,cat:v,testing:v==="Medium Weight"?"4575":"1350",stdSetup:v==="Medium Weight"?"1500":"900"})}
+      <Sel value={s.cat} onChange={v=>set({...s,cat:v,testing:v==="Medium Weight"?"4575":"1450",stdSetup:v==="Medium Weight"?"1500":"900"})}
         options={["Medium Weight","Lightweight"]} width={160}/>
     </Row>
     <Row label="Grade"><Inp value={s.grade||""} onChange={v=>set({...s,grade:v})} width={60}/></Row>
