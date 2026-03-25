@@ -2331,8 +2331,10 @@ export default function App({onLogout,currentUser}){
 
   // ── Persist last open quote ID to localStorage ───────────────────────────
   useEffect(()=>{
+    console.log("[Persist] currentQuoteId changed:", currentQuoteId);
     if(currentQuoteId){
       localStorage.setItem("vibrato_last_quote_id",String(currentQuoteId));
+      console.log("[Persist] Saved to localStorage:", currentQuoteId);
     } else {
       localStorage.removeItem("vibrato_last_quote_id");
     }
