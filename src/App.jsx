@@ -2678,6 +2678,17 @@ export default function App({onLogout,currentUser}){
     if(q.wonInfo)setWonInfo(q.wonInfo); else setWonInfo({wonDate:"",jobNum:"",poNum:""});
     setWonLocked(false);
     setCurrentQuoteId(q.id||null);
+    // ── Salesforce imported quotes: load line items into custom section ──
+    if(q.source==="salesforce"){
+      const sfLines=(q.summary?.lines||[]).filter(l=>l.val>0);
+      if(sfLines.length>0){
+        setCustom({on:true,rows:sfLines.map(l=>({
+          label:l.label||"Line Item",
+          price:String(Math.round(l.val)),
+          pcode:l.code||"",
+        }))});
+      }
+    }
   };
 
   const setupProps={setup};
