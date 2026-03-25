@@ -2316,6 +2316,7 @@ export default function App({onLogout,currentUser}){
     {name:"Jordan McAdoo", email:"jordanmcadoo@nulabs.com"},
     {name:"Ragen McAdoo",  email:"ragenmcadoo@nulabs.com"},
     {name:"Russ McAdoo",   email:"russmcadoo@nulabs.com"},
+    {name:"Russ McAdoo",   email:"rmcadoo@gmail.com"},
   ];
   const APPROVER_EMAILS=APPROVERS.map(a=>a.email);
   const isApprover=APPROVER_EMAILS.includes(currentUser);
@@ -2330,13 +2331,11 @@ export default function App({onLogout,currentUser}){
   },[qi.opp,qi.rev]);
 
   // ── Persist last open quote ID to localStorage ───────────────────────────
+  // Only update localStorage when we have a real ID — don't clear it on null
+  // (clearing happens explicitly in handleNewQuote and handleDeleteQuote)
   useEffect(()=>{
-    console.log("[Persist] currentQuoteId changed:", currentQuoteId);
     if(currentQuoteId){
       localStorage.setItem("vibrato_last_quote_id",String(currentQuoteId));
-      console.log("[Persist] Saved to localStorage:", currentQuoteId);
-    } else {
-      localStorage.removeItem("vibrato_last_quote_id");
     }
   },[currentQuoteId]);
 
@@ -2635,6 +2634,7 @@ export default function App({onLogout,currentUser}){
     setWonInfo({wonDate:"",jobNum:"",poNum:""}); setWonLocked(false);
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("vibrato");
+    localStorage.removeItem("vibrato_last_quote_id");
     window.scrollTo({top:0,behavior:"smooth"});
   };
 
@@ -2658,6 +2658,7 @@ export default function App({onLogout,currentUser}){
     if(!confirmed)return;
     await deleteQuoteFromSupabase(currentQuoteId);
     setCurrentQuoteId(null);
+    localStorage.removeItem("vibrato_last_quote_id");
     alert("Quote deleted.");
   };
 
@@ -2693,13 +2694,8 @@ export default function App({onLogout,currentUser}){
     if(q.approval)setApproval(q.approval); else setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     if(q.wonInfo)setWonInfo(q.wonInfo); else setWonInfo({wonDate:"",jobNum:"",poNum:""});
     setWonLocked(false);
-    console.log("[handleLoad] q.id =", q.id, "type:", typeof q.id, "full keys:", Object.keys(q).slice(0,10));
-    const _quoteId = q.id||null;
-    setCurrentQuoteId(_quoteId);
-    console.log("[handleLoad] setting localStorage to:", _quoteId);
-    if(_quoteId){localStorage.setItem("vibrato_last_quote_id",String(_quoteId));}
-    else{localStorage.removeItem("vibrato_last_quote_id");}
-    console.log("[handleLoad] localStorage now:", localStorage.getItem("vibrato_last_quote_id"));
+    setCurrentQuoteId(q.id||null);
+    if(q.id){localStorage.setItem("vibrato_last_quote_id",String(q.id));}
     setCurrentQuoteSource(q.source||"vibrato");
     if(q.source==="salesforce")setLocked(true);
     // ── Salesforce imported quotes: load line items into custom section ──
@@ -2733,15 +2729,13 @@ export default function App({onLogout,currentUser}){
   // ── Restore last open quote on refresh ──────────────────────────────────────
   useEffect(()=>{
     const lastId=localStorage.getItem("vibrato_last_quote_id");
-    console.log("[Restore] lastId from localStorage:", lastId);
     if(!lastId)return;
     supabase.from("quotes")
       .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, updated_at, data, source")
       .eq("id",lastId)
       .single()
       .then(({data,error})=>{
-        console.log("[Restore] Supabase result:", {data, error});
-        if(error||!data){console.log("[Restore] Aborting - no data or error");return;}
+        if(error||!data)return;
         const q=data.data||{};
         const restored={
           ...q,
@@ -2754,7 +2748,6 @@ export default function App({onLogout,currentUser}){
           source:data.source||"vibrato",
           approval:{...(q.approval||{}),status:data.approval_status||q.approval?.status||"none"},
         };
-        console.log("[Restore] Calling handleLoad with:", restored.opp);
         handleLoad(restored);
       });
   },[]);
