@@ -2682,6 +2682,7 @@ export default function App({onLogout,currentUser}){
     setWonLocked(false);
     setCurrentQuoteId(q.id||null);
     setCurrentQuoteSource(q.source||"vibrato");
+    if(q.source==="salesforce")setLocked(true);
     // ── Salesforce imported quotes: load line items into custom section ──
     if(q.source==="salesforce"){
       const sfLines=(q.summary?.lines||[]).filter(l=>l.val>0);
@@ -4753,13 +4754,13 @@ const STANDARD_TERMS = [
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <span style={{fontSize:16}}>📥</span>
                 <span style={{fontSize:12,color:"#1a5276",fontWeight:600}}>
-                  Imported from Salesforce — read only. Clone to create an editable Vibrato quote.
+                  Imported from Salesforce — locked by default. Click UNLOCKED in the header to edit.
                 </span>
               </div>
             </div>
           )}
 
-          <div style={{pointerEvents:(locked||isSalesforce)?"none":"auto",opacity:(locked||isSalesforce)?0.65:1,transition:"opacity 0.2s"}}>
+          <div style={{pointerEvents:locked?"none":"auto",opacity:locked?0.65:1,transition:"opacity 0.2s"}}>
 
             {/* ── Row 1: Quote Info | Test Item Description ── */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
@@ -4809,8 +4810,7 @@ const STANDARD_TERMS = [
                       {qi.stage==="Closed Won"&&(
                         <button onClick={()=>setShowWonModal(true)}
                           style={{marginTop:5,width:"100%",background:"#1e8449",border:"none",borderRadius:6,
-                            padding:"5px 0",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",letterSpacing:.3,
-                            pointerEvents:"auto",opacity:1}}>
+                            padding:"5px 0",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",letterSpacing:.3}}>
                           🏆 Won Details
                         </button>
                       )}
@@ -4830,8 +4830,7 @@ const STANDARD_TERMS = [
                   {qi.stage==="Closed Won"&&(
                     <button onClick={()=>setShowWonModal(true)}
                       style={{background:"#1e8449",border:"none",borderRadius:6,padding:"3px 10px",
-                        color:"#fff",fontWeight:700,fontSize:10,cursor:"pointer",letterSpacing:.3,display:"flex",alignItems:"center",gap:4,
-                        pointerEvents:"auto",opacity:1}}>
+                        color:"#fff",fontWeight:700,fontSize:10,cursor:"pointer",letterSpacing:.3,display:"flex",alignItems:"center",gap:4}}>
                       🏆 {wonInfo.jobNum?("Job #"+wonInfo.jobNum):"Won Details"}
                     </button>
                   )}
