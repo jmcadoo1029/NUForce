@@ -547,6 +547,7 @@ function EnvForm({s,set}){
     {key:"drip",label:"Drip Test",setup:500,testing:750,td:300},
     {key:"sub",label:"Submergence",setup:500,testing:750,td:300},
     {key:"spray",label:"Spray Test",setup:1250,testing:1250,td:500},
+    {key:"insres",label:"Insulation Resistance & Dielectric Strength",setup:0,testing:500,td:0},
   ];
   return <div>
     <Row label="Spec"><Inp value={s.spec||""} onChange={v=>set({...s,spec:v})} width={200}/></Row>
@@ -576,6 +577,7 @@ function EnvForm({s,set}){
       {key:"drip",label:"Drip Test"},
       {key:"sub",label:"Submergence"},
       {key:"spray",label:"Spray Test"},
+      {key:"insres",label:"Insulation Resistance & Dielectric Strength"},
     ].filter(({key})=>s.items?.[key]?.on).map(({key,label})=>{
       const item=s.items[key];
       const upd=patch=>set({...s,items:{...s.items,[key]:{...item,...patch}}});
@@ -1782,8 +1784,8 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     const pre=idx>0?" #"+(idx+1)+(s.identifier?" ("+s.identifier+")":""):"";
     // Use T&H type in label
     const thTypeLabel={"Temperature & Humidity":"Temp & Humidity","Temperature Only":"Temperature","Humidity Only":"Humidity"};
-    const LBL={th:thTypeLabel[s.thType]||"T&H",sf:"Salt Fog",alt:"Altitude",ess:"ESS",acc:"Acceleration",incl:"Inclination",rd:"Rapid Decomp.",ed:"Explosive Decomp.",drip:"Drip Test",sub:"Submergence",spray:"Spray Test"};
-    const ENV_CODE={th:"53",sf:"55",alt:"56",ess:"54",acc:"57",incl:"93",rd:"56",ed:"56",drip:"58",sub:"58",spray:"58"};
+    const LBL={th:thTypeLabel[s.thType]||"T&H",sf:"Salt Fog",alt:"Altitude",ess:"ESS",acc:"Acceleration",incl:"Inclination",rd:"Rapid Decomp.",ed:"Explosive Decomp.",drip:"Drip Test",sub:"Submergence",spray:"Spray Test",insres:"Insulation Resistance & Dielectric Strength"};
+    const ENV_CODE={th:"53",sf:"55",alt:"56",ess:"54",acc:"57",incl:"93",rd:"56",ed:"56",drip:"58",sub:"58",spray:"58",insres:"59"};
     Object.entries(s.items||{}).forEach(([k,v])=>{
       if(!v?.on)return;
       const lbl=(LBL[k]||k)+pre;
@@ -1897,7 +1899,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     const hasNoise=noises.some(s=>s.on);
     const hasAb=abs.some(s=>s.on)||sbs.some(s=>s.on);
     const hasEnvOnly=envs.some(s=>s.on)&&!hasMW&&!hasLW&&!hasVib&&!hasNoise&&!hasAb;
-    const SIMPLE_ENV=["th","sf","alt"];
+    const SIMPLE_ENV=["th","sf","alt","insres"];
     const onlySimpleEnv=hasEnvOnly&&envs.every(s=>!s.on||Object.keys(s.items||{}).filter(k=>s.items[k]?.on).every(k=>SIMPLE_ENV.includes(k)));
     // totalSetup: vib + shock + noise + ab + sb setups (matching desktop)
     const totalSetup=
@@ -2043,8 +2045,8 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   repUnits.forEach(u=>addProcRepForUnit(repSecs,'rep',u));
 
   // Global proc/report/coc rows — procs go to procLines, reps/coc go to repLines via their codes
-  (globalPR?.procs||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Test Procedure",r.price,null,"42");});
-  (globalPR?.reps||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Test Report",r.price,null,"41");});
+  (globalPR?.procs||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Test Procedure",r.price,null,r.code||"42");});
+  (globalPR?.reps||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Test Report",r.price,null,r.code||"41");});
   if(globalPR?.coc)add("Certificate of Compliance",globalPR.cocPrice||"250",null,"41");
   // Fixture Drawing (code 42, sorts before modal analysis and EMI/PQ/DCM procs)
   if(fixtureDrawing?.on)add("Fixture Drawings",fixtureDrawing.price||"2950",null,"42");
@@ -5273,12 +5275,12 @@ const STANDARD_TERMS = [
                     </span>
                   </div>
                   <div style={{padding:"12px 14px 14px",background:"#fff"}}>
-                    <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:1,marginBottom:6}}>PROCEDURES — CODE 42</div>
+                    <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:1,marginBottom:6}}>PROCEDURES — CODE 42 / 44</div>
                     {pr.procs.map((r,i)=>(
                       <div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:5,
                         background:C.panel,borderRadius:7,padding:"6px 8px"}}>
                         <span style={{fontSize:9,background:"#e8ecf0",color:C.muted,borderRadius:3,
-                          padding:"2px 5px",fontFamily:"monospace",border:"1px solid "+C.border}}>42</span>
+                          padding:"2px 5px",fontFamily:"monospace",border:"1px solid "+C.border}}>{r.code||"42"}</span>
                         <Inp value={r.label} onChange={v=>updProc(i,"label",v)} width={180}/>
                         <span style={{fontSize:11,color:C.muted}}>$</span>
                         <Inp value={r.price} onChange={v=>updProc(i,"price",v)} width={70} right/>
@@ -5286,16 +5288,23 @@ const STANDARD_TERMS = [
                           color:C.dim,cursor:"pointer",fontSize:13,marginLeft:"auto"}}>✕</button>
                       </div>
                     ))}
-                    <button onClick={addProc} style={{background:"none",border:"none",color:C.accent,
-                      cursor:"pointer",fontSize:11,padding:0,marginBottom:10}}>
-                      + Add test procedure
-                    </button>
-                    <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:1,marginBottom:6,marginTop:4}}>REPORTS — CODE 41</div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={addProc} style={{background:"none",border:"none",color:C.accent,
+                        cursor:"pointer",fontSize:11,padding:0,marginBottom:10}}>
+                        + Add procedure (42)
+                      </button>
+                      <button onClick={()=>setGlobalPR({...pr,procs:[...pr.procs,{label:"",price:String(PROC_BASE),code:"44"}]})}
+                        style={{background:"none",border:"none",color:"#7c3aed",
+                          cursor:"pointer",fontSize:11,padding:0,marginBottom:10}}>
+                        + Add EMI/PQ/DCM procedure (44)
+                      </button>
+                    </div>
+                    <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:1,marginBottom:6,marginTop:4}}>REPORTS — CODE 41 / 43</div>
                     {pr.reps.map((r,i)=>(
                       <div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:5,
                         background:C.panel,borderRadius:7,padding:"6px 8px"}}>
                         <span style={{fontSize:9,background:"#e8ecf0",color:C.muted,borderRadius:3,
-                          padding:"2px 5px",fontFamily:"monospace",border:"1px solid "+C.border}}>41</span>
+                          padding:"2px 5px",fontFamily:"monospace",border:"1px solid "+C.border}}>{r.code||"41"}</span>
                         <Inp value={r.label} onChange={v=>updRep(i,"label",v)} width={180}/>
                         <span style={{fontSize:11,color:C.muted}}>$</span>
                         <Inp value={r.price} onChange={v=>updRep(i,"price",v)} width={70} right/>
@@ -5303,10 +5312,17 @@ const STANDARD_TERMS = [
                           color:C.dim,cursor:"pointer",fontSize:13,marginLeft:"auto"}}>✕</button>
                       </div>
                     ))}
-                    <button onClick={addRep} style={{background:"none",border:"none",color:C.accent,
-                      cursor:"pointer",fontSize:11,padding:0,marginBottom:10}}>
-                      + Add test report
-                    </button>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={addRep} style={{background:"none",border:"none",color:C.accent,
+                        cursor:"pointer",fontSize:11,padding:0,marginBottom:10}}>
+                        + Add report (41)
+                      </button>
+                      <button onClick={()=>setGlobalPR({...pr,reps:[...pr.reps,{label:"",price:String(REPORT_BASE),code:"43"}]})}
+                        style={{background:"none",border:"none",color:"#7c3aed",
+                          cursor:"pointer",fontSize:11,padding:0,marginBottom:10}}>
+                        + Add EMI/PQ/DCM report (43)
+                      </button>
+                    </div>
                     <div style={{borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
                       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
                         <Toggle small checked={pr.coc||false} onChange={v=>setGlobalPR({...pr,coc:v})}
