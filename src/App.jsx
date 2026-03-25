@@ -4809,7 +4809,8 @@ const STANDARD_TERMS = [
                       {qi.stage==="Closed Won"&&(
                         <button onClick={()=>setShowWonModal(true)}
                           style={{marginTop:5,width:"100%",background:"#1e8449",border:"none",borderRadius:6,
-                            padding:"5px 0",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",letterSpacing:.3}}>
+                            padding:"5px 0",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",letterSpacing:.3,
+                            pointerEvents:"auto",opacity:1}}>
                           🏆 Won Details
                         </button>
                       )}
@@ -4829,7 +4830,8 @@ const STANDARD_TERMS = [
                   {qi.stage==="Closed Won"&&(
                     <button onClick={()=>setShowWonModal(true)}
                       style={{background:"#1e8449",border:"none",borderRadius:6,padding:"3px 10px",
-                        color:"#fff",fontWeight:700,fontSize:10,cursor:"pointer",letterSpacing:.3,display:"flex",alignItems:"center",gap:4}}>
+                        color:"#fff",fontWeight:700,fontSize:10,cursor:"pointer",letterSpacing:.3,display:"flex",alignItems:"center",gap:4,
+                        pointerEvents:"auto",opacity:1}}>
                       🏆 {wonInfo.jobNum?("Job #"+wonInfo.jobNum):"Won Details"}
                     </button>
                   )}
