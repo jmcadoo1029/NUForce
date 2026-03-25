@@ -1503,32 +1503,88 @@ function BudgetSection({budget,setBudget,setupLines,fixtureFabLines}){
 }
 
 // ── Quote Search panel ─────────────────────────────────────────────────────────
-const STORAGE_KEY="vibrato_quotes";
+import { supabase } from "./supabaseClient";
 
-function saveQuote(quotes,quote){
-  const id=quote.id||Date.now();
-  const updated={...quotes,[id]:{...quote,id,savedAt:new Date().toISOString()}};
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(updated));}catch(e){}
-  return updated;
+// ── Supabase storage helpers ──────────────────────────────────────────────────
+async function saveQuoteToSupabase(quote, autoSpecs, autoNotes) {
+  const row = {
+    id:               quote.id || undefined,
+    opportunity:      quote.qi?.opp    || quote.opp    || null,
+    customer:         quote.qi?.account|| quote.customer|| null,
+    rfq:              quote.qi?.rfq    || quote.rfq    || null,
+    revision:         quote.qi?.rev    || null,
+    stage:            quote.qi?.stage  || quote.stage  || null,
+    total:            quote.total      || null,
+    job_number:       quote.wonInfo?.jobNum  || null,
+    po_number:        quote.wonInfo?.poNum   || null,
+    won_date:         quote.wonInfo?.wonDate || null,
+    approval_status:  quote.approval?.status || "none",
+    submitted_by:     quote.approval?.submittedBy || null,
+    approved_by:      quote.approval?.decidedBy   || null,
+    specifications:   quote.ti?.tiSpecs || autoSpecs || null,
+    notes:            quote.ti?.tiNotes || autoNotes  || null,
+    line_items:       quote.summary?.lines || null,
+    budget_items:     quote.budget?.rows   || null,
+    budget_markup:    quote.budget?.markup ? parseFloat(quote.budget.markup) : null,
+    budget_notes:     quote.budget?.notes  || null,
+    data:             quote,
+  };
+
+  const { data, error } = await supabase
+    .from("quotes")
+    .upsert(row, { onConflict: "id" })
+    .select("id")
+    .single();
+
+  if (error) { console.error("Supabase save error:", error); return null; }
+  return data.id;
 }
-function loadQuotes(){
-  try{const d=localStorage.getItem(STORAGE_KEY);return d?JSON.parse(d):{};}
-  catch(e){return {};}
+
+async function loadQuotesFromSupabase() {
+  const { data, error } = await supabase
+    .from("quotes")
+    .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, updated_at, data")
+    .order("updated_at", { ascending: false });
+
+  if (error) { console.error("Supabase load error:", error); return {}; }
+
+  const map = {};
+  (data || []).forEach(row => {
+    const q = row.data || {};
+    map[row.id] = {
+      ...q,
+      id:          row.id,
+      opp:         row.opportunity || q.opp,
+      customer:    row.customer    || q.customer,
+      rfq:         row.rfq         || q.rfq,
+      total:       row.total       || q.total,
+      savedAt:     row.updated_at,
+      approval:    q.approval || { status: row.approval_status || "none" },
+    };
+  });
+  return map;
 }
-function deleteQuote(quotes,id){
-  const updated={...quotes};
-  delete updated[id];
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(updated));}catch(e){}
-  return updated;
+
+async function deleteQuoteFromSupabase(id) {
+  const { error } = await supabase.from("quotes").delete().eq("id", id);
+  if (error) console.error("Supabase delete error:", error);
 }
 
 function QuoteSearch({onLoad}){
   const [search,setSearch]=useState("");
   const [quotes,setQuotes]=useState({});
   const [open,setOpen]=useState(false);
+  const [loading,setLoading]=useState(false);
   const ref=useRef(null);
 
-  useEffect(()=>{setQuotes(loadQuotes());},[open]);
+  const fetchQuotes=async()=>{
+    setLoading(true);
+    const q=await loadQuotesFromSupabase();
+    setQuotes(q);
+    setLoading(false);
+  };
+
+  useEffect(()=>{if(open)fetchQuotes();},[open]);
 
   // Close on outside click
   useEffect(()=>{
@@ -1560,10 +1616,10 @@ function QuoteSearch({onLoad}){
           display:"flex",flexDirection:"column"}}>
           <div style={{padding:"8px 12px",borderBottom:"1px solid "+C.border,
             fontSize:11,color:C.muted,fontWeight:600}}>
-            {filtered.length} quote{filtered.length!==1?"s":""} found
+            {loading?"Loading…":filtered.length+" quote"+(filtered.length!==1?"s":"")+" found"}
           </div>
           <div style={{overflowY:"auto",flex:1}}>
-            {filtered.length===0&&(
+            {!loading&&filtered.length===0&&(
               <div style={{padding:20,textAlign:"center",color:C.dim,fontSize:12}}>
                 No quotes found
               </div>
@@ -2179,12 +2235,15 @@ export default function App({onLogout,currentUser}){
   const [sbs,setSbs]=useState([newSb()]);
   const [locked,setLocked]=useState(false);
   const [splitProcReport,setSplitProcReport]=useState(false);
+  const [openQuotesPanel,setOpenQuotesPanel]=useState(false);
+  const [openQuotesList,setOpenQuotesList]=useState([]);
+  const [openQuotesLoading,setOpenQuotesLoading]=useState(false);
   const [modalAnalysis,setModalAnalysis]=useState({on:false,price:"6250"});
   const [fixtureDrawing,setFixtureDrawing]=useState({on:false,price:"2950"});
   const [inStockModal,setInStockModal]=useState({on:false,targetProc:""});
   // persist to saves
   const splitProcReportRef=splitProcReport;
-  const [savedQuotes,setSavedQuotes]=useState(()=>loadQuotes());
+  const [savedQuotes,setSavedQuotes]=useState({});
 
   // ── Approval system ────────────────────────────────────────────────────────
   const [approval,setApproval]=useState({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
@@ -2258,12 +2317,10 @@ export default function App({onLogout,currentUser}){
     setApproval(newApproval);
     setLocked(true);
     setShowApprovalModal(false);
-    const id=currentQuoteId||Date.now();
-    const q={id,opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval};
-    saveQuote(savedQuotes,q);
-    setCurrentQuoteId(id);
-    setSavedQuotes(loadQuotes());
+    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary};
+    const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+    if(newId)setCurrentQuoteId(newId);
     await sendSubmitEmail(currentUser);
   };
 
@@ -2272,10 +2329,10 @@ export default function App({onLogout,currentUser}){
     const newApproval={...approval,status:"approved",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:approvalComments,history:[...(approval.history||[]),evtA]};
     setApproval(newApproval);
     setApprovalComments("");
-    const q={id:currentQuoteId||Date.now(),opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval};
-    saveQuote(savedQuotes,q);
-    setSavedQuotes(loadQuotes());
+    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary};
+    const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+    if(newId)setCurrentQuoteId(newId);
     await sendDecisionEmail("APPROVED",currentUser,approvalComments,approval.submittedBy);
   };
 
@@ -2285,10 +2342,10 @@ export default function App({onLogout,currentUser}){
     setApproval(newApproval);
     setLocked(false);
     setApprovalComments("");
-    const q={id:currentQuoteId||Date.now(),opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval};
-    saveQuote(savedQuotes,q);
-    setSavedQuotes(loadQuotes());
+    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary};
+    const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+    if(newId)setCurrentQuoteId(newId);
     await sendDecisionEmail("REJECTED",currentUser,approvalComments,approval.submittedBy);
   };
 
@@ -2306,17 +2363,17 @@ export default function App({onLogout,currentUser}){
 
   const handleQueueDecision=async(decision,idsToProcess)=>{
     const now=new Date().toISOString();
-    let updated={...savedQuotes};
     for(const id of idsToProcess){
-      const q=updated[id];
+      const q=savedQuotes[id];
       if(!q)continue;
       const evtQ={event:decision,by:currentUser,at:now,comments:queueComments};
       const newApproval={...q.approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(q.approval?.history||[]),evtQ]};
-      updated=saveQuote(updated,{...q,approval:newApproval});
+      await saveQuoteToSupabase({...q,approval:newApproval,summary:q.summary},autoSpecs,autoNotes);
       await sendDecisionEmail(decision.toUpperCase(),currentUser,queueComments,q.approval?.submittedBy||"");
     }
-    // Re-read from localStorage to ensure UI is fully in sync
-    setSavedQuotes(loadQuotes());
+    // Reload from Supabase to ensure UI is fully in sync
+    const refreshed=await loadQuotesFromSupabase();
+    setSavedQuotes(refreshed);
     setQueueSelected(new Set());
     setQueueComments("");
     // If the currently loaded quote was one of these, update its approval state
@@ -2328,6 +2385,66 @@ export default function App({onLogout,currentUser}){
     }
   };
 
+  // ── Open Quotes panel handlers ───────────────────────────────────────────────
+  const loadOpenQuotes=async()=>{
+    setOpenQuotesLoading(true);
+    const {data,error}=await supabase.from("open_quotes").select("*").order("created_at",{ascending:false});
+    if(!error)setOpenQuotesList(data||[]);
+    setOpenQuotesLoading(false);
+  };
+
+  const addOpenQuoteRow=async()=>{
+    const {data,error}=await supabase.from("open_quotes").insert({opportunity:"",account:"",description:""}).select().single();
+    if(!error&&data)setOpenQuotesList(prev=>[data,...prev]);
+  };
+
+  const updateOpenQuoteRow=async(id,field,value)=>{
+    setOpenQuotesList(prev=>prev.map(r=>r.id===id?{...r,[field]:value}:r));
+    await supabase.from("open_quotes").update({[field]:value}).eq("id",id);
+  };
+
+  const deleteOpenQuoteRow=async(id)=>{
+    setOpenQuotesList(prev=>prev.filter(r=>r.id!==id));
+    await supabase.from("open_quotes").delete().eq("id",id);
+  };
+
+  const handleOpenQuoteClick=async(row)=>{
+    if(!row.opportunity.trim())return;
+    const result=window.confirm("Save the current quote before switching?\n\nClick OK to save, or Cancel to discard.");
+    if(result){
+      const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,summary};
+      await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+    }
+    const existing=await loadQuotesFromSupabase();
+    const match=Object.values(existing).find(q=>(q.opp||"").toLowerCase()===row.opportunity.toLowerCase());
+    if(match){
+      handleLoad(match);
+      setOpenQuotesPanel(false);
+    } else {
+      const create=window.confirm("No quote found for \""+row.opportunity+"\"
+
+Would you like to create a new quote with this opportunity number?");
+      if(create){
+        setQi({opp:row.opportunity,account:row.account||"",billTo:"",billToCity:"",contact:"",email:"",prepby:"",rev:"",revDate:"",date:new Date().toLocaleDateString("en-US"),rfq:"",stage:"Proposal/Price Quote",type:"New Business",relatedOpps:""});
+        setTi({item:"",qty:"1",model:"",drawing:"",loads:"",dimL:"",dimW:"",dimH:"",wt:"",volt:"",pwrType:"AC",phase:"",hz:"",inrush:"",amps:"",mounting:"",pressureFlow:"",gsi:"Unknown",witness:"Unknown",docRestriction:"None",dpas:"",tiSpecs:"",tiNotes:""});
+        setVibs([newVib()]);setShocks([newShock()]);setNoises([newNoise()]);setEnvs([newEnv()]);
+        setHfvs([newHfv()]);setShos([newSho()]);setDcms([newDcm()]);setPqs([newPq()]);
+        setEmis([newEmi()]);setAbs([newAb()]);setSbs([newSb()]);
+        setInst({on:false,items:{}});setOt({on:false,rows:[]});setCustom({on:false,rows:[]});
+        setBudget({on:false,rows:[],markup:"25"});setSub({on:false,rows:[]});
+        setTd("0");setSetup({techRate:"175",fabHours:"4",holes:"0",cables:"0",drillTap:false});
+        setGlobalPR({procs:[],reps:[],coc:false,cocPrice:"250"});
+        setNotes("");setLineOverrides({});setLineOrder(null);
+        setModalAnalysis({on:false,price:"6250"});setFixtureDrawing({on:false,price:"2950"});setInStockModal({on:false,targetProc:""});
+        setWonInfo({wonDate:"",jobNum:"",poNum:""});setWonLocked(false);
+        setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
+        setLocked(false);setCurrentQuoteId(null);
+        setOpenQuotesPanel(false);
+        window.scrollTo({top:0,behavior:"smooth"});
+      }
+    }
+  };
   // Multi-instance helpers
   const mkUpdater=(_arr,setArr)=>(idx,val)=>setArr(prev=>prev.map((x,i)=>i===idx?(typeof val==="function"?val(x):val):x));
   const mkAdder=(_arr,setArr,newFn)=>()=>setArr(prev=>[...prev,{...newFn(),identifier:""}]);
@@ -2372,9 +2489,9 @@ export default function App({onLogout,currentUser}){
   const handleClone=()=>{
     const result=window.confirm("Save the current quote before cloning?\n\nClick OK to save first, or Cancel to clone without saving.");
     if(result){
-      const q={id:Date.now(),opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
-        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo};
-      setSavedQuotes(saveQuote(savedQuotes,q));
+      const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,summary};
+      saveQuoteToSupabase(q,autoSpecs,autoNotes);
     }
     setCloneOppInput("");
     setShowCloneModal(true);
@@ -2391,14 +2508,13 @@ export default function App({onLogout,currentUser}){
     window.scrollTo({top:0,behavior:"smooth"});
   };
 
-  // New quote — prompt to save, then reset everything to blank
   const handleNewQuote=()=>{
     const result=window.confirm("Save the current quote before starting a new one?\n\nClick OK to save, or Cancel to discard and continue.");
     if(result){
-      const id=currentQuoteId||Date.now();
-      const q={id,opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
-        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo};
-      setSavedQuotes(saveQuote(savedQuotes,q));
+      const id=currentQuoteId||undefined;
+      const q={id,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,summary};
+      saveQuoteToSupabase(q,autoSpecs,autoNotes);
     }
     // Reset all state to blank defaults
     setQi({opp:"",account:"",billTo:"",billToCity:"",contact:"",email:"",prepby:"",rev:"",revDate:"",date:new Date().toLocaleDateString("en-US"),rfq:"",stage:"Proposal/Price Quote",type:"New Business",relatedOpps:""});
@@ -2418,24 +2534,25 @@ export default function App({onLogout,currentUser}){
     window.scrollTo({top:0,behavior:"smooth"});
   };
 
-  // Save quote to localStorage
-  const handleSave=()=>{
-    const id=currentQuoteId||Date.now();
-    setCurrentQuoteId(id);
-    const q={id,opp:qi.opp,customer:qi.customer,rfq:qi.rfq,total:summary.total,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo};
-    const updated=saveQuote(savedQuotes,q);
-    setSavedQuotes(updated);
-    alert("Quote saved: "+(qi.opp||"Untitled"));
+  // Save quote to Supabase
+  const handleSave=async()=>{
+    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,summary};
+    const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+    if(newId){
+      setCurrentQuoteId(newId);
+      alert("Quote saved: "+(qi.opp||"Untitled"));
+    } else {
+      alert("Save failed — check your connection and try again.");
+    }
   };
 
-  // Delete current quote from repository
-  const handleDeleteQuote=()=>{
+  // Delete current quote from Supabase
+  const handleDeleteQuote=async()=>{
     if(!currentQuoteId){alert("This quote hasn't been saved yet — nothing to delete.");return;}
     const confirmed=window.confirm("Are you sure you want to delete this quote? You cannot retrieve it once deleted.");
     if(!confirmed)return;
-    const updated=deleteQuote(savedQuotes,currentQuoteId);
-    setSavedQuotes(updated);
+    await deleteQuoteFromSupabase(currentQuoteId);
     setCurrentQuoteId(null);
     alert("Quote deleted.");
   };
@@ -3988,8 +4105,8 @@ const STANDARD_TERMS = [
             Sign out
           </button>}
         </div>
-        {/* Row 2: approval bar — only shown when a quote has been submitted */}
-        {(approval.status!=="none"||isApprover)&&(
+        {/* Row 2: approval bar — shown to all users */}
+        {true&&(
           <div style={{background:"rgba(0,0,0,0.18)",padding:"5px 18px",display:"flex",alignItems:"center",gap:8,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
             {approval.status!=="none"&&(
               <div style={{borderRadius:5,padding:"3px 10px",fontWeight:700,fontSize:11,letterSpacing:.5,flexShrink:0,
@@ -4032,7 +4149,7 @@ const STANDARD_TERMS = [
             )}
             <div style={{flex:1}}/>
             {isApprover&&(
-              <button onClick={()=>{setSavedQuotes(loadQuotes());setShowApprovalQueue(true);setQueueSelected(new Set());}}
+              <button onClick={async()=>{const q=await loadQuotesFromSupabase();setSavedQuotes(q);setShowApprovalQueue(true);setQueueSelected(new Set());}}
                 style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.25)",borderRadius:6,
                   padding:"3px 12px",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
                 📥 QUEUE
@@ -5197,6 +5314,60 @@ const STANDARD_TERMS = [
         </div>{/* end left scroll column */}
 
       </div>{/* end body flex row */}
+
+      {/* ── Open Quotes slide-out panel ── */}
+      {openQuotesPanel&&(
+        <div onClick={()=>setOpenQuotesPanel(false)}
+          style={{position:"fixed",inset:0,zIndex:1100,background:"rgba(0,0,0,0.25)"}}/>
+      )}
+      <div
+        onClick={()=>{if(!openQuotesPanel){setOpenQuotesPanel(true);loadOpenQuotes();}else setOpenQuotesPanel(false);}}
+        style={{position:"fixed",left:openQuotesPanel?380:0,top:"50%",transform:"translateY(-50%)",zIndex:1200,background:"#1a5276",color:"#fff",borderRadius:"0 8px 8px 0",padding:"14px 8px",cursor:"pointer",transition:"left 0.3s ease",writingMode:"vertical-rl",textOrientation:"mixed",fontSize:11,fontWeight:700,letterSpacing:1.5,boxShadow:"2px 0 8px rgba(0,0,0,0.2)",userSelect:"none",display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:14}}>📂</span>
+        <span>OPEN QUOTES</span>
+      </div>
+      <div style={{position:"fixed",left:openQuotesPanel?0:-400,top:0,bottom:0,width:380,background:"#ffffff",zIndex:1150,boxShadow:"4px 0 24px rgba(0,0,0,0.18)",transition:"left 0.3s ease",display:"flex",flexDirection:"column",fontFamily:"Segoe UI,system-ui,sans-serif"}}>
+        <div style={{background:"#1a5276",padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+          <div>
+            <div style={{fontWeight:700,fontSize:14,color:"#fff",letterSpacing:.5}}>📂 Open Quotes</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginTop:2}}>Click an opportunity number to load</div>
+          </div>
+          <button onClick={()=>setOpenQuotesPanel(false)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:6,color:"#fff",fontSize:16,cursor:"pointer",padding:"4px 10px",fontWeight:700}}>✕</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 28px",gap:4,padding:"8px 12px",background:"#e8ecf0",borderBottom:"2px solid #d0d7de",flexShrink:0}}>
+          {["Opportunity #","Account","Description",""].map((h,i)=>(
+            <div key={i} style={{fontSize:9,color:"#9aa5b1",fontWeight:700,letterSpacing:.8}}>{h}</div>
+          ))}
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
+          {openQuotesLoading&&<div style={{textAlign:"center",color:"#9aa5b1",fontSize:12,padding:20}}>Loading…</div>}
+          {!openQuotesLoading&&openQuotesList.length===0&&(
+            <div style={{textAlign:"center",color:"#9aa5b1",fontSize:12,padding:30,lineHeight:1.8}}>No open quotes yet.<br/>Click + Add Row to get started.</div>
+          )}
+          {openQuotesList.map(row=>(
+            <div key={row.id} style={{marginBottom:8,background:"#e8ecf0",borderRadius:7,padding:"8px 10px",border:"1px solid #d0d7de"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 28px",gap:4,marginBottom:4,alignItems:"center"}}>
+                <input value={row.account||""} onChange={e=>updateOpenQuoteRow(row.id,"account",e.target.value)} placeholder="Account" style={{background:"#f8f9fa",border:"1px solid #d0d7de",borderRadius:6,padding:"4px 8px",fontSize:11,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
+                <input value={row.description||""} onChange={e=>updateOpenQuoteRow(row.id,"description",e.target.value)} placeholder="Brief description" style={{background:"#f8f9fa",border:"1px solid #d0d7de",borderRadius:6,padding:"4px 8px",fontSize:11,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
+                <button onClick={()=>deleteOpenQuoteRow(row.id)} style={{background:"none",border:"none",color:"#9aa5b1",cursor:"pointer",fontSize:13,padding:0,textAlign:"center"}} title="Remove row">✕</button>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <span
+                  onClick={()=>handleOpenQuoteClick(row)}
+                  title={row.opportunity?"Load quote: "+row.opportunity:"Enter an opportunity number first"}
+                  style={{fontSize:12,fontWeight:700,color:row.opportunity?"#1a5276":"#9aa5b1",cursor:row.opportunity?"pointer":"default",textDecoration:row.opportunity?"underline":"none",flex:"0 0 auto",minWidth:0}}>
+                  {row.opportunity||"—"}
+                </span>
+                <input value={row.opportunity||""} onChange={e=>updateOpenQuoteRow(row.id,"opportunity",e.target.value)} placeholder="Opportunity #" style={{background:"#f8f9fa",border:"1px solid #d0d7de",borderRadius:6,padding:"4px 8px",fontSize:11,outline:"none",fontFamily:"inherit",boxSizing:"border-box",flex:1}}/>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{padding:"10px 12px",borderTop:"1px solid #d0d7de",flexShrink:0}}>
+          <button onClick={addOpenQuoteRow} style={{width:"100%",background:"none",border:"1px dashed #d0d7de",borderRadius:7,color:"#1a5276",padding:"8px 0",cursor:"pointer",fontSize:12,fontWeight:600}}>+ Add Row</button>
+        </div>
+      </div>
+
     </div>
   );
 }
