@@ -2693,9 +2693,13 @@ export default function App({onLogout,currentUser}){
           pcode:l.code||"",
         }))});
       }
-      // Closed Won — populate won details (Job # and PO # not in Salesforce export, left blank)
-      if(q.qi?.stage==="Closed Won"){
-        setWonInfo({wonDate:q.qi?.date||"",jobNum:"",poNum:""});
+      // Closed Won — use wonInfo already stored in the data blob (populated by update scripts)
+      if(q.qi?.stage==="Closed Won"&&q.wonInfo){
+        setWonInfo({
+          wonDate:q.wonInfo.wonDate||q.qi?.date||"",
+          jobNum:q.wonInfo.jobNum||"",
+          poNum:q.wonInfo.poNum||"",
+        });
       }
     }
   };
