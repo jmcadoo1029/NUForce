@@ -240,7 +240,7 @@ function MultiSection({title,instances,onAdd,onRemove,onUpdate,tag,newInstance,F
         background:anyOn?"#fdf3f2":C.card,cursor:"pointer",
         borderBottom:anyOn&&open?"1px solid "+C.border:"none"}}
         onClick={()=>{if(anyOn)setOpen(o=>!o);}}>
-        <div onClick={e=>{e.stopPropagation();if(instances[0])onUpdate(0,{...instances[0],on:!instances[0].on});}}>
+        <div onClick={e=>{e.stopPropagation();handleToggle(!anyOn);}}>
           <Toggle checked={anyOn} onChange={()=>{}}/>
         </div>
         <span style={{fontWeight:600,fontSize:12,color:anyOn?C.red:C.muted,flex:1,letterSpacing:.3}}>{title}</span>
