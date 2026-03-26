@@ -5139,16 +5139,12 @@ const STANDARD_TERMS = [
                     if(!manual)return autoSpecs;
                     // If auto specs already appended, don't double-add
                     if(manual.includes(autoSpecs))return manual;
-                    return manual+"
-
-"+autoSpecs;
+                    return manual+"\n\n"+autoSpecs;
                   })()}
                   onChange={e=>{
                     // Strip auto-generated portion so manual edits are preserved cleanly
                     const val=e.target.value;
-                    const stripped=autoSpecs?val.replace("
-
-"+autoSpecs,"").replace(autoSpecs,""):val;
+                    const stripped=autoSpecs?val.replace("\n\n"+autoSpecs,"").replace(autoSpecs,""):val;
                     setTi({...ti,tiSpecs:stripped});
                   }}
                   placeholder="Enable test sections to auto-generate scope text, or type here..."
