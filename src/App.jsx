@@ -2667,6 +2667,10 @@ export default function App({onLogout,currentUser}){
     setWonInfo({wonDate:"",jobNum:"",poNum:""});
     setWonLocked(false);
     setCurrentQuoteId(null);
+    setLineOrder(null);
+    setLineOverrides({});
+    setCurrentQuoteSource("vibrato");
+    setLocked(false);
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setShowCloneModal(false);
     setCloneOppInput("");
