@@ -1544,6 +1544,25 @@ async function saveQuoteToSupabase(quote, autoSpecs, autoNotes) {
     budget_markup:    quote.budget?.markup ? parseFloat(quote.budget.markup) : null,
     budget_notes:     quote.budget?.notes  || null,
     data:             quote,
+    search_text:      [
+      quote.qi?.opp    || quote.opp    || "",
+      quote.qi?.account|| quote.customer|| "",
+      quote.qi?.rfq    || quote.rfq    || "",
+      quote.qi?.rev    || "",
+      quote.qi?.contact|| "",
+      quote.qi?.email  || "",
+      quote.qi?.prepby || "",
+      quote.qi?.stage  || quote.stage  || "",
+      quote.qi?.relatedOpps || "",
+      quote.wonInfo?.jobNum  || "",
+      quote.wonInfo?.poNum   || "",
+      quote.ti?.item   || "",
+      quote.ti?.model  || "",
+      quote.ti?.drawing|| "",
+      quote.ti?.tiSpecs|| autoSpecs || "",
+      quote.ti?.tiNotes|| autoNotes || "",
+      (quote.summary?.lines||[]).map(l=>l.label||"").join(" "),
+    ].filter(Boolean).join(" ").toLowerCase(),
   };
 
   const { data, error } = await supabase
@@ -1603,8 +1622,9 @@ function QuoteSearch({onLoad}){
       .order("opportunity",{ascending:false})
       .limit(50);
     if(term.trim()){
+      const t=term.trim().toLowerCase();
       query=query.or(
-        `opportunity.ilike.%${term}%,customer.ilike.%${term}%,rfq.ilike.%${term}%`
+        `opportunity.ilike.%${t}%,customer.ilike.%${t}%,rfq.ilike.%${t}%,revision.ilike.%${t}%,stage.ilike.%${t}%,search_text.ilike.%${t}%`
       );
     }
     const {data,error}=await query;
