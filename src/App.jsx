@@ -2618,7 +2618,10 @@ export default function App({onLogout,currentUser}){
     [vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal]);
 
   // Reset line order when summary length changes (new lines added/removed)
-  useEffect(()=>setLineOrder(null),[summary.lines.length]);
+  // Only reset lineOrder if lines were added/removed AND current order doesn't match
+  useEffect(()=>{
+    if(lineOrder&&lineOrder.length!==summary.lines.length)setLineOrder(null);
+  },[summary.lines.length]);
 
   const autoSpecs=useMemo(()=>buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs),
     [vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs]);
