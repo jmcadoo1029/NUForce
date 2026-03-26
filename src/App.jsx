@@ -1524,7 +1524,7 @@ import { supabase } from "./supabaseClient";
 // ── Supabase storage helpers ──────────────────────────────────────────────────
 async function saveQuoteToSupabase(quote, autoSpecs, autoNotes) {
   const row = {
-    id:               quote.id || undefined,
+    ...(quote.id ? { id: quote.id } : {}),
     opportunity:      quote.qi?.opp    || quote.opp    || null,
     customer:         quote.qi?.account|| quote.customer|| null,
     rfq:              quote.qi?.rfq    || quote.rfq    || null,
