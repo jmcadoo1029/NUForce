@@ -1979,12 +1979,25 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
 
   // Instrumentation — non-shock/vib items not already placed inline
   if(inst.on){
-    const SKIP=new Set(["shock","cmShock","vib","cmVib","hsv"]);
-    const P={};const L={};const IC={};
+    // Items handled inline within vib/shock loops — only add here if no active vib/shock
+    const hasActiveVib=vibs.some(s=>s.on);
+    const hasActiveShock=shocks.some(s=>s.on);
+    const INLINE=new Set(["shock","cmShock","vib","cmVib","hsv"]);
+    const PRICES={shock:525,cmShock:350,vib:700,cmVib:750,hsv:1950,addl:1200};
+    const LABELS={shock:"Shock Instrumentation",cmShock:"Contact Monitoring (Shock)",
+      vib:"Vib Instrumentation",cmVib:"Contact Monitoring (Vibe)",hsv:"High Speed Video"};
+    const CODES={shock:"33",cmShock:"33",vib:"33",cmVib:"33",hsv:"32"};
     Object.entries(inst.items||{}).forEach(([k,v])=>{
-      if(!v?.on||SKIP.has(k))return;
-      const prices={addl:1200};
-      add(L[k]||k,(prices[k]||0)*sf(v.channels,1),null,"33");
+      if(!v?.on)return;
+      // Skip inline items if their parent test section is active (already added inline)
+      if(INLINE.has(k)){
+        if(k==="vib"||k==="cmVib"){if(hasActiveVib)return;}
+        else if(k==="shock"||k==="cmShock"||k==="hsv"){if(hasActiveShock)return;}
+      }
+      const price=PRICES[k]||0;
+      const label=LABELS[k]||k;
+      const code=CODES[k]||"33";
+      if(price>0)add(label,price*sf(v.channels,1),null,code);
     });
   }
 
