@@ -2943,7 +2943,7 @@ const STANDARD_TERMS = [
     };
     const drawFooter = () => {
       setF('normal', 8, MUTED);
-      doc.text('NU Laboratories, Inc. | '+(qi.opp||''), ML, PH-18);
+      doc.text('NU Laboratories, Inc. | '+((qi.opp||'')+(qi.rev||'')), ML, PH-18);
       doc.text('Page 1 | '+(qi.revDate||qi.date||''), PW-MR, PH-18, {align:'right'});
       doc.setDrawColor(...LIGHT); doc.setLineWidth(0.5);
       doc.line(ML, PH-26, PW-MR, PH-26);
@@ -2965,7 +2965,7 @@ const STANDARD_TERMS = [
     setF('bold', 13, DARK); doc.text('DC MAGNETICS', ML, y);
     setF('normal', 8.5, MUTED); doc.text('Test Specifications', ML, y+13);
     setF('normal', 9, MUTED); doc.text('Date: '+(qi.revDate||qi.date||''), PW-MR, y, {align:'right'});
-    if(qi.opp){ setF('bold',9,DARK); doc.text(qi.opp, PW-MR, y+13, {align:'right'}); }
+    if(qi.opp){ setF('bold',9,DARK); doc.text(qi.opp+(qi.rev||''), PW-MR, y+13, {align:'right'}); }
     y += 34;
     doc.setDrawColor(...LIGHT); doc.setLineWidth(0.5);
     doc.line(ML, y, PW-MR, y);
@@ -3063,7 +3063,7 @@ const STANDARD_TERMS = [
     }
 
     drawFooter();
-    const fname = (qi.opp||'DC-Mag-Specs')+'.pdf';
+    const fname = (qi.opp+(qi.rev||'')||'DC-Mag-Specs')+'.pdf';
     doc.save(fname);
   };
 
@@ -3101,7 +3101,7 @@ const STANDARD_TERMS = [
     const drawFooter = () => {
       const p = doc.internal.getCurrentPageInfo().pageNumber;
       setF('normal', 8, MUTED);
-      doc.text('NU Laboratories, Inc. | '+(qi.opp||''), ML, PH-18);
+      doc.text('NU Laboratories, Inc. | '+((qi.opp||'')+(qi.rev||'')), ML, PH-18);
       doc.text('Page '+p+' | '+(qi.revDate||qi.date||''), PW-MR, PH-18, {align:'right'});
       doc.setDrawColor(...LIGHT); doc.setLineWidth(0.5);
       doc.line(ML, PH-26, PW-MR, PH-26);
@@ -3132,7 +3132,7 @@ const STANDARD_TERMS = [
     setF('bold', 13, DARK); doc.text('POWER QUALITY', ML, y);
     setF('normal', 8.5, MUTED); doc.text('MIL-STD-1399 Section 300B — Test Specifications', ML, y+13);
     setF('normal', 9, MUTED); doc.text('Date: '+(qi.revDate||qi.date||''), PW-MR, y, {align:'right'});
-    if(qi.opp){ setF('bold',9,DARK); doc.text(qi.opp, PW-MR, y+13, {align:'right'}); }
+    if(qi.opp){ setF('bold',9,DARK); doc.text(qi.opp+(qi.rev||''), PW-MR, y+13, {align:'right'}); }
     y += 34;
     doc.setDrawColor(...LIGHT); doc.setLineWidth(0.5);
     doc.line(ML, y, PW-MR, y);
@@ -3269,7 +3269,7 @@ const STANDARD_TERMS = [
     });
     y+=4;
 
-    const fname = (qi.opp||'PQ-300B-Specs')+'.pdf';
+    const fname = (qi.opp+(qi.rev||'')||'PQ-300B-Specs')+'.pdf';
     doc.save(fname);
   };
 
@@ -3320,7 +3320,7 @@ const STANDARD_TERMS = [
     setF('bold',13,DARK);doc.text('EMI TESTING',ML,y);
     setF('normal',8.5,MUTED);doc.text('MIL-STD-461F -- Test Specifications',ML,y+13);
     setF('normal',9,MUTED);doc.text('Date: '+(qi.revDate||qi.date||''),PW-MR,y,{align:'right'});
-    if(qi.opp){setF('bold',9,DARK);doc.text(qi.opp,PW-MR,y+13,{align:'right'});}
+    if(qi.opp){setF('bold',9,DARK);doc.text(qi.opp+(qi.rev||''),PW-MR,y+13,{align:'right'});}
     y+=34;
     doc.setDrawColor(...LIGHT);doc.setLineWidth(0.5);doc.line(ML,y,PW-MR,y);y+=16;
 
@@ -3503,7 +3503,7 @@ const STANDARD_TERMS = [
 
     const tp=doc.internal.getNumberOfPages();
     for(let p=1;p<=tp;p++){doc.setPage(p);drawFooter();}
-    const fname=(qi.opp||'EMI-461F-Specs')+'.pdf';
+    const fname=(qi.opp+(qi.rev||'')||'EMI-461F-Specs')+'.pdf';
     doc.save(fname);
   };
 
@@ -3554,7 +3554,7 @@ const STANDARD_TERMS = [
     setF('bold',13,DARK);doc.text('EMI TESTING',ML,y);
     setF('normal',8.5,MUTED);doc.text('MIL-STD-461G -- Test Specifications',ML,y+13);
     setF('normal',9,MUTED);doc.text('Date: '+(qi.revDate||qi.date||''),PW-MR,y,{align:'right'});
-    if(qi.opp){setF('bold',9,DARK);doc.text(qi.opp,PW-MR,y+13,{align:'right'});}
+    if(qi.opp){setF('bold',9,DARK);doc.text(qi.opp+(qi.rev||''),PW-MR,y+13,{align:'right'});}
     y+=34;
     doc.setDrawColor(...LIGHT);doc.setLineWidth(0.5);doc.line(ML,y,PW-MR,y);y+=16;
 
@@ -3734,7 +3734,7 @@ const STANDARD_TERMS = [
 
     const tp=doc.internal.getNumberOfPages();
     for(let p=1;p<=tp;p++){doc.setPage(p);drawFooter();}
-    const fname=(qi.opp||'EMI-461G-Specs')+'.pdf';
+    const fname=(qi.opp+(qi.rev||'')||'EMI-461G-Specs')+'.pdf';
     doc.save(fname);
   };
 
@@ -3772,7 +3772,7 @@ const STANDARD_TERMS = [
     const drawFooter = () => {
       const p = doc.internal.getCurrentPageInfo().pageNumber;
       setF('normal', 8, MUTED);
-      doc.text('NU Laboratories, Inc. | '+(qi.opp||''), ML, PH-18);
+      doc.text('NU Laboratories, Inc. | '+((qi.opp||'')+(qi.rev||'')), ML, PH-18);
       doc.text('Page '+p+' | '+(qi.revDate||qi.date||''), PW-MR, PH-18, {align:'right'});
       doc.setDrawColor(...LIGHT); doc.setLineWidth(0.5);
       doc.line(ML, PH-26, PW-MR, PH-26);
@@ -3803,7 +3803,7 @@ const STANDARD_TERMS = [
     setF('bold', 13, DARK); doc.text('POWER QUALITY', ML, y);
     setF('normal', 8.5, MUTED); doc.text('MIL-STD-1399 Section 300 Part 1 -- Test Specifications', ML, y+13);
     setF('normal', 9, MUTED); doc.text('Date: '+(qi.revDate||qi.date||''), PW-MR, y, {align:'right'});
-    if(qi.opp){ setF('bold',9,DARK); doc.text(qi.opp, PW-MR, y+13, {align:'right'}); }
+    if(qi.opp){ setF('bold',9,DARK); doc.text(qi.opp+(qi.rev||''), PW-MR, y+13, {align:'right'}); }
     y += 34;
     doc.setDrawColor(...LIGHT); doc.setLineWidth(0.5);
     doc.line(ML, y, PW-MR, y);
@@ -3938,7 +3938,7 @@ const STANDARD_TERMS = [
     });
     y+=4;
 
-    const fname = (qi.opp||'PQ-300-Part1-Specs')+'.pdf';
+    const fname = (qi.opp+(qi.rev||'')||'PQ-300-Part1-Specs')+'.pdf';
     doc.save(fname);
   };
 
@@ -3967,7 +3967,7 @@ const STANDARD_TERMS = [
     const drawFooter = () => {
       const p = doc.internal.getCurrentPageInfo().pageNumber;
       setF('normal', 8, MUTED);
-      doc.text('NU Laboratories, Inc. | '+(qi.opp||''), ML, PH-18);
+      doc.text('NU Laboratories, Inc. | '+((qi.opp||'')+(qi.rev||'')), ML, PH-18);
       doc.text('Page '+p+' | '+(qi.revDate||qi.date||''), PW-MR, PH-18, {align:'right'});
       doc.setDrawColor(...LIGHT); doc.setLineWidth(0.5);
       doc.line(ML, PH-26, PW-MR, PH-26);
@@ -4028,7 +4028,7 @@ const STANDARD_TERMS = [
 
     // Quote # and date
     setF('bold', 16, DARK);
-    doc.text('Quote #'+(qi.opp||''), ML, y);
+    doc.text('Quote #'+((qi.opp||'')+(qi.rev||'')), ML, y);
     setF('normal', 10, MUTED);
     doc.text('Date: '+(qi.revDate||qi.date||''), PW-MR, y, {align:'right'});
     y += 24;
@@ -4283,7 +4283,7 @@ const STANDARD_TERMS = [
       // Title
       setF('bold', 16, RED); doc.text('BUDGET MATERIALS', ML, y); y += 4;
       setF('normal', 9, MUTED); doc.text('Date: '+(qi.revDate||qi.date||''), PW-MR, y-10, {align:'right'});
-      if(qi.opp){ setF('normal',9,DARK); doc.text('Opportunity: ',ML,y+6); setF('bold',9,DARK); doc.text(qi.opp,ML+55,y+6); y+=20; }
+      if(qi.opp){ setF('normal',9,DARK); doc.text('Opportunity: ',ML,y+6); setF('bold',9,DARK); doc.text(qi.opp+(qi.rev||''),ML+55,y+6); y+=20; }
       else{ y+=14; }
       // Internal notes
       const bNotes=(budget.notes||'').trim();
@@ -4339,7 +4339,7 @@ const STANDARD_TERMS = [
     const tp = doc.internal.getNumberOfPages();
     for(let p=1;p<=tp;p++){ doc.setPage(p); drawFooter(); }
 
-    const fname=(qi.opp||'Quote')+(budgetOnly?' Budget':'')+'.pdf';
+    const fname=((qi.opp+(qi.rev||''))||'Quote')+(budgetOnly?' Budget':'')+'.pdf';
     doc.save(fname);
   };
 
