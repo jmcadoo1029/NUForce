@@ -1524,7 +1524,7 @@ import { supabase } from "./supabaseClient";
 // ── Supabase storage helpers ──────────────────────────────────────────────────
 async function saveQuoteToSupabase(quote, autoSpecs, autoNotes) {
   const row = {
-    ...(quote.id ? { id: quote.id } : {}),
+    id: quote.id || undefined,
     opportunity:      quote.qi?.opp    || quote.opp    || null,
     customer:         quote.qi?.account|| quote.customer|| null,
     rfq:              quote.qi?.rfq    || quote.rfq    || null,
@@ -1565,11 +1565,22 @@ async function saveQuoteToSupabase(quote, autoSpecs, autoNotes) {
     ].filter(Boolean).join(" ").toLowerCase(),
   };
 
-  const { data, error } = await supabase
-    .from("quotes")
-    .upsert(row, { onConflict: "id" })
-    .select("id")
-    .single();
+  let data, error;
+  if (row.id) {
+    const { id, ...updateRow } = row;
+    ({ data, error } = await supabase
+      .from("quotes")
+      .update(updateRow)
+      .eq("id", id)
+      .select("id")
+      .single());
+  } else {
+    ({ data, error } = await supabase
+      .from("quotes")
+      .insert(row)
+      .select("id")
+      .single());
+  }
 
   if (error) { console.error("Supabase save error:", error); return null; }
   return data.id;
