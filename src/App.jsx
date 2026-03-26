@@ -2449,7 +2449,7 @@ export default function App({onLogout,currentUser}){
     setLocked(true);
     setShowApprovalModal(false);
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId)setCurrentQuoteId(newId);
     await sendSubmitEmail(currentUser);
@@ -2461,7 +2461,7 @@ export default function App({onLogout,currentUser}){
     setApproval(newApproval);
     setApprovalComments("");
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId)setCurrentQuoteId(newId);
     await sendDecisionEmail("APPROVED",currentUser,approvalComments,approval.submittedBy);
@@ -2474,7 +2474,7 @@ export default function App({onLogout,currentUser}){
     setLocked(false);
     setApprovalComments("");
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId)setCurrentQuoteId(newId);
     await sendDecisionEmail("REJECTED",currentUser,approvalComments,approval.submittedBy);
@@ -2499,7 +2499,7 @@ export default function App({onLogout,currentUser}){
       if(!q)continue;
       const evtQ={event:decision,by:currentUser,at:now,comments:queueComments};
       const newApproval={...q.approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(q.approval?.history||[]),evtQ]};
-      await saveQuoteToSupabase({...q,approval:newApproval,summary:q.summary},autoSpecs,autoNotes);
+      await saveQuoteToSupabase({...q,approval:newApproval,summary:q.summary,lineOrder:q.lineOrder,lineOverrides:q.lineOverrides},autoSpecs,autoNotes);
       await sendDecisionEmail(decision.toUpperCase(),currentUser,queueComments,q.approval?.submittedBy||"");
     }
     // Reload from Supabase to ensure UI is fully in sync
@@ -5133,16 +5133,29 @@ const STANDARD_TERMS = [
                 <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2,marginBottom:3}}>SPECIFICATIONS</div>
                 <div style={{fontSize:9,color:C.dim,marginBottom:4}}>Auto-generated from enabled tests. Shown on quote PDF. Edit to override.</div>
                 <textarea
-                  value={ti.tiSpecs||autoSpecs||""}
-                  onChange={e=>setTi({...ti,tiSpecs:e.target.value})}
+                  value={(()=>{
+                    const manual=ti.tiSpecs||"";
+                    if(!autoSpecs)return manual;
+                    if(!manual)return autoSpecs;
+                    // If auto specs already appended, don't double-add
+                    if(manual.includes(autoSpecs))return manual;
+                    return manual+"
+
+"+autoSpecs;
+                  })()}
+                  onChange={e=>{
+                    // Strip auto-generated portion so manual edits are preserved cleanly
+                    const val=e.target.value;
+                    const stripped=autoSpecs?val.replace("
+
+"+autoSpecs,"").replace(autoSpecs,""):val;
+                    setTi({...ti,tiSpecs:stripped});
+                  }}
                   placeholder="Enable test sections to auto-generate scope text, or type here..."
                   rows={5}
                   style={{...inp,width:"100%",resize:"vertical",fontSize:11,lineHeight:1.6}}/>
-                {ti.tiSpecs&&ti.tiSpecs!==autoSpecs&&(
-                  <button onClick={()=>setTi({...ti,tiSpecs:""})}
-                    style={{fontSize:9,color:C.dim,background:"none",border:"none",cursor:"pointer",padding:"2px 0",marginTop:2}}>
-                    ↺ Reset to auto-generated
-                  </button>
+                {autoSpecs&&(
+                  <div style={{fontSize:9,color:C.green,marginTop:2}}>✓ Auto-generated specs appended below any existing text</div>
                 )}
               </div>
               {/* Notes to customer */}
