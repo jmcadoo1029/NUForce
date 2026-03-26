@@ -1590,9 +1590,36 @@ async function loadQuotesFromSupabase() {
   const { data, error } = await supabase
     .from("quotes")
     .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, updated_at, data")
-    .order("updated_at", { ascending: false });
+    .order("updated_at", { ascending: false })
+    .limit(1000);
 
   if (error) { console.error("Supabase load error:", error); return {}; }
+
+  const map = {};
+  (data || []).forEach(row => {
+    const q = row.data || {};
+    map[row.id] = {
+      ...q,
+      id:          row.id,
+      opp:         row.opportunity || q.opp,
+      customer:    row.customer    || q.customer,
+      rfq:         row.rfq         || q.rfq,
+      total:       row.total       || q.total,
+      savedAt:     row.updated_at,
+      approval:    { ...(q.approval||{}), status: row.approval_status || q.approval?.status || "none" },
+    };
+  });
+  return map;
+}
+
+async function loadPendingQuotes() {
+  const { data, error } = await supabase
+    .from("quotes")
+    .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, updated_at, data")
+    .eq("approval_status", "pending")
+    .order("updated_at", { ascending: false });
+
+  if (error) { console.error("Supabase pending load error:", error); return {}; }
 
   const map = {};
   (data || []).forEach(row => {
@@ -2373,6 +2400,7 @@ export default function App({onLogout,currentUser}){
   // ── Load saved quotes on startup ────────────────────────────────────────────
   useEffect(()=>{
     loadQuotesFromSupabase().then(q=>setSavedQuotes(q));
+    loadPendingQuotes().then(q=>setSavedQuotes(prev=>({...prev,...q})));
   },[]);
 
   const loadEmailJS=()=>new Promise((res,rej)=>{
@@ -4329,7 +4357,7 @@ const STANDARD_TERMS = [
             )}
             <div style={{flex:1}}/>
             {isApprover&&(
-              <button onClick={async()=>{const q=await loadQuotesFromSupabase();setSavedQuotes(q);setShowApprovalQueue(true);setQueueSelected(new Set());}}
+              <button onClick={async()=>{const q=await loadQuotesFromSupabase();const p=await loadPendingQuotes();setSavedQuotes({...q,...p});setShowApprovalQueue(true);setQueueSelected(new Set());}}
                 style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.25)",borderRadius:6,
                   padding:"3px 12px",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
                 📥 QUEUE
