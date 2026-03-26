@@ -1616,13 +1616,22 @@ async function loadPendingQuotes() {
   const { data, error } = await supabase
     .from("quotes")
     .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, updated_at, data")
-    .eq("approval_status", "pending")
+    .in("approval_status", ["pending"])
     .order("updated_at", { ascending: false });
+
+  // Also fetch pending_won from data blob (stored inside data, not top-level column)
+  const { data: wonData } = await supabase
+    .from("quotes")
+    .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, updated_at, data")
+    .eq("stage", "Closed Won")
+    .order("updated_at", { ascending: false })
+    .limit(200);
+  const wonPending=(wonData||[]).filter(r=>(r.data?.wonApproval?.status==="pending_won"));
 
   if (error) { console.error("Supabase pending load error:", error); return {}; }
 
   const map = {};
-  (data || []).forEach(row => {
+  [...(data||[]), ...(wonPending||[])].forEach(row => {
     const q = row.data || {};
     map[row.id] = {
       ...q,
@@ -1633,6 +1642,7 @@ async function loadPendingQuotes() {
       total:       row.total       || q.total,
       savedAt:     row.updated_at,
       approval:    { ...(q.approval||{}), status: row.approval_status || q.approval?.status || "none" },
+      wonApproval: q.wonApproval || {status:"none"},
     };
   });
   return map;
@@ -2375,6 +2385,8 @@ export default function App({onLogout,currentUser}){
   const [showCloneModal,setShowCloneModal]=useState(false);
   const [cloneOppInput,setCloneOppInput]=useState("");
   const [currentQuoteId,setCurrentQuoteId]=useState(null);
+  const [wonApproval,setWonApproval]=useState({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
+  const [showCreateProjectAlert,setShowCreateProjectAlert]=useState(false);
   const [currentQuoteSource,setCurrentQuoteSource]=useState("vibrato");
 
   // EmailJS config — fill in after setting up emailjs.com
@@ -2397,7 +2409,7 @@ export default function App({onLogout,currentUser}){
   useEffect(()=>{
     const opp=qi.opp||"";
     const rev=qi.rev||"";
-    const label=opp?(opp+(rev?" – Rev "+rev:"")):"Vibrato";
+    const label=opp?opp:"Vibrato";
     document.title=label;
   },[qi.opp,qi.rev]);
 
@@ -2497,13 +2509,46 @@ export default function App({onLogout,currentUser}){
     setLocked(false);
   };
 
+  // ── Closed Won Approval ──────────────────────────────────────────────────────
+  const handleSubmitWonApproval=async()=>{
+    const newWonApproval={status:"pending_won",submittedBy:currentUser,submittedAt:new Date().toISOString(),decidedBy:"",decidedAt:"",comments:""};
+    setWonApproval(newWonApproval);
+    setLocked(true);
+    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,summary,lineOrder,lineOverrides};
+    const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+    if(newId)setCurrentQuoteId(newId);
+  };
+
+  const handleWonApprove=async(comments)=>{
+    const newWonApproval={...wonApproval,status:"won_approved",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:comments||""};
+    setWonApproval(newWonApproval);
+    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,summary,lineOrder,lineOverrides};
+    const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+    if(newId)setCurrentQuoteId(newId);
+  };
+
+  const handleWonReject=async(comments)=>{
+    const newWonApproval={...wonApproval,status:"won_rejected",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:comments||""};
+    setWonApproval(newWonApproval);
+    setLocked(false);
+    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,summary,lineOrder,lineOverrides};
+    const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+    if(newId)setCurrentQuoteId(newId);
+  };
+
   // ── Approval Queue (approver dashboard) ──
   const [showApprovalQueue,setShowApprovalQueue]=useState(false);
   const [queueSelected,setQueueSelected]=useState(new Set());
   const [queueComments,setQueueComments]=useState("");
 
-  const pendingQuotes=Object.values(savedQuotes).filter(q=>q.approval?.status==="pending")
+  const pendingQuoteApprovals=Object.values(savedQuotes).filter(q=>q.approval?.status==="pending")
     .sort((a,b)=>new Date(b.approval?.submittedAt||0)-new Date(a.approval?.submittedAt||0));
+  const pendingWonApprovals=Object.values(savedQuotes).filter(q=>q.wonApproval?.status==="pending_won")
+    .sort((a,b)=>new Date(b.wonApproval?.submittedAt||0)-new Date(a.wonApproval?.submittedAt||0));
+  const pendingQuotes=[...pendingQuoteApprovals,...pendingWonApprovals];
 
   const handleQueueDecision=async(decision,idsToProcess)=>{
     const now=new Date().toISOString();
@@ -2590,7 +2635,7 @@ export default function App({onLogout,currentUser}){
     const result=window.confirm("Save the current quote before switching?\n\nClick OK to save, or Cancel to discard.");
     if(result){
       const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
-        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,summary,lineOrder,lineOverrides};
+        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
       await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     }
     const existing=await loadQuotesFromSupabase();
@@ -2668,7 +2713,7 @@ export default function App({onLogout,currentUser}){
     const result=window.confirm("Save the current quote before cloning?\n\nClick OK to save first, or Cancel to clone without saving.");
     if(result){
       const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
-        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,summary,lineOrder,lineOverrides};
+        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
       saveQuoteToSupabase(q,autoSpecs,autoNotes);
     }
     setCloneOppInput("");
@@ -2684,6 +2729,7 @@ export default function App({onLogout,currentUser}){
     setLineOverrides({});
     setCurrentQuoteSource("vibrato");
     setLocked(false);
+    setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setShowCloneModal(false);
     setCloneOppInput("");
@@ -2695,7 +2741,7 @@ export default function App({onLogout,currentUser}){
     if(result){
       const id=currentQuoteId||undefined;
       const q={id,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
-        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,summary,lineOrder,lineOverrides};
+        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
       saveQuoteToSupabase(q,autoSpecs,autoNotes);
     }
     // Reset all state to blank defaults
@@ -2713,6 +2759,7 @@ export default function App({onLogout,currentUser}){
     setWonInfo({wonDate:"",jobNum:"",poNum:""}); setWonLocked(false);
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("vibrato");
+    setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
     localStorage.removeItem("vibrato_last_quote_id");
     window.scrollTo({top:0,behavior:"smooth"});
   };
@@ -2720,7 +2767,7 @@ export default function App({onLogout,currentUser}){
   // Save quote to Supabase
   const handleSave=async()=>{
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,summary,lineOrder,lineOverrides};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){
       setCurrentQuoteId(newId);
@@ -2771,6 +2818,7 @@ export default function App({onLogout,currentUser}){
     if(q.td)setTd(q.td);
     if(q.setup)setSetup(q.setup);
     if(q.approval)setApproval(q.approval); else setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
+    if(q.wonApproval)setWonApproval(q.wonApproval); else setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
     if(q.wonInfo)setWonInfo(q.wonInfo); else setWonInfo({wonDate:"",jobNum:"",poNum:""});
     if(q.lineOrder!==undefined)setLineOrder(q.lineOrder); else setLineOrder(null);
     if(q.lineOverrides!==undefined)setLineOverrides(q.lineOverrides); else setLineOverrides({});
@@ -3015,7 +3063,7 @@ const STANDARD_TERMS = [
     }
 
     drawFooter();
-    const fname = (qi.opp||'DC-Mag-Specs')+(qi.rev?' Rev '+qi.rev:'')+'.pdf';
+    const fname = (qi.opp||'DC-Mag-Specs')+'.pdf';
     doc.save(fname);
   };
 
@@ -3221,7 +3269,7 @@ const STANDARD_TERMS = [
     });
     y+=4;
 
-    const fname = (qi.opp||'PQ-300B-Specs')+(qi.rev?' Rev '+qi.rev:'')+'.pdf';
+    const fname = (qi.opp||'PQ-300B-Specs')+'.pdf';
     doc.save(fname);
   };
 
@@ -3455,7 +3503,7 @@ const STANDARD_TERMS = [
 
     const tp=doc.internal.getNumberOfPages();
     for(let p=1;p<=tp;p++){doc.setPage(p);drawFooter();}
-    const fname=(qi.opp||'EMI-461F-Specs')+(qi.rev?' Rev '+qi.rev:'')+'.pdf';
+    const fname=(qi.opp||'EMI-461F-Specs')+'.pdf';
     doc.save(fname);
   };
 
@@ -3686,7 +3734,7 @@ const STANDARD_TERMS = [
 
     const tp=doc.internal.getNumberOfPages();
     for(let p=1;p<=tp;p++){doc.setPage(p);drawFooter();}
-    const fname=(qi.opp||'EMI-461G-Specs')+(qi.rev?' Rev '+qi.rev:'')+'.pdf';
+    const fname=(qi.opp||'EMI-461G-Specs')+'.pdf';
     doc.save(fname);
   };
 
@@ -3890,7 +3938,7 @@ const STANDARD_TERMS = [
     });
     y+=4;
 
-    const fname = (qi.opp||'PQ-300-Part1-Specs')+(qi.rev?' Rev '+qi.rev:'')+'.pdf';
+    const fname = (qi.opp||'PQ-300-Part1-Specs')+'.pdf';
     doc.save(fname);
   };
 
@@ -3980,7 +4028,7 @@ const STANDARD_TERMS = [
 
     // Quote # and date
     setF('bold', 16, DARK);
-    doc.text('Quote #'+(qi.opp||'')+(qi.rev||''), ML, y);
+    doc.text('Quote #'+(qi.opp||''), ML, y);
     setF('normal', 10, MUTED);
     doc.text('Date: '+(qi.revDate||qi.date||''), PW-MR, y, {align:'right'});
     y += 24;
@@ -4291,7 +4339,7 @@ const STANDARD_TERMS = [
     const tp = doc.internal.getNumberOfPages();
     for(let p=1;p<=tp;p++){ doc.setPage(p); drawFooter(); }
 
-    const fname=(qi.opp||'Quote')+(qi.rev?' Rev '+qi.rev:'')+(budgetOnly?' Budget':'')+'.pdf';
+    const fname=(qi.opp||'Quote')+(budgetOnly?' Budget':'')+'.pdf';
     doc.save(fname);
   };
 
@@ -4360,6 +4408,25 @@ const STANDARD_TERMS = [
                   color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",letterSpacing:.5}}>
                 📋 {approval.status==="approved"&&!locked?"RE-SUBMIT":"SUBMIT"}
               </button>
+            )}
+            {qi.stage==="Closed Won"&&wonApproval.status==="none"&&(
+              <button onClick={handleSubmitWonApproval}
+                style={{background:"#1e8449",border:"none",borderRadius:6,padding:"4px 12px",
+                  color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",letterSpacing:.5}}>
+                🏆 SUBMIT WON
+              </button>
+            )}
+            {qi.stage==="Closed Won"&&wonApproval.status==="pending_won"&&(
+              <div style={{background:"rgba(30,132,73,0.15)",borderRadius:5,padding:"3px 10px",
+                fontSize:11,fontWeight:700,color:"#145a32"}}>
+                🏆 WON PENDING
+              </div>
+            )}
+            {qi.stage==="Closed Won"&&wonApproval.status==="won_approved"&&(
+              <div style={{background:"rgba(30,132,73,0.15)",borderRadius:5,padding:"3px 10px",
+                fontSize:11,fontWeight:700,color:"#145a32"}}>
+                ✅ WON APPROVED
+              </div>
             )}
             {isApprover&&approval.status==="pending"&&(
               <>
@@ -4452,7 +4519,7 @@ const STANDARD_TERMS = [
                   <div style={{flex:1}}>
                     <div style={{fontWeight:700,fontSize:16,color:"#1a2332"}}>📥 Approval Queue</div>
                     <div style={{fontSize:11,color:"#6b7a8d",marginTop:2}}>
-                      {pendingQuotes.length} quote{pendingQuotes.length!==1?"s":""} pending approval
+                      {pendingQuoteApprovals.length} quote approval{pendingQuoteApprovals.length!==1?"s":""} · {pendingWonApprovals.length} closed won approval{pendingWonApprovals.length!==1?"s":""}
                     </div>
                   </div>
                   {queueSelected.size>0&&(
@@ -4502,9 +4569,12 @@ const STANDARD_TERMS = [
                             <input type="checkbox" checked={sel} onChange={()=>{}}
                               style={{accentColor:"#6d28d9",width:14,height:14,flexShrink:0,pointerEvents:"none"}}/>
                             <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontWeight:600,fontSize:13,color:"#1a2332",marginBottom:2}}>
+                              <div style={{fontWeight:600,fontSize:13,color:"#1a2332",marginBottom:2,display:"flex",alignItems:"center",gap:8}}>
                                 {q.qi?.opp||q.opp||"(no opportunity #)"}
-                                {q.qi?.rev&&<span style={{fontSize:11,color:"#6b7a8d",marginLeft:6}}>Rev {q.qi.rev}</span>}
+                                {q.wonApproval?.status==="pending_won"
+                                  ?<span style={{fontSize:9,background:"#d1fae5",color:"#065f46",borderRadius:4,padding:"2px 6px",fontWeight:700}}>🏆 CLOSED WON</span>
+                                  :<span style={{fontSize:9,background:"#ede9fe",color:"#4c1d95",borderRadius:4,padding:"2px 6px",fontWeight:700}}>📋 QUOTE</span>
+                                }
                               </div>
                               <div style={{fontSize:11,color:"#6b7a8d",display:"flex",gap:12,flexWrap:"wrap"}}>
                                 {(q.qi?.customer||q.customer)&&<span>{q.qi?.customer||q.customer}</span>}
@@ -4582,7 +4652,7 @@ const STANDARD_TERMS = [
                   <div style={{flex:1}}>
                     <div style={{fontWeight:700,fontSize:15,color:"#1a2332"}}>📋 Approval History</div>
                     <div style={{fontSize:11,color:"#6b7a8d",marginTop:2}}>
-                      {qi.opp||"(no opportunity #)"}{qi.rev?` Rev ${qi.rev}`:""}
+                      {qi.opp||"(no opportunity #)"}
                     </div>
                   </div>
                   <button onClick={()=>setShowApprovalHistory(false)}
@@ -4818,12 +4888,23 @@ const STANDARD_TERMS = [
                         cursor:wonLocked?"not-allowed":"text"}}/>
                   </div>
                 ))}
-                <div style={{display:"flex",gap:10,justifyContent:"flex-end",marginTop:6}}>
+                <div style={{display:"flex",gap:10,justifyContent:"space-between",alignItems:"center",marginTop:6}}>
+                  <button onClick={()=>setShowCreateProjectAlert(true)}
+                    style={{background:"#1a5276",border:"none",borderRadius:7,padding:"8px 18px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",gap:6}}>
+                    🏗️ Create Project
+                  </button>
                   <button onClick={()=>setShowWonModal(false)}
                     style={{background:"#1e8449",border:"none",borderRadius:7,padding:"8px 22px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff"}}>
                     Save &amp; Close
                   </button>
                 </div>
+                {showCreateProjectAlert&&(
+                  <div style={{marginTop:10,background:"#f0f9ff",border:"1px solid #0ea5e9",borderRadius:7,padding:"10px 14px",fontSize:12,color:"#0c4a6e",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                    <span>🚧 Feature coming soon</span>
+                    <button onClick={()=>setShowCreateProjectAlert(false)}
+                      style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#0c4a6e",fontWeight:700}}>×</button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -4833,7 +4914,7 @@ const STANDARD_TERMS = [
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
                 <span style={{fontSize:15}}>📋</span>
                 <span style={{fontSize:12,color:"#4c1d95",fontWeight:700}}>
-                  Pending Approval — submitted by {approval.submittedBy} on {approval.submittedAt?new Date(approval.submittedAt).toLocaleDateString():""} 
+                  Pending Quote Approval — submitted by {approval.submittedBy} on {approval.submittedAt?new Date(approval.submittedAt).toLocaleDateString():""} 
                 </span>
               </div>
               <div style={{fontSize:11,color:"#6b7a8d",marginBottom:6}}>
@@ -4843,6 +4924,34 @@ const STANDARD_TERMS = [
                 placeholder="Comments for the submitter..."
                 rows={2}
                 style={{width:"100%",fontSize:11,borderRadius:6,border:"1px solid #d0d7de",padding:"6px 8px",resize:"vertical",fontFamily:"inherit",boxSizing:"border-box",marginBottom:8}}/>
+            </div>
+          )}
+          {isApprover&&wonApproval.status==="pending_won"&&(
+            <div style={{position:"sticky",top:0,zIndex:100,background:"rgba(30,132,73,0.08)",
+              border:"1px solid #1e8449",borderRadius:8,padding:"10px 14px",marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{fontSize:15}}>🏆</span>
+                <span style={{fontSize:12,color:"#145a32",fontWeight:700}}>
+                  Pending Closed Won Approval — submitted by {wonApproval.submittedBy} on {wonApproval.submittedAt?new Date(wonApproval.submittedAt).toLocaleDateString():""}
+                </span>
+              </div>
+              <div style={{fontSize:11,color:"#6b7a8d",marginBottom:6}}>
+                Add comments (optional) before approving or rejecting:
+              </div>
+              <textarea value={approvalComments} onChange={e=>setApprovalComments(e.target.value)}
+                placeholder="Comments for the submitter..."
+                rows={2}
+                style={{width:"100%",fontSize:11,borderRadius:6,border:"1px solid #d0d7de",padding:"6px 8px",resize:"vertical",fontFamily:"inherit",boxSizing:"border-box",marginBottom:8}}/>
+              <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                <button onClick={()=>handleWonReject(approvalComments)}
+                  style={{background:"#c0392b",border:"none",borderRadius:6,padding:"5px 14px",fontWeight:700,fontSize:11,cursor:"pointer",color:"#fff"}}>
+                  ❌ REJECT WON
+                </button>
+                <button onClick={()=>handleWonApprove(approvalComments)}
+                  style={{background:"#1e8449",border:"none",borderRadius:6,padding:"5px 14px",fontWeight:700,fontSize:11,cursor:"pointer",color:"#fff"}}>
+                  ✅ APPROVE WON
+                </button>
+              </div>
             </div>
           )}
           {/* ── Approval result banner ── */}
@@ -5227,7 +5336,7 @@ const STANDARD_TERMS = [
                 </div>
               )}
               {qi.opp&&<div style={{fontSize:13,color:C.red,fontWeight:600,marginBottom:2}}>
-                {qi.opp}{qi.rev?" Rev "+qi.rev:""}
+                {qi.opp}
               </div>}
               {(qi.billTo||qi.account)&&<div style={{fontSize:11,color:C.muted,marginBottom:4}}>{qi.billTo||qi.account}</div>}
               {qi.rfq&&<div style={{fontSize:10,color:C.dim,marginBottom:10}}>{"RFQ: "}{qi.rfq}</div>}
