@@ -4368,24 +4368,16 @@ const STANDARD_TERMS = [
                 )}
               </button>
             )}
-            {(()=>{
-              // Who can unlock?
-              // - Submitted for approval: only Owners
-              // - Salesforce imported (not submitted): anyone
-              // - Everything else: anyone
-              const pendingLock = approval.status==="pending";
-              const canUnlock = !pendingLock || isApprover;
-              return (
-                <button
-                  onClick={()=>{ if(canUnlock) setLocked(l=>!l); }}
-                  title={pendingLock&&!isApprover?"Only owners can unlock a quote pending approval":""}
-                  style={{background:locked?"rgba(183,121,31,0.85)":"rgba(45,106,79,0.85)",border:"none",borderRadius:5,padding:"3px 10px",
-                    color:"#fff",fontWeight:700,fontSize:11,cursor:canUnlock?"pointer":"not-allowed",
-                    display:"flex",alignItems:"center",gap:4,opacity:pendingLock&&!isApprover?0.5:1}}>
-                  {locked?"🔒 LOCKED":"🔓 UNLOCKED"}
-                </button>
-              );
-            })()}
+            <button
+              onClick={()=>{ const pendingLock=approval.status==="pending"; if(!pendingLock||isApprover) setLocked(l=>!l); }}
+              title={approval.status==="pending"&&!isApprover?"Only owners can unlock a quote pending approval":""}
+              style={{background:locked?"rgba(183,121,31,0.85)":"rgba(45,106,79,0.85)",border:"none",borderRadius:5,padding:"3px 10px",
+                color:"#fff",fontWeight:700,fontSize:11,
+                cursor:approval.status==="pending"&&!isApprover?"not-allowed":"pointer",
+                display:"flex",alignItems:"center",gap:4,
+                opacity:approval.status==="pending"&&!isApprover?0.5:1}}>
+              {locked?"🔒 LOCKED":"🔓 UNLOCKED"}
+            </button>
           </div>
         )}
       </div>
