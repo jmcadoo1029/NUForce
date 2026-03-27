@@ -3043,6 +3043,7 @@ function Dashboard({onEnterQuote, onLoadQuote, currentUser, isApprover, pendingQ
                         <rect x={barX(i)} y={PAD.t+chartH-barH(m.count)}
                           width={barW} height={barH(m.count)}
                           fill={m.isCurrent?"#1a5276":"#d0d7de"} rx="3"/>
+                        {/* Count label — always just above bar */}
                         <text x={xCenter(i)} y={PAD.t+chartH-barH(m.count)-5}
                           textAnchor="middle" fontSize="10"
                           fontWeight={m.isCurrent?"700":"400"}
@@ -3051,15 +3052,22 @@ function Dashboard({onEnterQuote, onLoadQuote, currentUser, isApprover, pendingQ
                         </text>
                       </g>
                     ))}
-                    {/* Value line */}
-                    <polyline points={points} fill="none" stroke="#c0392b" strokeWidth="2" strokeLinejoin="round"/>
-                    {/* Value dots + labels */}
+                    {/* Value line — thin */}
+                    <polyline points={points} fill="none" stroke="#c0392b" strokeWidth="1.5"
+                      strokeLinejoin="round" strokeDasharray="0"/>
+                    {/* Value dots + labels — offset above line, nudged left/right to avoid bar labels */}
                     {months.map((m,i)=>{
                       const cx=xCenter(i), cy=lineY(m.total);
-                      const label=m.total>=1000?"$"+(m.total/1000).toFixed(0)+"k":"$"+Math.round(m.total);
+                      const label=m.total>=1000?"$"+(m.total/1000).toFixed(1)+"k":"$"+Math.round(m.total);
+                      // Nudge: alternate above/below line based on proximity to bar top
+                      const barTop=PAD.t+chartH-barH(m.count);
+                      const tooClose=Math.abs(cy-barTop)<22;
+                      // If line dot is close to bar top label, push value label further up
+                      const labelY=tooClose ? cy-20 : cy-10;
                       return <g key={m.label}>
-                        <circle cx={cx} cy={cy} r="4" fill="#c0392b" stroke="#fff" strokeWidth="2"/>
-                        <text x={cx} y={cy-9} textAnchor="middle" fontSize="9" fill="#c0392b" fontWeight="600">
+                        <circle cx={cx} cy={cy} r="3" fill="#c0392b" stroke="#fff" strokeWidth="1.5"/>
+                        <text x={cx} y={labelY} textAnchor="middle" fontSize="9"
+                          fill="#c0392b" fontWeight="600">
                           {label}
                         </text>
                       </g>;
