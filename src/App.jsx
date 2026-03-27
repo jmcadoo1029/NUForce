@@ -1692,20 +1692,21 @@ function ClientContactPicker({qi, setQi}){
   },[qi.account]);
 
   useEffect(()=>{
-    if(!clientOpen)return;
     clearTimeout(clientTimer.current);
     if(!clientSearch.trim()){setClientResults([]);return;}
     clientTimer.current=setTimeout(async()=>{
-      const {data}=await supabase
+      const {data,error}=await supabase
         .from("clients")
         .select("id, name")
         .ilike("name",`%${clientSearch.trim()}%`)
         .order("name")
         .limit(30);
+      if(error)console.error("Clients query error:",error);
+      else console.log("Clients results:",data);
       setClientResults(data||[]);
     },250);
     return()=>clearTimeout(clientTimer.current);
-  },[clientOpen, clientSearch]);
+  },[clientSearch]);
 
   useEffect(()=>{
     if(!selectedClient){setContacts([]);return;}
