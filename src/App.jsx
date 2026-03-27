@@ -1671,17 +1671,36 @@ function QuoteSearch({onLoad}){
   const [results,setResults]=useState([]);
   const [open,setOpen]=useState(false);
   const [loading,setLoading]=useState(false);
+  const [showModal,setShowModal]=useState(false);
+  const [modalResults,setModalResults]=useState([]);
+  const [modalLoading,setModalLoading]=useState(false);
   const ref=useRef(null);
   const searchTimer=useRef(null);
+  const inputRef=useRef(null);
 
-  const doSearch=async(term)=>{
-    setLoading(true);
+  const buildRow=(row)=>{
+    const q=row.data||{};
+    return{
+      ...q,
+      id:row.id,
+      opp:row.opportunity||q.opp,
+      customer:row.customer||q.customer,
+      rfq:row.rfq||q.rfq,
+      total:row.total||q.total,
+      savedAt:row.updated_at,
+      stage:row.stage||q.qi?.stage||"",
+      item:q.ti?.item||"",
+      approval:{...(q.approval||{}),status:row.approval_status||q.approval?.status||"none"},
+    };
+  };
+
+  const doSearch=async(term,limit=50)=>{
     let query=supabase
       .from("quotes")
       .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data")
       .order("updated_at",{ascending:false})
       .order("opportunity",{ascending:false})
-      .limit(50);
+      .limit(limit);
     if(term.trim()){
       const t=term.trim().toLowerCase();
       query=query.or(
@@ -1689,80 +1708,116 @@ function QuoteSearch({onLoad}){
       );
     }
     const {data,error}=await query;
-    if(!error&&data){
-      setResults(data.map(row=>{
-        const q=row.data||{};
-        return{
-          ...q,
-          id:row.id,
-          opp:row.opportunity||q.opp,
-          customer:row.customer||q.customer,
-          rfq:row.rfq||q.rfq,
-          total:row.total||q.total,
-          savedAt:row.updated_at,
-          approval:{...(q.approval||{}),status:row.approval_status||q.approval?.status||"none"},
-        };
-      }));
-    }
-    setLoading(false);
+    if(error||!data)return[];
+    return data.map(buildRow);
   };
 
+  // Dropdown search (debounced, 50 results)
   useEffect(()=>{
     if(!open)return;
     clearTimeout(searchTimer.current);
-    searchTimer.current=setTimeout(()=>doSearch(search),300);
+    searchTimer.current=setTimeout(async()=>{
+      setLoading(true);
+      const r=await doSearch(search,50);
+      setResults(r);
+      setLoading(false);
+    },300);
     return()=>clearTimeout(searchTimer.current);
   },[open,search]);
 
-  // Close on outside click
+  // Close dropdown on outside click
   useEffect(()=>{
     const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};
     document.addEventListener("mousedown",h);
     return()=>document.removeEventListener("mousedown",h);
   },[]);
 
-  const filtered=results;
+  // Enter key opens full modal
+  const handleKeyDown=async(e)=>{
+    if(e.key!=="Enter")return;
+    e.preventDefault();
+    setOpen(false);
+    setShowModal(true);
+    setModalLoading(true);
+    // Fetch all matching results (no limit)
+    let allResults=[], from=0, batchSize=500;
+    while(true){
+      let query=supabase
+        .from("quotes")
+        .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data")
+        .order("updated_at",{ascending:false})
+        .order("opportunity",{ascending:false})
+        .range(from, from+batchSize-1);
+      if(search.trim()){
+        const t=search.trim().toLowerCase();
+        query=query.or(`opportunity.ilike.%${t}%,customer.ilike.%${t}%,rfq.ilike.%${t}%,revision.ilike.%${t}%,stage.ilike.%${t}%,search_text.ilike.%${t}%`);
+      }
+      const {data,error}=await query;
+      if(error||!data||data.length===0)break;
+      allResults=allResults.concat(data.map(buildRow));
+      if(data.length<batchSize)break;
+      from+=batchSize;
+    }
+    setModalResults(allResults);
+    setModalLoading(false);
+  };
+
+  const handleSelect=(q)=>{
+    onLoad(q);
+    setOpen(false);
+    setShowModal(false);
+    setSearch("");
+  };
+
+  const stageColor=(stage)=>{
+    if(!stage)return C.dim;
+    if(stage.includes("Won"))return"#1e8449";
+    if(stage.includes("Lost")||stage.includes("Cancelled"))return"#c0392b";
+    if(stage.includes("Pending")||stage.includes("RFQ"))return"#b7791f";
+    return C.muted;
+  };
 
   return(
+    <>
     <div ref={ref} style={{position:"relative"}}>
       <div style={{display:"flex",alignItems:"center",gap:6,background:C.card,
         border:"1px solid "+C.border,borderRadius:7,padding:"5px 10px",cursor:"text"}}
-        onClick={()=>setOpen(true)}>
+        onClick={()=>{setOpen(true);inputRef.current?.focus();}}>
         <span style={{fontSize:14,color:C.muted}}>🔍</span>
-        <input value={search} onChange={e=>{setSearch(e.target.value);setOpen(true);}}
-          placeholder="Search saved quotes…"
-          style={{border:"none",outline:"none",background:"transparent",color:C.text,fontSize:12,width:180}}/>
+        <input ref={inputRef} value={search}
+          onChange={e=>{setSearch(e.target.value);setOpen(true);}}
+          onKeyDown={handleKeyDown}
+          placeholder="Search quotes… (Enter for full results)"
+          style={{border:"none",outline:"none",background:"transparent",color:C.text,fontSize:12,width:220}}/>
       </div>
       {open&&(
-        <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,width:340,
+        <div style={{position:"absolute",top:"calc(100% + 4px)",right:0,width:360,
           background:C.card,border:"1px solid "+C.border,borderRadius:10,
           boxShadow:"0 4px 20px rgba(0,0,0,0.15)",zIndex:1000,maxHeight:380,overflow:"hidden",
           display:"flex",flexDirection:"column"}}>
           <div style={{padding:"8px 12px",borderBottom:"1px solid "+C.border,
-            fontSize:11,color:C.muted,fontWeight:600}}>
-            {loading?"Searching…":filtered.length+" quote"+(filtered.length!==1?"s":"")+" found"+(filtered.length===50?" (showing top 50)":"")}
+            fontSize:11,color:C.muted,fontWeight:600,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>{loading?"Searching…":results.length+" found"+(results.length===50?" · Press Enter for all":"")}</span>
+            {!loading&&results.length===50&&(
+              <button onClick={()=>inputRef.current?.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true}))}
+                style={{background:"none",border:"none",color:C.accent,fontSize:10,cursor:"pointer",fontWeight:600,padding:0}}>
+                Show all →
+              </button>
+            )}
           </div>
           <div style={{overflowY:"auto",flex:1}}>
-            {!loading&&filtered.length===0&&(
-              <div style={{padding:20,textAlign:"center",color:C.dim,fontSize:12}}>
-                No quotes found
-              </div>
+            {!loading&&results.length===0&&(
+              <div style={{padding:20,textAlign:"center",color:C.dim,fontSize:12}}>No quotes found</div>
             )}
-            {filtered.map(q=>(
-              <div key={q.id}
-                onClick={()=>{onLoad(q);setOpen(false);setSearch("");}}
-                style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid "+C.border,
-                  transition:"background .1s"}}
+            {results.map(q=>(
+              <div key={q.id} onClick={()=>handleSelect(q)}
+                style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid "+C.border,transition:"background .1s"}}
                 onMouseEnter={e=>e.currentTarget.style.background=C.panel}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <div style={{fontWeight:600,fontSize:13,color:C.text,marginBottom:2}}>
-                  {q.opp||"Untitled Quote"}
-                </div>
-                <div style={{fontSize:11,color:C.muted}}>
-                  {[q.customer,q.rfq&&"RFQ: "+q.rfq].filter(Boolean).join(" · ")}
-                </div>
+                <div style={{fontWeight:600,fontSize:13,color:C.text,marginBottom:2}}>{q.opp||"Untitled"}</div>
+                <div style={{fontSize:11,color:C.muted}}>{q.customer||""}</div>
                 <div style={{fontSize:10,color:C.dim,marginTop:2}}>
-                  {q.savedAt?new Date(q.savedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"}):""}
+                  {q.savedAt?new Date(q.savedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):""}
                   {q.total?" · "+money(q.total):""}
                 </div>
               </div>
@@ -1771,6 +1826,74 @@ function QuoteSearch({onLoad}){
         </div>
       )}
     </div>
+
+    {/* ── Full Search Modal ── */}
+    {showModal&&(
+      <div style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(0,0,0,0.5)",
+        display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:60}}
+        onClick={e=>{if(e.target===e.currentTarget)setShowModal(false);}}>
+        <div style={{background:"#fff",borderRadius:14,width:760,maxWidth:"95vw",maxHeight:"80vh",
+          boxShadow:"0 8px 40px rgba(0,0,0,0.3)",display:"flex",flexDirection:"column"}}>
+
+          {/* Header */}
+          <div style={{padding:"16px 24px",borderBottom:"1px solid #e8ecf0",display:"flex",alignItems:"center",gap:12}}>
+            <span style={{fontSize:18}}>🔍</span>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,fontSize:15,color:"#1a2332"}}>
+                Search Results{search.trim()?` — "${search.trim()}"`:""}</div>
+              <div style={{fontSize:11,color:"#6b7a8d",marginTop:2}}>
+                {modalLoading?"Searching…":modalResults.length+" quote"+(modalResults.length!==1?"s":"")+" found"}
+              </div>
+            </div>
+            <button onClick={()=>setShowModal(false)}
+              style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#6b7a8d"}}>×</button>
+          </div>
+
+          {/* Column headers */}
+          <div style={{display:"grid",gridTemplateColumns:"2fr 2fr 2fr 1.5fr 1fr",gap:8,
+            padding:"8px 24px",background:"#f8f9fb",borderBottom:"1px solid #e8ecf0",
+            fontSize:9,color:"#9aa5b1",fontWeight:700,letterSpacing:.8}}>
+            <div>OPPORTUNITY</div><div>ACCOUNT</div><div>TEST ITEM</div><div>STAGE</div><div>MODIFIED</div>
+          </div>
+
+          {/* Results */}
+          <div style={{flex:1,overflowY:"auto"}}>
+            {modalLoading&&(
+              <div style={{padding:40,textAlign:"center",color:"#6b7a8d",fontSize:13}}>Searching…</div>
+            )}
+            {!modalLoading&&modalResults.length===0&&(
+              <div style={{padding:40,textAlign:"center",color:"#6b7a8d",fontSize:13}}>No quotes found</div>
+            )}
+            {!modalLoading&&modalResults.map(q=>(
+              <div key={q.id}
+                onClick={()=>handleSelect(q)}
+                style={{display:"grid",gridTemplateColumns:"2fr 2fr 2fr 1.5fr 1fr",gap:8,
+                  padding:"10px 24px",borderBottom:"1px solid #f0f2f5",cursor:"pointer",
+                  transition:"background .1s"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#f8f9fb"}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <div style={{fontWeight:600,fontSize:12,color:"#1a2332",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {q.opp||"—"}
+                </div>
+                <div style={{fontSize:11,color:"#6b7a8d",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {q.customer||"—"}
+                </div>
+                <div style={{fontSize:11,color:"#6b7a8d",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {q.item||"—"}
+                </div>
+                <div style={{fontSize:11,fontWeight:600,color:stageColor(q.stage),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {q.stage||"—"}
+                </div>
+                <div style={{fontSize:10,color:"#9aa5b1",whiteSpace:"nowrap"}}>
+                  {q.savedAt?new Date(q.savedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):"—"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
