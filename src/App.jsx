@@ -3032,7 +3032,21 @@ function Dashboard({onEnterQuote, onLoadQuote, currentUser, isApprover, pendingQ
                     <div key={q.id} style={{display:"grid",gridTemplateColumns:"2fr 2fr 1fr",
                       padding:"10px 24px",borderTop:"1px solid #f0f2f5",fontSize:12}}>
                       <div
-                        onClick={()=>onLoadQuote&&onLoadQuote(q)}
+                        onClick={()=>{
+                          if(!onLoadQuote)return;
+                          // Hydrate the raw dashboard row into a full quote object for handleLoad
+                          const blob=q.data||{};
+                          onLoadQuote({
+                            ...blob,
+                            id:q.id,
+                            opp:q.opportunity||blob.opp,
+                            rev:q.revision||blob.qi?.rev||blob.rev||"",
+                            customer:q.customer||blob.customer,
+                            total:q.total||blob.total,
+                            source:blob.source||"vibrato",
+                            savedAt:q.created_at,
+                          });
+                        }}
                         style={{fontWeight:600,color:"#1a5276",cursor:"pointer",
                           textDecoration:"underline",textDecorationColor:"rgba(26,82,118,0.4)"}}>
                         {(q.opportunity||"—")+((q.data?.qi?.rev||q.revision)||"")}
@@ -5243,8 +5257,8 @@ const STANDARD_TERMS = [
             Sign out
           </button>}
         </div>
-        {/* Row 2: approval bar — shown to all users */}
-        {true&&(
+        {/* Row 2: approval bar — hidden on dashboard */}
+        {!showDashboard&&(
           <div style={{background:"rgba(0,0,0,0.18)",padding:"5px 18px",display:"flex",alignItems:"center",gap:8,borderTop:"1px solid rgba(255,255,255,0.07)"}}>
             {approval.status!=="none"&&(
               <div style={{borderRadius:5,padding:"3px 10px",fontWeight:700,fontSize:11,letterSpacing:.5,flexShrink:0,
