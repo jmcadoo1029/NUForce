@@ -2668,8 +2668,10 @@ function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
 
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-function Dashboard({onEnterQuote, onLoadQuote, currentUser}){
+function Dashboard({onEnterQuote, onLoadQuote, currentUser, isApprover, pendingQuotes, onQueueDecision}){
   const [data, setData]       = useState(null);
+  const [qSelected, setQSelected] = useState(new Set());
+  const [qComments, setQComments] = useState("");
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -2869,6 +2871,121 @@ function Dashboard({onEnterQuote, onLoadQuote, currentUser}){
                 </div>
               ))}
             </div>
+
+            {/* ── Approval Queue widget (approvers only) ── */}
+            {isApprover&&(
+              <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
+                border:"1px solid #e8ecf0",overflow:"hidden",marginBottom:20}}>
+                <div style={{padding:"14px 24px",borderBottom:"1px solid #e8ecf0",
+                  display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
+                    APPROVAL QUEUE
+                  </div>
+                  {pendingQuotes.length>0&&(
+                    <span style={{background:"#c0392b",color:"#fff",borderRadius:10,
+                      fontSize:10,fontWeight:700,padding:"2px 8px"}}>
+                      {pendingQuotes.length} pending
+                    </span>
+                  )}
+                </div>
+                {pendingQuotes.length===0?(
+                  <div style={{padding:"24px",textAlign:"center",color:"#9aa5b1",fontSize:12}}>
+                    ✓ No pending approvals
+                  </div>
+                ):(
+                  <div>
+                    {/* Select all */}
+                    <div style={{padding:"8px 24px",background:"#f8f9fb",borderBottom:"1px solid #e8ecf0",
+                      display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}
+                      onClick={()=>{
+                        if(qSelected.size===pendingQuotes.length)setQSelected(new Set());
+                        else setQSelected(new Set(pendingQuotes.map(q=>String(q.id))));
+                      }}>
+                      <input type="checkbox" readOnly
+                        checked={qSelected.size===pendingQuotes.length&&pendingQuotes.length>0}
+                        style={{accentColor:"#6d28d9",width:13,height:13}}/>
+                      <span style={{fontSize:10,fontWeight:700,color:"#6b7a8d",letterSpacing:.5}}>SELECT ALL</span>
+                    </div>
+                    {/* Queue rows */}
+                    {pendingQuotes.map(q=>{
+                      const sel=qSelected.has(String(q.id));
+                      const subAt=q.approval?.submittedAt?new Date(q.approval.submittedAt).toLocaleDateString():"";
+                      const isWon=q.wonApproval?.status==="pending_won";
+                      return(
+                        <div key={q.id}
+                          style={{padding:"12px 24px",borderBottom:"1px solid #f0f2f5",
+                            background:sel?"#f5f3ff":"#fff",
+                            display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}
+                          onClick={()=>{
+                            const s=new Set(qSelected);
+                            if(s.has(String(q.id)))s.delete(String(q.id));
+                            else s.add(String(q.id));
+                            setQSelected(s);
+                          }}>
+                          <input type="checkbox" readOnly checked={sel}
+                            style={{accentColor:"#6d28d9",width:13,height:13,flexShrink:0,pointerEvents:"none"}}/>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontWeight:600,fontSize:13,color:"#1a2332",marginBottom:2,
+                              display:"flex",alignItems:"center",gap:8}}>
+                              <span
+                                onClick={e=>{e.stopPropagation();onLoadQuote&&onLoadQuote(q);}}
+                                style={{color:"#1a5276",cursor:"pointer",textDecoration:"underline",
+                                  textDecorationColor:"rgba(26,82,118,0.4)"}}>
+                                {(q.qi?.opp||q.opp||"(no opp)")+(q.qi?.rev||q.rev||"")}
+                              </span>
+                              {isWon
+                                ?<span style={{fontSize:9,background:"#d1fae5",color:"#065f46",borderRadius:4,padding:"2px 6px",fontWeight:700}}>🏆 CLOSED WON</span>
+                                :<span style={{fontSize:9,background:"#ede9fe",color:"#4c1d95",borderRadius:4,padding:"2px 6px",fontWeight:700}}>📋 QUOTE</span>
+                              }
+                            </div>
+                            <div style={{fontSize:11,color:"#6b7a8d",display:"flex",gap:12,flexWrap:"wrap"}}>
+                              {(q.qi?.customer||q.customer)&&<span>{q.qi?.customer||q.customer}</span>}
+                              {subAt&&<span>Submitted: {subAt}</span>}
+                              {q.approval?.submittedBy&&<span>By: {q.approval.submittedBy}</span>}
+                            </div>
+                          </div>
+                          <div style={{fontWeight:700,fontSize:13,color:"#1e8449",flexShrink:0}}>
+                            {money(q.total||0)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {/* Action footer */}
+                    <div style={{padding:"14px 24px",borderTop:"1px solid #e8ecf0",background:"#f8f9fb"}}>
+                      <div style={{marginBottom:10}}>
+                        <div style={{fontSize:11,color:"#6b7a8d",fontWeight:600,marginBottom:4}}>
+                          COMMENTS (applied to selected decisions)
+                        </div>
+                        <textarea value={qComments} onChange={e=>setQComments(e.target.value)}
+                          placeholder="Optional comments..."
+                          style={{width:"100%",height:48,border:"1px solid #d0d7de",borderRadius:7,
+                            padding:"6px 10px",fontSize:12,resize:"none",fontFamily:"inherit",
+                            boxSizing:"border-box"}}/>
+                      </div>
+                      <div style={{display:"flex",gap:8,justifyContent:"flex-end",alignItems:"center"}}>
+                        {qSelected.size===0&&(
+                          <span style={{fontSize:11,color:"#6b7a8d",marginRight:8}}>Select quotes above to act</span>
+                        )}
+                        <button disabled={qSelected.size===0}
+                          onClick={()=>{onQueueDecision("rejected",[...qSelected]);setQSelected(new Set());setQComments("");}}
+                          style={{background:qSelected.size===0?"#e8ecf0":"#c0392b",border:"none",borderRadius:7,
+                            padding:"7px 18px",color:qSelected.size===0?"#9aa5b1":"#fff",
+                            fontWeight:700,fontSize:12,cursor:qSelected.size===0?"default":"pointer"}}>
+                          ✗ Reject
+                        </button>
+                        <button disabled={qSelected.size===0}
+                          onClick={()=>{onQueueDecision("approved",[...qSelected]);setQSelected(new Set());setQComments("");}}
+                          style={{background:qSelected.size===0?"#e8ecf0":"#1e8449",border:"none",borderRadius:7,
+                            padding:"7px 18px",color:qSelected.size===0?"#9aa5b1":"#fff",
+                            fontWeight:700,fontSize:12,cursor:qSelected.size===0?"default":"pointer"}}>
+                          ✓ Approve
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── Month over month bar chart ── */}
             <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
@@ -5218,7 +5335,7 @@ const STANDARD_TERMS = [
       <div style={{flex:1,display:"flex",overflow:"hidden"}}>
 
         {showDashboard?(
-          <Dashboard onEnterQuote={()=>{handleNewQuote(true);setShowDashboard(false);}} onLoadQuote={q=>{handleLoad(q);setShowDashboard(false);}} currentUser={currentUser}/>
+          <Dashboard onEnterQuote={()=>{handleNewQuote(true);setShowDashboard(false);}} onLoadQuote={q=>{handleLoad(q);setShowDashboard(false);}} currentUser={currentUser} isApprover={isApprover} pendingQuotes={pendingQuotes} onQueueDecision={handleQueueDecision}/>
         ):(
         <>{/* ── Left: scrollable form column ── */}
         <div style={{flex:1,overflowY:"auto",background:C.bg,padding:14}}>
