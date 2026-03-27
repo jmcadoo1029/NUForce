@@ -1689,6 +1689,7 @@ function QuoteSearch({onLoad}){
       ...q,
       id:row.id,
       opp:row.opportunity||q.opp,
+      rev:row.revision||q.qi?.rev||q.rev||"",
       customer:row.customer||q.customer,
       rfq:row.rfq||q.rfq,
       total:row.total||q.total,
@@ -1817,7 +1818,7 @@ function QuoteSearch({onLoad}){
                 style={{padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid "+C.border,transition:"background .1s"}}
                 onMouseEnter={e=>e.currentTarget.style.background=C.panel}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <div style={{fontWeight:600,fontSize:13,color:C.text,marginBottom:2}}>{q.opp||"Untitled"}</div>
+                <div style={{fontWeight:600,fontSize:13,color:C.text,marginBottom:2}}>{(q.opp||"Untitled")+(q.rev||"")}</div>
                 <div style={{fontSize:11,color:C.muted}}>{q.customer||""}</div>
                 <div style={{fontSize:10,color:C.dim,marginTop:2}}>
                   {q.savedAt?new Date(q.savedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}):""}
@@ -1876,7 +1877,7 @@ function QuoteSearch({onLoad}){
                 onMouseEnter={e=>e.currentTarget.style.background="#f8f9fb"}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                 <div style={{fontWeight:600,fontSize:12,color:"#1a2332",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {q.opp||"—"}
+                  {(q.opp||"—")+(q.rev||"")}
                 </div>
                 <div style={{fontSize:11,color:"#6b7a8d",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                   {q.customer||"—"}
@@ -4757,7 +4758,7 @@ const STANDARD_TERMS = [
                               style={{accentColor:"#6d28d9",width:14,height:14,flexShrink:0,pointerEvents:"none"}}/>
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{fontWeight:600,fontSize:13,color:"#1a2332",marginBottom:2,display:"flex",alignItems:"center",gap:8}}>
-                                {q.qi?.opp||q.opp||"(no opportunity #)"}
+                                {(q.qi?.opp||q.opp||"(no opportunity #)")+(q.qi?.rev||q.rev||"")}
                                 {q.wonApproval?.status==="pending_won"
                                   ?<span style={{fontSize:9,background:"#d1fae5",color:"#065f46",borderRadius:4,padding:"2px 6px",fontWeight:700}}>🏆 CLOSED WON</span>
                                   :<span style={{fontSize:9,background:"#ede9fe",color:"#4c1d95",borderRadius:4,padding:"2px 6px",fontWeight:700}}>📋 QUOTE</span>
