@@ -2731,15 +2731,17 @@ function Dashboard({onEnterQuote, onLoadQuote, currentUser, isApprover, pendingQ
       .sort((a,b) => b.total - a.total)
       .slice(0, 5);
 
-    // ── Month-over-month quote counts (source=vibrato) ──
+    // ── Month-over-month quote counts + totals (source=vibrato) ──
     const monthCounts = await Promise.all(months.map(async m => {
-      const { count } = await supabase
+      const { data: mRows } = await supabase
         .from("quotes")
-        .select("id", {count:"exact", head:true})
+        .select("total")
         .eq("source","vibrato")
         .gte("created_at", m.start)
         .lt("created_at",  m.end);
-      return { label: m.label, count: count||0, isCurrent: m.isCurrent };
+      const rows = mRows || [];
+      const total = rows.reduce((a,r) => a + (r.total||0), 0);
+      return { label: m.label, count: rows.length, total, isCurrent: m.isCurrent };
     }));
 
     // ── Closed Won this month by won_date ──
@@ -2769,7 +2771,6 @@ function Dashboard({onEnterQuote, onLoadQuote, currentUser, isApprover, pendingQ
   const money  = n => "$"+Math.round(n).toLocaleString();
   const pct    = v => Math.min(100, Math.round((v/TARGET)*100));
 
-  const maxCount = data ? Math.max(...data.monthCounts.map(m=>m.count), 1) : 1;
 
   return(
     <div style={{flex:1,overflowY:"auto",padding:"28px 32px",background:"#f0f2f5",fontFamily:"Segoe UI,system-ui,sans-serif"}}>
@@ -2987,30 +2988,95 @@ function Dashboard({onEnterQuote, onLoadQuote, currentUser, isApprover, pendingQ
               </div>
             )}
 
-            {/* ── Month over month bar chart ── */}
-            <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
-              boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0",marginBottom:20}}>
-              <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:16}}>
-                QUOTES CREATED — LAST 4 MONTHS
-              </div>
-              <div style={{display:"flex",alignItems:"flex-end",gap:16,height:120}}>
-                {data.monthCounts.map(m=>(
-                  <div key={m.label} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
-                    <div style={{fontSize:12,fontWeight:700,color:m.isCurrent?"#1a5276":"#6b7a8d"}}>
-                      {m.count}
+            {/* ── Month over month combo chart ── */}
+            {(()=>{
+              const months = data.monthCounts;
+              const maxCount = Math.max(...months.map(m=>m.count), 1);
+              const maxTotal = Math.max(...months.map(m=>m.total), 1);
+              const W=560, H=160, PAD={t:24,r:60,b:32,l:44};
+              const chartW=W-PAD.l-PAD.r, chartH=H-PAD.t-PAD.b;
+              const barW=chartW/months.length*0.45;
+              const xCenter=i=>PAD.l+(i+0.5)*(chartW/months.length);
+              const barX=i=>xCenter(i)-barW/2;
+              const barH=v=>Math.max(2,Math.round((v/maxCount)*chartH));
+              const lineY=v=>PAD.t+chartH-Math.round((v/maxTotal)*chartH);
+              const points=months.map((m,i)=>xCenter(i)+","+lineY(m.total)).join(" ");
+              return(
+                <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
+                  boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0",marginBottom:20}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
+                      QUOTES — LAST 4 MONTHS
                     </div>
-                    <div style={{width:"100%",
-                      height: Math.max(4, Math.round((m.count/maxCount)*90))+"px",
-                      background:m.isCurrent?"#1a5276":"#d0d7de",
-                      borderRadius:"4px 4px 0 0",transition:"height 0.4s ease"}}/>
-                    <div style={{fontSize:10,color:m.isCurrent?"#1a5276":"#9aa5b1",fontWeight:m.isCurrent?700:400,
-                      textAlign:"center",whiteSpace:"nowrap"}}>
-                      {m.label}
+                    <div style={{display:"flex",gap:16,fontSize:10,color:"#6b7a8d"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <div style={{width:12,height:12,borderRadius:2,background:"#1a5276"}}/>
+                        <span>Quote count</span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <div style={{width:16,height:2,background:"#c0392b",borderRadius:1}}/>
+                        <span>Total value</span>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
+                  <svg viewBox={"0 0 "+W+" "+H} style={{width:"100%",height:"auto",overflow:"visible"}}>
+                    {/* Y-axis gridlines (count, left) */}
+                    {[0,0.25,0.5,0.75,1].map(t=>{
+                      const y=PAD.t+chartH*(1-t);
+                      return <g key={t}>
+                        <line x1={PAD.l} y1={y} x2={PAD.l+chartW} y2={y} stroke="#f0f2f5" strokeWidth="1"/>
+                        <text x={PAD.l-6} y={y+4} textAnchor="end" fontSize="9" fill="#9aa5b1">
+                          {Math.round(maxCount*t)}
+                        </text>
+                      </g>;
+                    })}
+                    {/* Y-axis right (total value) */}
+                    {[0,0.5,1].map(t=>{
+                      const y=PAD.t+chartH*(1-t);
+                      const val=maxTotal*t;
+                      const label=val>=1000?"$"+(val/1000).toFixed(0)+"k":"$"+Math.round(val);
+                      return <text key={t} x={PAD.l+chartW+8} y={y+4} fontSize="9" fill="#c0392b">{label}</text>;
+                    })}
+                    {/* Bars */}
+                    {months.map((m,i)=>(
+                      <g key={m.label}>
+                        <rect x={barX(i)} y={PAD.t+chartH-barH(m.count)}
+                          width={barW} height={barH(m.count)}
+                          fill={m.isCurrent?"#1a5276":"#d0d7de"} rx="3"/>
+                        <text x={xCenter(i)} y={PAD.t+chartH-barH(m.count)-5}
+                          textAnchor="middle" fontSize="10"
+                          fontWeight={m.isCurrent?"700":"400"}
+                          fill={m.isCurrent?"#1a5276":"#6b7a8d"}>
+                          {m.count}
+                        </text>
+                      </g>
+                    ))}
+                    {/* Value line */}
+                    <polyline points={points} fill="none" stroke="#c0392b" strokeWidth="2" strokeLinejoin="round"/>
+                    {/* Value dots + labels */}
+                    {months.map((m,i)=>{
+                      const cx=xCenter(i), cy=lineY(m.total);
+                      const label=m.total>=1000?"$"+(m.total/1000).toFixed(0)+"k":"$"+Math.round(m.total);
+                      return <g key={m.label}>
+                        <circle cx={cx} cy={cy} r="4" fill="#c0392b" stroke="#fff" strokeWidth="2"/>
+                        <text x={cx} y={cy-9} textAnchor="middle" fontSize="9" fill="#c0392b" fontWeight="600">
+                          {label}
+                        </text>
+                      </g>;
+                    })}
+                    {/* X-axis labels */}
+                    {months.map((m,i)=>(
+                      <text key={m.label} x={xCenter(i)} y={H-6}
+                        textAnchor="middle" fontSize="10"
+                        fontWeight={m.isCurrent?"700":"400"}
+                        fill={m.isCurrent?"#1a5276":"#9aa5b1"}>
+                        {m.label}
+                      </text>
+                    ))}
+                  </svg>
+                </div>
+              );
+            })()}
 
             {/* ── Quotes this month table ── */}
             <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
