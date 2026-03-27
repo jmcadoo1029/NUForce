@@ -1698,7 +1698,6 @@ function QuoteSearch({onLoad}){
     let query=supabase
       .from("quotes")
       .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data")
-      .order("updated_at",{ascending:false})
       .order("opportunity",{ascending:false})
       .limit(limit);
     if(term.trim()){
@@ -1745,7 +1744,6 @@ function QuoteSearch({onLoad}){
       let query=supabase
         .from("quotes")
         .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data")
-        .order("updated_at",{ascending:false})
         .order("opportunity",{ascending:false})
         .range(from, from+batchSize-1);
       if(search.trim()){
