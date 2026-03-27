@@ -5239,7 +5239,7 @@ const STANDARD_TERMS = [
             style={{background:C.red,border:"none",borderRadius:7,padding:"7px 16px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
             SAVE
           </button>}
-          {anyOn&&<div style={{fontSize:14,color:"#fff",fontWeight:700,fontFamily:"monospace",marginLeft:4}}>{money(displayTotal)}</div>}
+
 
           <div style={{width:1,height:22,background:"rgba(255,255,255,0.2)"}}/>
           {currentUser&&<div style={{fontSize:10,color:"rgba(255,255,255,0.55)"}}>{currentUser}</div>}
