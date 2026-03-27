@@ -2820,11 +2820,28 @@ export default function App({onLogout,currentUser}){
   const summary=useMemo(()=>calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal),
     [vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal]);
 
-  // Reset line order when summary length changes (new lines added/removed)
-  // Only reset lineOrder if lines were added/removed AND current order doesn't match
+  // Reset line order and stale overrides when summary length changes
   useEffect(()=>{
     if(lineOrder&&lineOrder.length!==summary.lines.length)setLineOrder(null);
+    // Clear lineOverrides for indices that no longer exist in the new line set
+    if(Object.keys(lineOverrides).length>0){
+      const validIndices=new Set(summary.lines.map((_,i)=>String(i)));
+      const stale=Object.keys(lineOverrides).filter(k=>!validIndices.has(k));
+      if(stale.length>0){
+        const cleaned={...lineOverrides};
+        stale.forEach(k=>delete cleaned[k]);
+        setLineOverrides(cleaned);
+      }
+    }
   },[summary.lines.length]);
+
+  // Reset td override when no main tests are active
+  useEffect(()=>{
+    const anyActive=vibs.some(s=>s.on)||shocks.some(s=>s.on)||noises.some(s=>s.on)||
+      envs.some(s=>s.on)||hfvs.some(s=>s.on)||shos.some(s=>s.on)||
+      abs.some(s=>s.on)||sbs.some(s=>s.on);
+    if(!anyActive&&sf(td)>0)setTd("0");
+  },[vibs,shocks,noises,envs,hfvs,shos,abs,sbs,hfvs,shos]);
 
   const autoSpecs=useMemo(()=>buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs),
     [vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs]);
