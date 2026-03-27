@@ -522,6 +522,10 @@ function NoiseForm({s,set,setup,ti}){
         {autoComp>0?"auto: $"+autoComp.toLocaleString()+" → $"+Math.round(autoComp*1.25).toLocaleString()+" w/markup":"25% markup applied"}
       </span>
     </Row>
+    <div style={{fontSize:10,background:"#fffbeb",border:"1px solid #f59e0b",borderRadius:5,
+      padding:"5px 8px",marginBottom:6,color:"#92400e"}}>
+      ⚠ Remember to add the compressor rental cost to the <strong>Budget Materials</strong> section below.
+    </div>
     <Pia s={s} set={set}/>
     <HR/>
     <PRow label={"Std Setup (auto: "+money(chamberSetup)+")"} val={s.stdSetup||String(chamberSetup)} onChange={v=>set({...s,stdSetup:v})}/>
@@ -1448,13 +1452,14 @@ function SbForm({s,set,setup}){
   </div>;
 }
 
-function BudgetSection({budget,setBudget,setupLines,fixtureFabLines}){
+function BudgetSection({budget,setBudget,allLines,setupLines,fixtureFabLines}){
   const add=()=>setBudget({...budget,rows:[...budget.rows,{desc:"",qty:"1",unitCost:"0",rollInto:"SEPARATE"}]});
   const rem=i=>setBudget({...budget,rows:budget.rows.filter((_,j)=>j!==i)});
   const upd=(i,k,v)=>setBudget({...budget,rows:budget.rows.map((r,j)=>j===i?{...r,[k]:v}:r)});
   const mp=sf(budget.markup,25)/100;
   const total=budget.rows.reduce((s,r)=>s+sf(r.qty,1)*sf(r.unitCost,0),0);
-  const rollOpts=["SEPARATE",...(setupLines||[]),...(fixtureFabLines||[])];
+  // Use all summary lines if available, fall back to setup+fixture lines
+  const rollOpts=["SEPARATE",...(allLines&&allLines.length>0?allLines:[...(setupLines||[]),...(fixtureFabLines||[])])];
 
   if(!budget.on) return(
     <div style={{marginBottom:10}}>
@@ -5380,7 +5385,9 @@ const STANDARD_TERMS = [
 
               {/* Budget + Subcontracting stacked */}
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                <BudgetSection budget={budget} setBudget={setBudget} setupLines={summary.setupLineLabels||[]} fixtureFabLines={[
+                <BudgetSection budget={budget} setBudget={setBudget}
+                  allLines={(summary.lines||[]).map(l=>l.label).filter(Boolean)}
+                  setupLines={summary.setupLineLabels||[]} fixtureFabLines={[
                   ...vibs.filter(s=>s.on&&s.fixtureFab?.on).map((s,i)=>"Fixture Fabrication – Vibration"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):"")),
                   ...shocks.filter(s=>s.on&&s.fixtureFab?.on).map((s,i)=>"Fixture Fabrication – Shock"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):"")),
                 ]}/>
