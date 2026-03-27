@@ -1543,8 +1543,8 @@ async function saveQuoteToSupabase(quote, autoSpecs, autoNotes) {
     won_approval_status: quote.wonApproval?.status || "none",
     submitted_by:     quote.approval?.submittedBy || null,
     approved_by:      quote.approval?.decidedBy   || null,
-    specifications:   quote.ti?.tiSpecs || autoSpecs || null,
-    notes:            quote.ti?.tiNotes || autoNotes  || null,
+    specifications:   combineSpecs(quote.ti?.tiSpecs, autoSpecs) || null,
+    notes:            combineSpecs(quote.ti?.tiNotes, autoNotes) || null,
     line_items:       quote.summary?.lines || null,
     budget_items:     quote.budget?.rows   || null,
     budget_markup:    quote.budget?.markup ? parseFloat(quote.budget.markup) : null,
@@ -1565,8 +1565,8 @@ async function saveQuoteToSupabase(quote, autoSpecs, autoNotes) {
       quote.ti?.item   || "",
       quote.ti?.model  || "",
       quote.ti?.drawing|| "",
-      quote.ti?.tiSpecs|| autoSpecs || "",
-      quote.ti?.tiNotes|| autoNotes || "",
+      combineSpecs(quote.ti?.tiSpecs, autoSpecs) || "",
+      combineSpecs(quote.ti?.tiNotes, autoNotes) || "",
       (quote.summary?.lines||[]).map(l=>l.label||"").join(" "),
     ].filter(Boolean).join(" ").toLowerCase(),
   };
@@ -2378,6 +2378,16 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   return{lines:sorted,total:sorted.reduce((s,l)=>s+l.val,0),setupLineLabels};
 }
 
+// ── Combine manual + auto-generated specs (append new lines, don't replace) ──
+function combineSpecs(manual, auto){
+  const m=(manual||"").trim();
+  const a=(auto||"").trim();
+  if(!m)return a;
+  if(!a)return m;
+  const newLines=a.split("\n\n").filter(line=>!m.includes(line.trim()));
+  return newLines.length?m+"\n\n"+newLines.join("\n\n"):m;
+}
+
 // ── Auto-specs helper ─────────────────────────────────────────────────────────
 function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
   const lines=[];
@@ -2876,6 +2886,13 @@ export default function App({onLogout,currentUser}){
   const anyOn=vibs.some(s=>s.on)||shocks.some(s=>s.on)||noises.some(s=>s.on)||envs.some(s=>s.on)||
     hfvs.some(s=>s.on)||shos.some(s=>s.on)||dcms.some(s=>s.on)||pqs.some(s=>s.on)||emis.some(s=>s.on)||
     abs.some(s=>s.on)||sbs.some(s=>s.on)||inst.on||ot.on||custom.on||globalPR.coc||globalPR.procs.length>0||globalPR.reps.length>0;
+
+  // Nav/display total respects lineOverrides (price edits + deleted lines), matching PDF behaviour
+  const displayTotal=useMemo(()=>summary.lines.reduce((a,l,idx)=>{
+    const ov=lineOverrides[idx]||{};
+    if(ov.deleted)return a;
+    return a+(ov.price!==undefined?sf(ov.price,0):l.val);
+  },0),[summary.lines,lineOverrides]);
 
   // Clone quote — optionally save original first, then open modal for new opp #
   const handleClone=()=>{
@@ -4250,8 +4267,8 @@ const STANDARD_TERMS = [
       y += 34;
 
       // ── SPECIFICATIONS & NOTES ───────────────────────────────────────────
-      const specsText = (ti.tiSpecs||autoSpecs||'').trim();
-      const notesText = (ti.tiNotes||autoNotes||'').trim();
+      const specsText = combineSpecs(ti.tiSpecs, autoSpecs).trim();
+      const notesText = combineSpecs(ti.tiNotes, autoNotes).trim();
       if(specsText||notesText){
         sectionHdr('Specifications & Notes');
         y += 4;
@@ -4538,7 +4555,7 @@ const STANDARD_TERMS = [
             style={{background:C.red,border:"none",borderRadius:7,padding:"7px 16px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
             SAVE
           </button>
-          {anyOn&&<div style={{fontSize:14,color:"#fff",fontWeight:700,fontFamily:"monospace",marginLeft:4}}>{money(summary.total)}</div>}
+          {anyOn&&<div style={{fontSize:14,color:"#fff",fontWeight:700,fontFamily:"monospace",marginLeft:4}}>{money(displayTotal)}</div>}
 
           <div style={{width:1,height:22,background:"rgba(255,255,255,0.2)"}}/>
           {currentUser&&<div style={{fontSize:10,color:"rgba(255,255,255,0.55)"}}>{currentUser}</div>}
@@ -4660,7 +4677,7 @@ const STANDARD_TERMS = [
                   <div style={{color:"#6b7a8d",marginBottom:4,fontWeight:600}}>QUOTE DETAILS</div>
                   <div><b>Opportunity:</b> {qi.opp||"(none)"}</div>
                   <div><b>RFQ:</b> {qi.rfq||"(none)"}</div>
-                  <div><b>Total:</b> {money(summary.total)}</div>
+                  <div><b>Total:</b> {money(displayTotal)}</div>
                   <div style={{marginTop:6,color:"#6b7a8d",fontSize:11}}>Notifying: Jordan McAdoo, Ragen McAdoo, Russ McAdoo</div>
                 </div>
                 <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
