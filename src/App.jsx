@@ -2828,7 +2828,8 @@ export default function App({onLogout,currentUser}){
     setCurrentQuoteSource(q.source||"vibrato");
     if(q.source==="salesforce")setLocked(true);
     // ── Salesforce imported quotes: load line items into custom section ──
-    if(q.source==="salesforce"){
+    // Only populate from SF data if the user hasn't already saved custom rows
+    if(q.source==="salesforce"&&!(q.custom?.rows?.length>0)){
       const sfLines=(q.summary?.lines||[]).filter(l=>l.val>0);
       if(sfLines.length>0){
         setCustom({on:true,rows:sfLines.map(l=>({
