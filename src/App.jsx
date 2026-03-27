@@ -2666,6 +2666,254 @@ function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
   return lines.join("\n\n");
 }
 
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+function Dashboard({onEnterQuote, currentUser}){
+  const [data, setData]       = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    const now   = new Date();
+    const year  = now.getFullYear();
+    const month = now.getMonth(); // 0-indexed
+
+    // Build month boundaries for current + 3 prior months
+    const months = [];
+    for(let i=3; i>=0; i--){
+      const d   = new Date(year, month - i, 1);
+      const end = new Date(year, month - i + 1, 1);
+      months.push({
+        label: d.toLocaleString("en-US",{month:"short", year:"numeric"}),
+        start: d.toISOString(),
+        end:   end.toISOString(),
+        isCurrent: i === 0,
+      });
+    }
+
+    // ── Quotes created this month (source=vibrato) ──
+    const thisMonth = months[3];
+    const { data: createdRaw } = await supabase
+      .from("quotes")
+      .select("id, opportunity, customer, total, created_at, revision, data")
+      .eq("source","vibrato")
+      .gte("created_at", thisMonth.start)
+      .lt("created_at",  thisMonth.end)
+      .order("opportunity", {ascending: true});
+    const created = createdRaw || [];
+
+    // ── Month-over-month quote counts (source=vibrato) ──
+    const monthCounts = await Promise.all(months.map(async m => {
+      const { count } = await supabase
+        .from("quotes")
+        .select("id", {count:"exact", head:true})
+        .eq("source","vibrato")
+        .gte("created_at", m.start)
+        .lt("created_at",  m.end);
+      return { label: m.label, count: count||0, isCurrent: m.isCurrent };
+    }));
+
+    // ── Closed Won this month by won_date ──
+    const { data: wonRaw } = await supabase
+      .from("quotes")
+      .select("id, opportunity, total, won_date, data")
+      .eq("stage","Closed Won")
+      .gte("won_date", thisMonth.start.slice(0,10))
+      .lt("won_date",  thisMonth.end.slice(0,10));
+    const won = (wonRaw||[]).map(q => ({
+      ...q,
+      type: q.data?.qi?.type || "New Business",
+      total: q.total || 0,
+    }));
+
+    const wonNew      = won.filter(q => q.type === "New Business");
+    const wonExisting = won.filter(q => q.type === "Existing Business");
+    const wonTotal    = won.reduce((a,q) => a + (q.total||0), 0);
+
+    setData({ created, monthCounts, won, wonNew, wonExisting, wonTotal });
+    setLoading(false);
+  };
+
+  useEffect(()=>{ load(); },[]);
+
+  const TARGET = 160000;
+  const money  = n => "$"+Math.round(n).toLocaleString();
+  const pct    = v => Math.min(100, Math.round((v/TARGET)*100));
+
+  const maxCount = data ? Math.max(...data.monthCounts.map(m=>m.count), 1) : 1;
+
+  return(
+    <div style={{flex:1,overflowY:"auto",padding:"28px 32px",background:"#f0f2f5",fontFamily:"Segoe UI,system-ui,sans-serif"}}>
+      <div style={{maxWidth:1100,margin:"0 auto"}}>
+
+        {/* Title row */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
+          <div>
+            <div style={{fontSize:22,fontWeight:700,color:"#1a2332"}}>Dashboard</div>
+            <div style={{fontSize:12,color:"#6b7a8d",marginTop:2}}>
+              {new Date().toLocaleString("en-US",{month:"long",year:"numeric"})}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={load}
+              style={{background:"#fff",border:"1px solid #d0d7de",borderRadius:8,padding:"8px 18px",
+                fontWeight:600,fontSize:12,cursor:"pointer",color:"#1a2332",display:"flex",alignItems:"center",gap:6}}>
+              ↻ Refresh
+            </button>
+            <button onClick={onEnterQuote}
+              style={{background:"#1a5276",border:"none",borderRadius:8,padding:"8px 20px",
+                fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",letterSpacing:.5}}>
+              + New Quote
+            </button>
+          </div>
+        </div>
+
+        {loading?(
+          <div style={{textAlign:"center",padding:80,color:"#9aa5b1",fontSize:14}}>Loading…</div>
+        ):(
+          <div>
+            {/* ── Top stat cards ── */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:20}}>
+
+              {/* Quotes this month */}
+              <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0"}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:8}}>QUOTES THIS MONTH</div>
+                <div style={{fontSize:36,fontWeight:800,color:"#1a2332",lineHeight:1}}>{data.created.length}</div>
+                <div style={{fontSize:12,color:"#6b7a8d",marginTop:6}}>
+                  Total value: <span style={{fontWeight:700,color:"#1a5276"}}>{money(data.created.reduce((a,q)=>a+(q.total||0),0))}</span>
+                </div>
+              </div>
+
+              {/* Closed Won total */}
+              <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0"}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:8}}>CLOSED WON THIS MONTH</div>
+                <div style={{fontSize:36,fontWeight:800,color:"#1e8449",lineHeight:1}}>{money(data.wonTotal)}</div>
+                <div style={{fontSize:12,color:"#6b7a8d",marginTop:6}}>
+                  {data.won.length} quote{data.won.length!==1?"s":""} · {data.wonNew.length} new · {data.wonExisting.length} existing
+                </div>
+              </div>
+
+              {/* Target progress */}
+              <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0"}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:8}}>TARGET: $160,000</div>
+                <div style={{fontSize:36,fontWeight:800,color:data.wonTotal>=TARGET?"#1e8449":"#1a2332",lineHeight:1}}>
+                  {pct(data.wonTotal)}%
+                </div>
+                <div style={{marginTop:10,height:8,background:"#e8ecf0",borderRadius:4,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:pct(data.wonTotal)+"%",
+                    background:data.wonTotal>=TARGET?"#1e8449":data.wonTotal>TARGET*0.7?"#b7791f":"#1a5276",
+                    borderRadius:4,transition:"width 0.5s ease"}}/>
+                </div>
+                <div style={{fontSize:11,color:"#6b7a8d",marginTop:6}}>
+                  {data.wonTotal>=TARGET
+                    ? "🎉 Target reached!"
+                    : money(TARGET-data.wonTotal)+" remaining"}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Closed Won breakdown ── */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+              {[
+                {label:"New Business", items:data.wonNew, color:"#1e8449"},
+                {label:"Existing Business", items:data.wonExisting, color:"#2e6da4"},
+              ].map(({label,items,color})=>(
+                <div key={label} style={{background:"#fff",borderRadius:12,padding:"20px 24px",
+                  boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0"}}>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:12}}>
+                    CLOSED WON — {label.toUpperCase()}
+                  </div>
+                  {items.length===0?(
+                    <div style={{fontSize:12,color:"#9aa5b1",fontStyle:"italic"}}>None this month</div>
+                  ):(
+                    <>
+                      <div style={{fontSize:22,fontWeight:800,color,marginBottom:8}}>
+                        {money(items.reduce((a,q)=>a+(q.total||0),0))}
+                      </div>
+                      {items.map(q=>(
+                        <div key={q.id} style={{display:"flex",justifyContent:"space-between",
+                          fontSize:11,color:"#6b7a8d",borderTop:"1px solid #f0f2f5",padding:"5px 0"}}>
+                          <span style={{fontWeight:600,color:"#1a2332"}}>{q.opportunity}</span>
+                          <span>{money(q.total||0)}</span>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* ── Month over month bar chart ── */}
+            <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
+              boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0",marginBottom:20}}>
+              <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:16}}>
+                QUOTES CREATED — LAST 4 MONTHS
+              </div>
+              <div style={{display:"flex",alignItems:"flex-end",gap:16,height:120}}>
+                {data.monthCounts.map(m=>(
+                  <div key={m.label} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+                    <div style={{fontSize:12,fontWeight:700,color:m.isCurrent?"#1a5276":"#6b7a8d"}}>
+                      {m.count}
+                    </div>
+                    <div style={{width:"100%",
+                      height: Math.max(4, Math.round((m.count/maxCount)*90))+"px",
+                      background:m.isCurrent?"#1a5276":"#d0d7de",
+                      borderRadius:"4px 4px 0 0",transition:"height 0.4s ease"}}/>
+                    <div style={{fontSize:10,color:m.isCurrent?"#1a5276":"#9aa5b1",fontWeight:m.isCurrent?700:400,
+                      textAlign:"center",whiteSpace:"nowrap"}}>
+                      {m.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Quotes this month table ── */}
+            <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
+              border:"1px solid #e8ecf0",overflow:"hidden"}}>
+              <div style={{padding:"16px 24px",borderBottom:"1px solid #e8ecf0",
+                fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
+                ALL QUOTES THIS MONTH
+              </div>
+              {data.created.length===0?(
+                <div style={{padding:32,textAlign:"center",color:"#9aa5b1",fontSize:13}}>No quotes created this month yet</div>
+              ):(
+                <>
+                  <div style={{display:"grid",gridTemplateColumns:"2fr 2fr 1fr",
+                    padding:"8px 24px",background:"#f8f9fb",
+                    fontSize:9,fontWeight:700,letterSpacing:.8,color:"#9aa5b1"}}>
+                    <div>OPPORTUNITY</div><div>ACCOUNT</div><div style={{textAlign:"right"}}>TOTAL</div>
+                  </div>
+                  {data.created.map(q=>(
+                    <div key={q.id} style={{display:"grid",gridTemplateColumns:"2fr 2fr 1fr",
+                      padding:"10px 24px",borderTop:"1px solid #f0f2f5",fontSize:12}}>
+                      <div style={{fontWeight:600,color:"#1a2332"}}>
+                        {(q.opportunity||"—")+((q.data?.qi?.rev||q.revision)||"")}
+                      </div>
+                      <div style={{color:"#6b7a8d"}}>{q.customer||"—"}</div>
+                      <div style={{textAlign:"right",fontWeight:600,color:"#1a5276"}}>{money(q.total||0)}</div>
+                    </div>
+                  ))}
+                  <div style={{display:"grid",gridTemplateColumns:"2fr 2fr 1fr",
+                    padding:"10px 24px",borderTop:"2px solid #e8ecf0",
+                    fontSize:12,fontWeight:700,background:"#f8f9fb"}}>
+                    <div style={{color:"#1a2332"}}>Total</div>
+                    <div/>
+                    <div style={{textAlign:"right",color:"#1a5276"}}>
+                      {money(data.created.reduce((a,q)=>a+(q.total||0),0))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App({onLogout,currentUser}){
   const [qi,setQi]=useState({opp:"",account:"",billTo:"",billToCity:"",contact:"",email:"",prepby:"",rev:"",revDate:"",date:new Date().toLocaleDateString("en-US"),rfq:"",stage:"Proposal/Price Quote",type:"New Business",relatedOpps:""});
@@ -2727,6 +2975,7 @@ export default function App({onLogout,currentUser}){
   const [wonApproval,setWonApproval]=useState({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
   const [showCreateProjectAlert,setShowCreateProjectAlert]=useState(false);
   const [currentQuoteSource,setCurrentQuoteSource]=useState("vibrato");
+  const [showDashboard,setShowDashboard]=useState(true);
 
   // EmailJS config — fill in after setting up emailjs.com
   const EMAILJS_SERVICE_ID  = "YOUR_SERVICE_ID";
@@ -4730,8 +4979,14 @@ const STANDARD_TERMS = [
                 </div>
           <div style={{fontWeight:700,fontSize:13,letterSpacing:1,color:"rgba(255,255,255,0.5)",marginLeft:4}}>VIBRATO</div>
           <div style={{flex:1}}/>
-          <QuoteSearch onLoad={handleLoad}/>
-          <button onClick={handleNewQuote} title="Start a fresh blank quote"
+          <button onClick={()=>setShowDashboard(true)}
+            title="Go to dashboard"
+            style={{background:showDashboard?"rgba(255,255,255,0.2)":"none",border:"1px solid rgba(255,255,255,0.25)",
+              borderRadius:6,padding:"5px 12px",color:"#fff",fontSize:11,cursor:"pointer",fontWeight:600}}>
+            🏠 Home
+          </button>
+          <QuoteSearch onLoad={q=>{handleLoad(q);setShowDashboard(false);}}/>
+          <button onClick={()=>{handleNewQuote();setShowDashboard(false);}} title="Start a fresh blank quote"
             style={{background:"#2d6a4f",border:"none",borderRadius:7,padding:"7px 14px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
             + NEW
           </button>
@@ -4849,7 +5104,10 @@ const STANDARD_TERMS = [
       {/* ── Body: left scroll + right sticky summary ── */}
       <div style={{flex:1,display:"flex",overflow:"hidden"}}>
 
-        {/* ── Left: scrollable form column ── */}
+        {showDashboard?(
+          <Dashboard onEnterQuote={()=>setShowDashboard(false)} currentUser={currentUser}/>
+        ):(
+        <>{/* ── Left: scrollable form column ── */}
         <div style={{flex:1,overflowY:"auto",background:C.bg,padding:14}}>
 
           {/* ── Approval submission modal ── */}
@@ -6055,6 +6313,7 @@ const STANDARD_TERMS = [
           </div>{/* end pointer-events wrapper */}
         </div>{/* end left scroll column */}
 
+      </>)}{/* end dashboard/form conditional */}
       </div>{/* end body flex row */}
 
       {/* ── Open Quotes slide-out panel ── */}
