@@ -1535,6 +1535,7 @@ async function saveQuoteToSupabase(quote, autoSpecs, autoNotes) {
     po_number:        quote.wonInfo?.poNum   || null,
     won_date:         quote.wonInfo?.wonDate || null,
     approval_status:  quote.approval?.status || "none",
+    won_approval_status: quote.wonApproval?.status || "none",
     submitted_by:     quote.approval?.submittedBy || null,
     approved_by:      quote.approval?.decidedBy   || null,
     specifications:   quote.ti?.tiSpecs || autoSpecs || null,
@@ -1587,16 +1588,28 @@ async function saveQuoteToSupabase(quote, autoSpecs, autoNotes) {
 }
 
 async function loadQuotesFromSupabase() {
-  const { data, error } = await supabase
-    .from("quotes")
-    .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, updated_at, data")
-    .order("updated_at", { ascending: false })
-    .limit(1000);
-
-  if (error) { console.error("Supabase load error:", error); return {}; }
+  // Load recent quotes (last 2 years) for approval queue badge — search handles full history
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 2);
+  let allData = [];
+  let from = 0;
+  const batchSize = 1000;
+  while(true){
+    const { data, error } = await supabase
+      .from("quotes")
+      .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data")
+      .gte("updated_at", cutoff.toISOString())
+      .order("updated_at", { ascending: false })
+      .range(from, from + batchSize - 1);
+    if (error) { console.error("Supabase load error:", error); break; }
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < batchSize) break;
+    from += batchSize;
+  }
 
   const map = {};
-  (data || []).forEach(row => {
+  allData.forEach(row => {
     const q = row.data || {};
     map[row.id] = {
       ...q,
@@ -1607,6 +1620,7 @@ async function loadQuotesFromSupabase() {
       total:       row.total       || q.total,
       savedAt:     row.updated_at,
       approval:    { ...(q.approval||{}), status: row.approval_status || q.approval?.status || "none" },
+      wonApproval: { ...(q.wonApproval||{}), status: row.won_approval_status || q.wonApproval?.status || "none" },
     };
   });
   return map;
@@ -1615,18 +1629,17 @@ async function loadQuotesFromSupabase() {
 async function loadPendingQuotes() {
   const { data, error } = await supabase
     .from("quotes")
-    .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, updated_at, data")
-    .in("approval_status", ["pending"])
+    .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data")
+    .eq("approval_status", "pending")
     .order("updated_at", { ascending: false });
 
-  // Also fetch pending_won from data blob (stored inside data, not top-level column)
+  // Fetch pending_won using dedicated column
   const { data: wonData } = await supabase
     .from("quotes")
-    .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, updated_at, data")
-    .eq("stage", "Closed Won")
-    .order("updated_at", { ascending: false })
-    .limit(200);
-  const wonPending=(wonData||[]).filter(r=>(r.data?.wonApproval?.status==="pending_won"));
+    .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data")
+    .eq("won_approval_status", "pending_won")
+    .order("updated_at", { ascending: false });
+  const wonPending = wonData || [];
 
   if (error) { console.error("Supabase pending load error:", error); return {}; }
 
@@ -1665,7 +1678,7 @@ function QuoteSearch({onLoad}){
     setLoading(true);
     let query=supabase
       .from("quotes")
-      .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, updated_at, data")
+      .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data")
       .order("updated_at",{ascending:false})
       .order("opportunity",{ascending:false})
       .limit(50);
@@ -2638,9 +2651,20 @@ export default function App({onLogout,currentUser}){
         qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
       await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     }
-    const existing=await loadQuotesFromSupabase();
-    const match=Object.values(existing).find(q=>(q.opp||"").toLowerCase()===row.opportunity.toLowerCase());
-    if(match){
+    // Search Supabase directly by opportunity name
+    const {data:matchData}=await supabase
+      .from("quotes")
+      .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data, source")
+      .ilike("opportunity",row.opportunity.trim())
+      .limit(1)
+      .single();
+    if(matchData){
+      const q=matchData.data||{};
+      const match={...q,id:matchData.id,opp:matchData.opportunity||q.opp,
+        customer:matchData.customer||q.customer,rfq:matchData.rfq||q.rfq,
+        total:matchData.total||q.total,savedAt:matchData.updated_at,
+        source:matchData.source||"vibrato",
+        approval:{...(q.approval||{}),status:matchData.approval_status||q.approval?.status||"none"}};
       handleLoad(match);
       setOpenQuotesPanel(false);
     } else {
@@ -2861,7 +2885,7 @@ export default function App({onLogout,currentUser}){
     const lastId=localStorage.getItem("vibrato_last_quote_id");
     if(!lastId)return;
     supabase.from("quotes")
-      .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, updated_at, data, source")
+      .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data, source")
       .eq("id",lastId)
       .single()
       .then(({data,error})=>{
