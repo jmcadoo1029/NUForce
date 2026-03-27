@@ -2668,7 +2668,7 @@ function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
 
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-function Dashboard({onEnterQuote, currentUser}){
+function Dashboard({onEnterQuote, onLoadQuote, currentUser}){
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -2702,6 +2702,33 @@ function Dashboard({onEnterQuote, currentUser}){
       .order("opportunity", {ascending: true});
     const created = createdRaw || [];
 
+    // ── Top 10 product codes this month ──
+    const pcodeMap = {};
+    created.forEach(q => {
+      const lines = q.data?.summary?.lines || [];
+      lines.forEach(l => {
+        if(!l.code||!l.val) return;
+        if(!pcodeMap[l.code]) pcodeMap[l.code] = {code:l.code, total:0, count:0};
+        pcodeMap[l.code].total += l.val;
+        pcodeMap[l.code].count += 1;
+      });
+    });
+    const topCodes = Object.values(pcodeMap)
+      .sort((a,b) => b.total - a.total)
+      .slice(0, 10);
+
+    // ── Top 5 accounts this month ──
+    const acctMap = {};
+    created.forEach(q => {
+      const name = q.customer || q.data?.qi?.account || "(Unknown)";
+      if(!acctMap[name]) acctMap[name] = {name, total:0, count:0};
+      acctMap[name].total += q.total || 0;
+      acctMap[name].count += 1;
+    });
+    const topAccounts = Object.values(acctMap)
+      .sort((a,b) => b.total - a.total)
+      .slice(0, 5);
+
     // ── Month-over-month quote counts (source=vibrato) ──
     const monthCounts = await Promise.all(months.map(async m => {
       const { count } = await supabase
@@ -2730,7 +2757,7 @@ function Dashboard({onEnterQuote, currentUser}){
     const wonExisting = won.filter(q => q.type === "Existing Business");
     const wonTotal    = won.reduce((a,q) => a + (q.total||0), 0);
 
-    setData({ created, monthCounts, won, wonNew, wonExisting, wonTotal });
+    setData({ created, monthCounts, won, wonNew, wonExisting, wonTotal, topCodes, topAccounts });
     setLoading(false);
   };
 
@@ -2868,6 +2895,79 @@ function Dashboard({onEnterQuote, currentUser}){
               </div>
             </div>
 
+            {/* ── Top codes + Top accounts ── */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+
+              {/* Top 10 product codes */}
+              <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
+                boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0"}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:12}}>
+                  TOP PRODUCT CODES THIS MONTH
+                </div>
+                {data.topCodes.length===0?(
+                  <div style={{fontSize:12,color:"#9aa5b1",fontStyle:"italic"}}>No data yet</div>
+                ):(
+                  <>
+                    {data.topCodes.map((p,i)=>{
+                      const maxVal = data.topCodes[0].total;
+                      return(
+                        <div key={p.code} style={{marginBottom:8}}>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}>
+                            <span style={{fontWeight:700,color:"#1a2332"}}>
+                              <span style={{color:"#9aa5b1",marginRight:6,fontSize:10}}>#{i+1}</span>
+                              {p.code}
+                            </span>
+                            <span style={{color:"#1a5276",fontWeight:600}}>{money(p.total)}</span>
+                          </div>
+                          <div style={{height:5,background:"#e8ecf0",borderRadius:3,overflow:"hidden"}}>
+                            <div style={{height:"100%",width:Math.round((p.total/maxVal)*100)+"%",
+                              background:"#1a5276",borderRadius:3}}/>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+
+              {/* Top 5 accounts */}
+              <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
+                boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0"}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:12}}>
+                  TOP 5 ACCOUNTS THIS MONTH
+                </div>
+                {data.topAccounts.length===0?(
+                  <div style={{fontSize:12,color:"#9aa5b1",fontStyle:"italic"}}>No data yet</div>
+                ):(
+                  <table style={{width:"100%",borderCollapse:"collapse"}}>
+                    <thead>
+                      <tr style={{fontSize:9,color:"#9aa5b1",fontWeight:700,letterSpacing:.8}}>
+                        <th style={{textAlign:"left",paddingBottom:8,fontWeight:700}}>#</th>
+                        <th style={{textAlign:"left",paddingBottom:8,fontWeight:700}}>ACCOUNT</th>
+                        <th style={{textAlign:"center",paddingBottom:8,fontWeight:700}}>QUOTES</th>
+                        <th style={{textAlign:"right",paddingBottom:8,fontWeight:700}}>TOTAL</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.topAccounts.map((a,i)=>(
+                        <tr key={a.name} style={{borderTop:"1px solid #f0f2f5",fontSize:11}}>
+                          <td style={{padding:"7px 0",color:"#9aa5b1",fontWeight:600}}>{i+1}</td>
+                          <td style={{padding:"7px 8px",fontWeight:600,color:"#1a2332",
+                            maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            {a.name}
+                          </td>
+                          <td style={{padding:"7px 0",textAlign:"center",color:"#6b7a8d"}}>{a.count}</td>
+                          <td style={{padding:"7px 0",textAlign:"right",fontWeight:600,color:"#1a5276"}}>
+                            {money(a.total)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+
             {/* ── Quotes this month table ── */}
             <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
               border:"1px solid #e8ecf0",overflow:"hidden"}}>
@@ -2887,7 +2987,10 @@ function Dashboard({onEnterQuote, currentUser}){
                   {data.created.map(q=>(
                     <div key={q.id} style={{display:"grid",gridTemplateColumns:"2fr 2fr 1fr",
                       padding:"10px 24px",borderTop:"1px solid #f0f2f5",fontSize:12}}>
-                      <div style={{fontWeight:600,color:"#1a2332"}}>
+                      <div
+                        onClick={()=>onLoadQuote&&onLoadQuote(q)}
+                        style={{fontWeight:600,color:"#1a5276",cursor:"pointer",
+                          textDecoration:"underline",textDecorationColor:"rgba(26,82,118,0.4)"}}>
                         {(q.opportunity||"—")+((q.data?.qi?.rev||q.revision)||"")}
                       </div>
                       <div style={{color:"#6b7a8d"}}>{q.customer||"—"}</div>
@@ -3359,13 +3462,15 @@ export default function App({onLogout,currentUser}){
     window.scrollTo({top:0,behavior:"smooth"});
   };
 
-  const handleNewQuote=()=>{
-    const result=window.confirm("Save the current quote before starting a new one?\n\nClick OK to save, or Cancel to discard and continue.");
-    if(result){
-      const id=currentQuoteId||undefined;
-      const q={id,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
-        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
-      saveQuoteToSupabase(q,autoSpecs,autoNotes);
+  const handleNewQuote=(skipConfirm=false)=>{
+    if(!skipConfirm){
+      const result=window.confirm("Save the current quote before starting a new one?\n\nClick OK to save, or Cancel to discard and continue.");
+      if(result){
+        const id=currentQuoteId||undefined;
+        const q={id,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
+        saveQuoteToSupabase(q,autoSpecs,autoNotes);
+      }
     }
     // Reset all state to blank defaults
     setQi({opp:"",account:"",billTo:"",billToCity:"",contact:"",email:"",prepby:"",rev:"",revDate:"",date:new Date().toLocaleDateString("en-US"),rfq:"",stage:"Proposal/Price Quote",type:"New Business",relatedOpps:""});
@@ -4986,7 +5091,7 @@ const STANDARD_TERMS = [
             🏠 Home
           </button>
           <QuoteSearch onLoad={q=>{handleLoad(q);setShowDashboard(false);}}/>
-          <button onClick={()=>{handleNewQuote();setShowDashboard(false);}} title="Start a fresh blank quote"
+          <button onClick={()=>{handleNewQuote(showDashboard);setShowDashboard(false);}} title="Start a fresh blank quote"
             style={{background:"#2d6a4f",border:"none",borderRadius:7,padding:"7px 14px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
             + NEW
           </button>
@@ -5105,7 +5210,7 @@ const STANDARD_TERMS = [
       <div style={{flex:1,display:"flex",overflow:"hidden"}}>
 
         {showDashboard?(
-          <Dashboard onEnterQuote={()=>setShowDashboard(false)} currentUser={currentUser}/>
+          <Dashboard onEnterQuote={()=>{handleNewQuote(true);setShowDashboard(false);}} onLoadQuote={q=>{handleLoad(q);setShowDashboard(false);}} currentUser={currentUser}/>
         ):(
         <>{/* ── Left: scrollable form column ── */}
         <div style={{flex:1,overflowY:"auto",background:C.bg,padding:14}}>
