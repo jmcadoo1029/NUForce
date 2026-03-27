@@ -1671,6 +1671,187 @@ async function deleteQuoteFromSupabase(id) {
   if (error) console.error("Supabase delete error:", error);
 }
 
+// ── Client / Contact picker ───────────────────────────────────────────────────
+function ClientContactPicker({qi, setQi}){
+  const [clientSearch, setClientSearch]     = useState(qi.account||"");
+  const [clientResults, setClientResults]   = useState([]);
+  const [clientOpen, setClientOpen]         = useState(false);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [contacts, setContacts]             = useState([]);
+  const [contactOpen, setContactOpen]       = useState(false);
+  const [customContact, setCustomContact]   = useState(false);
+  const clientRef  = useRef(null);
+  const contactRef = useRef(null);
+  const clientTimer = useRef(null);
+
+  useEffect(()=>{
+    setClientSearch(qi.account||"");
+    setSelectedClient(null);
+    setContacts([]);
+    setCustomContact(false);
+  },[qi.account]);
+
+  useEffect(()=>{
+    if(!clientOpen)return;
+    clearTimeout(clientTimer.current);
+    if(!clientSearch.trim()){setClientResults([]);return;}
+    clientTimer.current=setTimeout(async()=>{
+      const {data}=await supabase
+        .from("clients")
+        .select("id, name")
+        .ilike("name",`%${clientSearch.trim()}%`)
+        .order("name")
+        .limit(30);
+      setClientResults(data||[]);
+    },250);
+    return()=>clearTimeout(clientTimer.current);
+  },[clientOpen, clientSearch]);
+
+  useEffect(()=>{
+    if(!selectedClient){setContacts([]);return;}
+    supabase
+      .from("contacts")
+      .select("id, first_name, last_name, email")
+      .eq("client_id", selectedClient.id)
+      .order("last_name")
+      .then(({data})=>setContacts(data||[]));
+  },[selectedClient]);
+
+  useEffect(()=>{
+    const h=e=>{
+      if(clientRef.current&&!clientRef.current.contains(e.target))setClientOpen(false);
+      if(contactRef.current&&!contactRef.current.contains(e.target))setContactOpen(false);
+    };
+    document.addEventListener("mousedown",h);
+    return()=>document.removeEventListener("mousedown",h);
+  },[]);
+
+  const selectClient=(c)=>{
+    setSelectedClient(c);
+    setClientSearch(c.name);
+    setQi(q=>({...q, account:c.name, contact:"", email:""}));
+    setClientOpen(false);
+    setClientResults([]);
+    setCustomContact(false);
+  };
+
+  const selectContact=(ct)=>{
+    const name=((ct.first_name||"")+" "+(ct.last_name||"")).trim();
+    setQi(q=>({...q, contact:name, email:ct.email||""}));
+    setContactOpen(false);
+    setCustomContact(false);
+  };
+
+  const ddStyle={position:"absolute",top:"100%",left:0,right:0,zIndex:2000,
+    background:"#fff",border:"1px solid "+C.border,borderRadius:7,
+    boxShadow:"0 4px 16px rgba(0,0,0,0.12)",maxHeight:200,overflowY:"auto",marginTop:2};
+  const itemBase={padding:"8px 12px",cursor:"pointer",fontSize:12,
+    borderBottom:"1px solid #f0f2f5",transition:"background .1s"};
+  const hasContacts=contacts.length>0;
+
+  return(
+    <div>
+      <div style={{marginBottom:6,position:"relative"}} ref={clientRef}>
+        <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Account</div>
+        <input
+          value={clientSearch}
+          onChange={e=>{
+            setClientSearch(e.target.value);
+            setQi(q=>({...q,account:e.target.value}));
+            setSelectedClient(null);
+            setContacts([]);
+            setClientOpen(true);
+          }}
+          onFocus={()=>setClientOpen(true)}
+          placeholder="Type to search clients..."
+          style={{...inp,width:"100%"}}/>
+        {clientOpen&&clientResults.length>0&&(
+          <div style={ddStyle}>
+            {clientResults.map(c=>(
+              <div key={c.id}
+                onMouseDown={()=>selectClient(c)}
+                style={itemBase}
+                onMouseEnter={e=>e.currentTarget.style.background=C.panel}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                {c.name}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{marginBottom:6,position:"relative"}} ref={contactRef}>
+        <div style={{fontSize:9,color:C.dim,marginBottom:2,display:"flex",alignItems:"center",gap:6}}>
+          <span>Contact</span>
+          {hasContacts&&!customContact&&(
+            <span style={{color:C.accent,fontSize:9,cursor:"pointer",fontWeight:600}}
+              onClick={()=>{setCustomContact(true);setContactOpen(false);}}>
+              + custom
+            </span>
+          )}
+          {customContact&&(
+            <span style={{color:C.muted,fontSize:9,cursor:"pointer"}}
+              onClick={()=>setCustomContact(false)}>
+              back to list
+            </span>
+          )}
+        </div>
+        {hasContacts&&!customContact?(
+          <div style={{position:"relative"}}>
+            <div
+              onClick={()=>setContactOpen(o=>!o)}
+              style={{...inp,width:"100%",cursor:"pointer",display:"flex",alignItems:"center",
+                justifyContent:"space-between",userSelect:"none",
+                color:qi.contact?C.text:C.dim}}>
+              <span>{qi.contact||"Select a contact..."}</span>
+              <span style={{fontSize:9,color:C.dim}}>▼</span>
+            </div>
+            {contactOpen&&(
+              <div style={ddStyle}>
+                {contacts.map(ct=>{
+                  const name=((ct.first_name||"")+" "+(ct.last_name||"")).trim();
+                  return(
+                    <div key={ct.id}
+                      onMouseDown={()=>selectContact(ct)}
+                      style={itemBase}
+                      onMouseEnter={e=>e.currentTarget.style.background=C.panel}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <div style={{fontWeight:600}}>{name||"(no name)"}</div>
+                      {ct.email&&<div style={{fontSize:10,color:C.muted}}>{ct.email}</div>}
+                    </div>
+                  );
+                })}
+                <div
+                  onMouseDown={()=>{setCustomContact(true);setContactOpen(false);}}
+                  style={{...itemBase,color:C.accent,fontWeight:600}}
+                  onMouseEnter={e=>e.currentTarget.style.background=C.panel}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  + Enter custom contact
+                </div>
+              </div>
+            )}
+          </div>
+        ):(
+          <input
+            value={qi.contact||""}
+            onChange={e=>setQi(q=>({...q,contact:e.target.value}))}
+            placeholder="Contact name"
+            style={{...inp,width:"100%"}}/>
+        )}
+      </div>
+
+      <div style={{marginBottom:6}}>
+        <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Email</div>
+        <input
+          value={qi.email||""}
+          onChange={e=>setQi(q=>({...q,email:e.target.value}))}
+          placeholder="Email address"
+          style={{...inp,width:"100%"}}/>
+      </div>
+    </div>
+  );
+}
+
 function QuoteSearch({onLoad}){
   const [search,setSearch]=useState("");
   const [results,setResults]=useState([]);
@@ -5198,12 +5379,12 @@ const STANDARD_TERMS = [
                 <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2,marginBottom:8}}>QUOTE INFORMATION</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 16px"}}>
                   <div>
-                    {[["Account","account"],["Contact","contact"],["Email","email"],["RFQ / PO","rfq"]].map(([l,k])=>(
-                      <div key={k} style={{marginBottom:6}}>
-                        <div style={{fontSize:9,color:C.dim,marginBottom:2}}>{l}</div>
-                        <input value={qi[k]||""} onChange={e=>setQi({...qi,[k]:e.target.value})} style={{...inp,width:"100%"}}/>
-                      </div>
-                    ))}
+                    <ClientContactPicker qi={qi} setQi={setQi}/>
+                    {/* RFQ / PO */}
+                    <div style={{marginBottom:6}}>
+                      <div style={{fontSize:9,color:C.dim,marginBottom:2}}>RFQ / PO</div>
+                      <input value={qi.rfq||""} onChange={e=>setQi({...qi,rfq:e.target.value})} style={{...inp,width:"100%"}}/>
+                    </div>
                     <div style={{marginBottom:6}}>
                       <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Bill To</div>
                       <input value={qi.billTo||""} onChange={e=>setQi({...qi,billTo:e.target.value})}
