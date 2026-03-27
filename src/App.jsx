@@ -2208,6 +2208,9 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     }
   }
 
+  // Subcontracting — added before budget so rollInto can target sub lines
+  if(sub.on)sub.rows.forEach(r=>{if(sf(r.price)>0)add(r.desc||"Subcontract Item",r.price,null,"98");});
+
   // Budget materials: add marked-up total to the selected setup line
   if(budget&&budget.on&&budget.rows.length>0){
     const mp=sf(budget.markup,25)/100;
@@ -2317,7 +2320,6 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     // (handled by inStockModal state on the proc side — modal analysis itself is always added)
     add("Modal Analysis",modalAnalysis.price||"6250",null,"67");
   }
-  if(sub.on)sub.rows.forEach(r=>{if(sf(r.price)>0)add(r.desc||"Subcontract Item",r.price,null,"98");});
   // Sort: procs first, then test lines grouped by unit, then reports last
   const procLines=lines.filter(l=>l.code==="42"||l.code==="44"||l.label.toLowerCase().includes("procedure"));
   const repLines=lines.filter(l=>l.code==="41"||l.code==="43"||l.label.toLowerCase().includes("test report")||l.label.toLowerCase().includes("combined test report"));
