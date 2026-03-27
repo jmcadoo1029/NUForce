@@ -2240,7 +2240,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
 // ── Auto-specs helper ─────────────────────────────────────────────────────────
 function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
   const lines=[];
-  const sc=spec=>spec?" in accordance with "+spec.toUpperCase():"";
+  const sc=spec=>spec?" in accordance with "+spec:"";
   vibs.filter(s=>s.on&&s.spec).forEach((s,i)=>{
     const fp=s.freqRange?", "+s.freqRange+" Hz":"";
     const pre=i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):"";
@@ -2300,7 +2300,7 @@ function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
   emis.filter(s=>s.on).forEach((s,i)=>{
     const pre=i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):"";
     const selectedRev=Object.entries(s.revs||{}).filter(([,v])=>v).map(([k])=>k.replace("Rev ",""))[0]||"";
-    const specStr=s.spec?s.spec.toUpperCase():("MIL-STD-461"+selectedRev);
+    const specStr=s.spec?s.spec:("MIL-STD-461"+selectedRev);
     if(!specStr)return;
     const plats=Object.entries(s.plats||{}).filter(([,v])=>v).map(([k])=>k.toLowerCase());
     const locs=Object.entries(s.locs||{}).filter(([,v])=>v).map(([k])=>k.toLowerCase()+" applications");
@@ -4227,7 +4227,7 @@ const STANDARD_TERMS = [
       checkY(70);
       doc.setFillColor(...LIGHT); doc.rect(ML,y-2,TW,18,'F');
       doc.setFillColor(...RED); doc.rect(ML,y-2,3,18,'F');
-      setF('bold',9,RED); doc.text('GOVERNMENT SOURCE INSPECTION',ML+10,y+10); y+=22;
+      setF('bold',9,RED); doc.text('GOVERNMENT SOURCE INSPECTION',ML+10,y+10); y+=26;
       setF('normal', 9, DARK);
       doc.text('If Government Source Inspection is required:', ML, y); y += 14;
       [['Navy Nuclear','Michael Auchenbach -- michael.a.auchenbach.civ@mail.mil -- T: 908-387-9866  F: 908-387-8694'],
