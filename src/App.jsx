@@ -5390,18 +5390,7 @@ const STANDARD_TERMS = [
               </>
             )}
             <div style={{flex:1}}/>
-            {isApprover&&(
-              <button onClick={async()=>{const q=await loadQuotesFromSupabase();const p=await loadPendingQuotes();setSavedQuotes({...q,...p});setShowApprovalQueue(true);setQueueSelected(new Set());}}
-                style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.25)",borderRadius:6,
-                  padding:"3px 12px",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-                📥 QUEUE
-                {pendingQuotes.length>0&&(
-                  <span style={{background:"#c0392b",borderRadius:10,padding:"0 6px",fontSize:10,fontWeight:800}}>
-                    {pendingQuotes.length}
-                  </span>
-                )}
-              </button>
-            )}
+
             <button
               onClick={()=>{ const pendingLock=approval.status==="pending"; if(!pendingLock||isApprover) setLocked(l=>!l); }}
               title={approval.status==="pending"&&!isApprover?"Only owners can unlock a quote pending approval":""}
