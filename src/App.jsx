@@ -5230,18 +5230,15 @@ const STANDARD_TERMS = [
             🏠 Home
           </button>
           <QuoteSearch onLoad={q=>{handleLoad(q);setShowDashboard(false);}}/>
-          <button onClick={()=>{handleNewQuote(showDashboard);setShowDashboard(false);}} title="Start a fresh blank quote"
-            style={{background:"#2d6a4f",border:"none",borderRadius:7,padding:"7px 14px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
-            + NEW
-          </button>
-          <button onClick={handleClone} title="Clone this quote"
+
+          {!showDashboard&&<button onClick={handleClone} title="Clone this quote"
             style={{background:"#2e6da4",border:"none",borderRadius:7,padding:"7px 14px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
             CLONE
-          </button>
-          <button onClick={handleSave}
+          </button>}
+          {!showDashboard&&<button onClick={handleSave}
             style={{background:C.red,border:"none",borderRadius:7,padding:"7px 16px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
             SAVE
-          </button>
+          </button>}
           {anyOn&&<div style={{fontSize:14,color:"#fff",fontWeight:700,fontFamily:"monospace",marginLeft:4}}>{money(displayTotal)}</div>}
 
           <div style={{width:1,height:22,background:"rgba(255,255,255,0.2)"}}/>
