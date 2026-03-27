@@ -1672,7 +1672,7 @@ async function deleteQuoteFromSupabase(id) {
 }
 
 // ── Client / Contact picker ───────────────────────────────────────────────────
-function ClientContactPicker({qi, setQi}){
+function ClientContactPicker({qi, setQi, resetKey}){
   const [clientSearch, setClientSearch]     = useState(qi.account||"");
   const [clientResults, setClientResults]   = useState([]);
   const [clientOpen, setClientOpen]         = useState(false);
@@ -1683,26 +1683,29 @@ function ClientContactPicker({qi, setQi}){
   const clientRef  = useRef(null);
   const contactRef = useRef(null);
   const clientTimer = useRef(null);
+  const externalUpdate = useRef(false);
 
+  // When resetKey changes (quote loaded), sync everything from qi
   useEffect(()=>{
     setClientSearch(qi.account||"");
     setSelectedClient(null);
     setContacts([]);
     setCustomContact(false);
-  },[qi.account]);
+  },[resetKey]);
 
   useEffect(()=>{
     clearTimeout(clientTimer.current);
     if(!clientSearch.trim()){setClientResults([]);return;}
     clientTimer.current=setTimeout(async()=>{
+      const term=clientSearch.trim();
       const {data,error}=await supabase
         .from("clients")
-        .select("id, name")
-        .ilike("name",`%${clientSearch.trim()}%`)
+        .select("id, name, address, city, state, zip")
+        .ilike("name",`%${term}%`)
         .order("name")
         .limit(30);
       if(error)console.error("Clients query error:",error);
-      else console.log("Clients results:",data);
+      else console.log("Clients results:",data,"term:",term);
       setClientResults(data||[]);
     },250);
     return()=>clearTimeout(clientTimer.current);
@@ -1730,7 +1733,9 @@ function ClientContactPicker({qi, setQi}){
   const selectClient=(c)=>{
     setSelectedClient(c);
     setClientSearch(c.name);
-    setQi(q=>({...q, account:c.name, contact:"", email:""}));
+    const billTo=c.address||"";
+    const billToCity=[c.city,c.state,c.zip].filter(Boolean).join(", ");
+    setQi(q=>({...q, account:c.name, contact:"", email:"", billTo, billToCity}));
     setClientOpen(false);
     setClientResults([]);
     setCustomContact(false);
@@ -5380,7 +5385,7 @@ const STANDARD_TERMS = [
                 <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2,marginBottom:8}}>QUOTE INFORMATION</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 16px"}}>
                   <div>
-                    <ClientContactPicker qi={qi} setQi={setQi}/>
+                    <ClientContactPicker qi={qi} setQi={setQi} resetKey={currentQuoteId}/>
                     {/* RFQ / PO */}
                     <div style={{marginBottom:6}}>
                       <div style={{fontSize:9,color:C.dim,marginBottom:2}}>RFQ / PO</div>
