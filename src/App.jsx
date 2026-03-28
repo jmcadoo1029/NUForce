@@ -2667,11 +2667,254 @@ function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
 }
 
 
+
+// ── Account Dashboard Modal ───────────────────────────────────────────────────
+function AccountDashboard({accountName, onClose, onLoadQuote}){
+  const [data, setData]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [expandedYear, setExpandedYear] = useState(null);
+
+  useEffect(()=>{
+    if(!accountName)return;
+    (async()=>{
+      setLoading(true);
+      // Fetch all quotes for this exact account name
+      let allRows=[], from=0, batch=500;
+      while(true){
+        const {data:rows,error}=await supabase
+          .from("quotes")
+          .select("id, opportunity, revision, stage, total, won_date, data, source, created_at")
+          .eq("customer", accountName)
+          .order("opportunity", {ascending:false})
+          .range(from, from+batch-1);
+        if(error||!rows||rows.length===0)break;
+        allRows=allRows.concat(rows);
+        if(rows.length<batch)break;
+        from+=batch;
+      }
+
+      // Group by year prefix from opportunity number
+      const yearMap={};
+      allRows.forEach(row=>{
+        const opp=row.opportunity||"";
+        const match=opp.match(/^(\d{2})-/);
+        const yr=match?"20"+match[1]:"Unknown";
+        if(!yearMap[yr])yearMap[yr]={year:yr,quotes:[],wonCount:0,wonTotal:0,total:0,count:0};
+        const total=row.total||0;
+        const isWon=row.stage==="Closed Won";
+        const rev=row.data?.qi?.rev||row.revision||"";
+        yearMap[yr].quotes.push({
+          id:row.id,
+          opp:opp,
+          rev,
+          stage:row.stage||"",
+          total,
+          data:row.data,
+          source:row.source,
+        });
+        yearMap[yr].count++;
+        yearMap[yr].total+=total;
+        if(isWon){yearMap[yr].wonCount++;yearMap[yr].wonTotal+=total;}
+      });
+
+      // Sort years newest first, Unknown at bottom
+      const years=Object.values(yearMap).sort((a,b)=>{
+        if(a.year==="Unknown")return 1;
+        if(b.year==="Unknown")return-1;
+        return b.year.localeCompare(a.year);
+      });
+
+      const lifetimeCount=allRows.length;
+      const lifetimeTotal=allRows.reduce((a,r)=>a+(r.total||0),0);
+      const lifetimeWon=allRows.filter(r=>r.stage==="Closed Won").length;
+      const winRate=lifetimeCount>0?Math.round((lifetimeWon/lifetimeCount)*100):0;
+
+      setData({years, lifetimeCount, lifetimeTotal, lifetimeWon, winRate});
+      setLoading(false);
+    })();
+  },[accountName]);
+
+  const money=n=>"$"+Math.round(n).toLocaleString();
+  const stageColor=s=>{
+    if(!s)return"#9aa5b1";
+    if(s.includes("Won"))return"#1e8449";
+    if(s.includes("Lost")||s.includes("Cancelled"))return"#c0392b";
+    if(s.includes("Pending")||s.includes("RFQ"))return"#b7791f";
+    return"#6b7a8d";
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:4000,background:"rgba(0,0,0,0.5)",
+      display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:48}}
+      onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{background:"#fff",borderRadius:14,width:780,maxWidth:"95vw",maxHeight:"85vh",
+        boxShadow:"0 8px 40px rgba(0,0,0,0.3)",display:"flex",flexDirection:"column"}}>
+
+        {/* Header */}
+        <div style={{padding:"20px 28px",borderBottom:"1px solid #e8ecf0",flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:4}}>
+                ACCOUNT DASHBOARD
+              </div>
+              <div style={{fontSize:20,fontWeight:800,color:"#1a2332"}}>{accountName}</div>
+            </div>
+            <button onClick={onClose}
+              style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#6b7a8d",marginTop:-4}}>
+              ×
+            </button>
+          </div>
+          {!loading&&data&&(
+            <div style={{display:"flex",gap:28,marginTop:14,flexWrap:"wrap"}}>
+              {[
+                {label:"Total Quotes",val:data.lifetimeCount},
+                {label:"Lifetime Value",val:money(data.lifetimeTotal)},
+                {label:"Closed Won",val:data.lifetimeWon},
+                {label:"Win Rate",val:data.winRate+"%"},
+              ].map(({label,val})=>(
+                <div key={label}>
+                  <div style={{fontSize:9,fontWeight:700,letterSpacing:1,color:"#9aa5b1"}}>{label}</div>
+                  <div style={{fontSize:18,fontWeight:800,color:"#1a2332",marginTop:2}}>{val}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Body */}
+        <div style={{flex:1,overflowY:"auto",padding:"16px 28px"}}>
+          {loading?(
+            <div style={{textAlign:"center",padding:60,color:"#9aa5b1",fontSize:13}}>Loading…</div>
+          ):!data||data.years.length===0?(
+            <div style={{textAlign:"center",padding:60,color:"#9aa5b1",fontSize:13}}>No quotes found for this account</div>
+          ):(
+            <>
+              {/* Column headers */}
+              <div style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 1fr 1fr 60px",
+                gap:8,padding:"6px 12px",
+                fontSize:9,fontWeight:700,letterSpacing:.8,color:"#9aa5b1",marginBottom:4}}>
+                <div>YEAR</div><div>QUOTES</div><div>TOTAL VALUE</div>
+                <div>CLOSED WON</div><div>WON VALUE</div><div>WIN %</div>
+              </div>
+              {data.years.map(y=>{
+                const winPct=y.count>0?Math.round((y.wonCount/y.count)*100):0;
+                const isOpen=expandedYear===y.year;
+                return(
+                  <div key={y.year} style={{marginBottom:6}}>
+                    {/* Year row */}
+                    <div
+                      onClick={()=>setExpandedYear(isOpen?null:y.year)}
+                      style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 1fr 1fr 60px",
+                        gap:8,padding:"10px 12px",borderRadius:8,cursor:"pointer",
+                        background:isOpen?"#f0f4ff":"#f8f9fb",
+                        border:"1px solid "+(isOpen?"#1a5276":"#e8ecf0"),
+                        transition:"all .15s"}}>
+                      <div style={{fontWeight:800,fontSize:14,color:y.year==="Unknown"?"#9aa5b1":"#1a2332"}}>
+                        {y.year}
+                      </div>
+                      <div style={{fontSize:12,color:"#1a2332",fontWeight:600}}>{y.count}</div>
+                      <div style={{fontSize:12,color:"#1a5276",fontWeight:600}}>{money(y.total)}</div>
+                      <div style={{fontSize:12,color:"#1e8449",fontWeight:600}}>{y.wonCount}</div>
+                      <div style={{fontSize:12,color:"#1e8449",fontWeight:600}}>{money(y.wonTotal)}</div>
+                      <div style={{fontSize:12,color:winPct>=50?"#1e8449":"#6b7a8d",fontWeight:600,
+                        display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        {winPct}%
+                        <span style={{fontSize:10,color:"#9aa5b1"}}>{isOpen?"▲":"▼"}</span>
+                      </div>
+                    </div>
+                    {/* Expanded quote list */}
+                    {isOpen&&(
+                      <div style={{marginTop:4,marginLeft:12,borderLeft:"2px solid #1a5276",paddingLeft:12}}>
+                        <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr",
+                          gap:8,padding:"4px 8px",
+                          fontSize:9,fontWeight:700,letterSpacing:.8,color:"#9aa5b1",marginBottom:2}}>
+                          <div>OPPORTUNITY</div><div>STAGE</div><div style={{textAlign:"right"}}>TOTAL</div>
+                        </div>
+                        {y.quotes.map(q=>(
+                          <div key={q.id}
+                            onClick={()=>{
+                              const blob=q.data||{};
+                              onLoadQuote({
+                                ...blob,
+                                id:q.id,
+                                opp:q.opp||blob.opp,
+                                rev:q.rev||blob.qi?.rev||"",
+                                customer:accountName,
+                                total:q.total||blob.total,
+                                source:blob.source||q.source||"vibrato",
+                              });
+                              onClose();
+                            }}
+                            style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr",
+                              gap:8,padding:"7px 8px",borderRadius:6,cursor:"pointer",
+                              borderBottom:"1px solid #f0f2f5",transition:"background .1s"}}
+                            onMouseEnter={e=>e.currentTarget.style.background="#f0f4ff"}
+                            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                            <div style={{fontWeight:600,fontSize:12,color:"#1a5276",
+                              textDecoration:"underline",textDecorationColor:"rgba(26,82,118,0.3)"}}>
+                              {(q.opp||"—")+q.rev}
+                            </div>
+                            <div style={{fontSize:11,fontWeight:600,color:stageColor(q.stage)}}>
+                              {q.stage||"—"}
+                            </div>
+                            <div style={{fontSize:11,fontWeight:600,color:"#1a2332",textAlign:"right"}}>
+                              {money(q.total||0)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 function Dashboard({onEnterQuote, onLoadQuote, currentUser, isApprover, pendingQuotes, onQueueDecision}){
   const [data, setData]       = useState(null);
   const [qSelected, setQSelected] = useState(new Set());
   const [qComments, setQComments] = useState("");
+  const [acctSearch, setAcctSearch]   = useState("");
+  const [acctResults, setAcctResults] = useState([]);
+  const [acctOpen, setAcctOpen]       = useState(false);
+  const [acctModal, setAcctModal]     = useState(null); // account name string
+  const acctRef  = useRef(null);
+  const acctTimer = useRef(null);
+
+  // Debounced account search against distinct customer values in quotes table
+  useEffect(()=>{
+    clearTimeout(acctTimer.current);
+    if(!acctSearch.trim()){setAcctResults([]);setAcctOpen(false);return;}
+    acctTimer.current=setTimeout(async()=>{
+      const {data:rows}=await supabase
+        .from("quotes")
+        .select("customer")
+        .ilike("customer",`%${acctSearch.trim()}%`)
+        .limit(200);
+      // Deduplicate
+      const seen=new Set();
+      const unique=(rows||[]).map(r=>r.customer).filter(n=>{
+        if(!n||seen.has(n))return false;
+        seen.add(n);return true;
+      }).sort();
+      setAcctResults(unique);
+      setAcctOpen(unique.length>0);
+    },250);
+    return()=>clearTimeout(acctTimer.current);
+  },[acctSearch]);
+
+  // Close account dropdown on outside click
+  useEffect(()=>{
+    const h=e=>{if(acctRef.current&&!acctRef.current.contains(e.target))setAcctOpen(false);};
+    document.addEventListener("mousedown",h);
+    return()=>document.removeEventListener("mousedown",h);
+  },[]);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -2777,14 +3020,48 @@ function Dashboard({onEnterQuote, onLoadQuote, currentUser, isApprover, pendingQ
       <div style={{maxWidth:1100,margin:"0 auto"}}>
 
         {/* Title row */}
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24,flexWrap:"wrap",gap:12}}>
           <div>
             <div style={{fontSize:22,fontWeight:700,color:"#1a2332"}}>Dashboard</div>
             <div style={{fontSize:12,color:"#6b7a8d",marginTop:2}}>
               {new Date().toLocaleString("en-US",{month:"long",year:"numeric"})}
             </div>
           </div>
-          <div style={{display:"flex",gap:10}}>
+          <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+            {/* Account lookup */}
+            <div ref={acctRef} style={{position:"relative"}}>
+              <div style={{display:"flex",gap:0,alignItems:"center",background:"#fff",
+                border:"1px solid #d0d7de",borderRadius:8,overflow:"hidden"}}>
+                <span style={{padding:"0 10px",fontSize:14,color:"#9aa5b1"}}>🏢</span>
+                <input
+                  value={acctSearch}
+                  onChange={e=>{setAcctSearch(e.target.value);}}
+                  placeholder="Account lookup…"
+                  style={{border:"none",outline:"none",padding:"8px 4px",fontSize:12,
+                    fontFamily:"inherit",width:180,color:"#1a2332"}}/>
+                {acctSearch&&(
+                  <button onClick={()=>{setAcctSearch("");setAcctResults([]);setAcctOpen(false);}}
+                    style={{background:"none",border:"none",padding:"0 10px",cursor:"pointer",
+                      color:"#9aa5b1",fontSize:14}}>×</button>
+                )}
+              </div>
+              {acctOpen&&acctResults.length>0&&(
+                <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:3000,
+                  background:"#fff",border:"1px solid #d0d7de",borderRadius:8,
+                  boxShadow:"0 4px 16px rgba(0,0,0,0.12)",maxHeight:240,overflowY:"auto",marginTop:3}}>
+                  {acctResults.map(name=>(
+                    <div key={name}
+                      onMouseDown={()=>{setAcctModal(name);setAcctSearch("");setAcctOpen(false);}}
+                      style={{padding:"9px 14px",cursor:"pointer",fontSize:12,
+                        borderBottom:"1px solid #f0f2f5",transition:"background .1s"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#f0f4ff"}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      {name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <button onClick={load}
               style={{background:"#fff",border:"1px solid #d0d7de",borderRadius:8,padding:"8px 18px",
                 fontWeight:600,fontSize:12,cursor:"pointer",color:"#1a2332",display:"flex",alignItems:"center",gap:6}}>
@@ -2797,6 +3074,14 @@ function Dashboard({onEnterQuote, onLoadQuote, currentUser, isApprover, pendingQ
             </button>
           </div>
         </div>
+        {/* Account Dashboard modal */}
+        {acctModal&&(
+          <AccountDashboard
+            accountName={acctModal}
+            onClose={()=>setAcctModal(null)}
+            onLoadQuote={q=>{onLoadQuote&&onLoadQuote(q);setAcctModal(null);}}
+          />
+        )}
 
         {loading?(
           <div style={{textAlign:"center",padding:80,color:"#9aa5b1",fontSize:14}}>Loading…</div>
