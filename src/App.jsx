@@ -3579,6 +3579,13 @@ export default function App({onLogout,currentUser}){
   const [showCreateProjectAlert,setShowCreateProjectAlert]=useState(false);
   const [currentQuoteSource,setCurrentQuoteSource]=useState("vibrato");
   const [showDashboard,setShowDashboard]=useState(true);
+  const [toast,setToast]=useState(null); // {msg, type: 'success'|'error'|'info'}
+  const toastTimer=useRef(null);
+  const showToast=(msg,type="success",duration=3000)=>{
+    clearTimeout(toastTimer.current);
+    setToast({msg,type});
+    toastTimer.current=setTimeout(()=>setToast(null),duration);
+  };
 
   // EmailJS config — fill in after setting up emailjs.com
   const EMAILJS_SERVICE_ID  = "YOUR_SERVICE_ID";
@@ -3674,7 +3681,8 @@ export default function App({onLogout,currentUser}){
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
-    if(newId)setCurrentQuoteId(newId);
+    if(newId){setCurrentQuoteId(newId);showToast("Submitted for approval","info");}
+    else showToast("Submit failed — check your connection","error",5000);
     await sendSubmitEmail(currentUser);
   };
 
@@ -3686,7 +3694,8 @@ export default function App({onLogout,currentUser}){
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
-    if(newId)setCurrentQuoteId(newId);
+    if(newId){setCurrentQuoteId(newId);showToast("Quote approved ✓","success");}
+    else showToast("Save failed — check your connection","error",5000);
     await sendDecisionEmail("APPROVED",currentUser,approvalComments,approval.submittedBy);
   };
 
@@ -3699,7 +3708,8 @@ export default function App({onLogout,currentUser}){
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
-    if(newId)setCurrentQuoteId(newId);
+    if(newId){setCurrentQuoteId(newId);showToast("Quote rejected","info");}
+    else showToast("Save failed — check your connection","error",5000);
     await sendDecisionEmail("REJECTED",currentUser,approvalComments,approval.submittedBy);
   };
 
@@ -3715,7 +3725,8 @@ export default function App({onLogout,currentUser}){
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
-    if(newId)setCurrentQuoteId(newId);
+    if(newId){setCurrentQuoteId(newId);showToast("Submitted for Closed Won approval","info");}
+    else showToast("Submit failed — check your connection","error",5000);
   };
 
   const handleWonApprove=async(comments)=>{
@@ -3724,7 +3735,8 @@ export default function App({onLogout,currentUser}){
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
-    if(newId)setCurrentQuoteId(newId);
+    if(newId){setCurrentQuoteId(newId);showToast("Closed Won approved ✓","success");}
+    else showToast("Save failed — check your connection","error",5000);
   };
 
   const handleWonReject=async(comments)=>{
@@ -3734,7 +3746,8 @@ export default function App({onLogout,currentUser}){
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
-    if(newId)setCurrentQuoteId(newId);
+    if(newId){setCurrentQuoteId(newId);showToast("Closed Won rejected","info");}
+    else showToast("Save failed — check your connection","error",5000);
   };
 
   // ── Approval Queue (approver dashboard) ──
@@ -4005,9 +4018,9 @@ export default function App({onLogout,currentUser}){
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){
       setCurrentQuoteId(newId);
-      alert("Quote saved: "+(qi.opp||"Untitled"));
+      showToast("Saved — "+(qi.opp||"Untitled")+(qi.rev||""),"success");
     } else {
-      alert("Save failed — check your connection and try again.");
+      showToast("Save failed — check your connection and try again.","error",5000);
     }
   };
 
@@ -6787,6 +6800,28 @@ const STANDARD_TERMS = [
 
       </>)}{/* end dashboard/form conditional */}
       </div>{/* end body flex row */}
+
+      {/* ── Toast notification ── */}
+      {toast&&(
+        <div style={{
+          position:"fixed",bottom:24,right:24,zIndex:9999,
+          background:toast.type==="error"?"#c0392b":toast.type==="info"?"#1a5276":"#1e8449",
+          color:"#fff",borderRadius:10,padding:"12px 20px",
+          boxShadow:"0 4px 20px rgba(0,0,0,0.25)",
+          fontSize:13,fontWeight:600,
+          display:"flex",alignItems:"center",gap:10,
+          animation:"fadeInUp 0.2s ease",
+          maxWidth:340,
+        }}>
+          <span>{toast.type==="error"?"⚠️":toast.type==="info"?"ℹ️":"✓"}</span>
+          <span>{toast.msg}</span>
+          <button onClick={()=>setToast(null)}
+            style={{background:"none",border:"none",color:"rgba(255,255,255,0.7)",
+              cursor:"pointer",fontSize:16,padding:0,marginLeft:4,lineHeight:1}}>
+            ×
+          </button>
+        </div>
+      )}
 
       {/* ── Open Quotes slide-out panel ── */}
       {openQuotesPanel&&(
