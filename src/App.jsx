@@ -6451,9 +6451,7 @@ const STANDARD_TERMS = [
                   value={notesDisplay}
                   onChange={e=>{
                     const val=e.target.value;
-                    const stripped=autoNotes?val.replace("
-
-"+autoNotes,"").replace(autoNotes,""):val;
+                    const stripped=autoNotes?val.replace("\n\n"+autoNotes,"").replace(autoNotes,""):val;
                     setTi({...ti,tiNotes:stripped});
                   }}
                   placeholder="Notes will auto-populate based on selected tests..."
