@@ -3247,7 +3247,17 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                             justifyContent:"space-between",fontSize:11,color:"#6b7a8d",
                             borderTop:"1px solid #f0f2f5",padding:"5px 0",gap:8}}>
                             <span
-                              onClick={()=>onLoadQuote&&onLoadQuote(q)}
+                              onClick={()=>{
+                                if(!onLoadQuote)return;
+                                const blob=q.data||{};
+                                onLoadQuote({
+                                  ...blob,
+                                  id:q.id,
+                                  source:blob.source||"vibrato",
+                                  customer:q.customer||blob.customer,
+                                  total:q.total||blob.total,
+                                });
+                              }}
                               style={{fontWeight:700,color:"#1a5276",cursor:"pointer",
                                 textDecoration:"underline",textDecorationColor:"rgba(26,82,118,0.4)",
                                 flexShrink:0}}>
