@@ -3742,12 +3742,13 @@ export default function App({onLogout,currentUser}){
   };
 
   // ── Closed Won Approval ──────────────────────────────────────────────────────
-  const handleSubmitWonApproval=async()=>{
+  const handleSubmitWonApproval=async(explicitStage)=>{
     const newWonApproval={status:"pending_won",submittedBy:currentUser,submittedAt:new Date().toISOString(),decidedBy:"",decidedAt:"",comments:""};
     setWonApproval(newWonApproval);
     setLocked(true);
-    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,summary,lineOrder,lineOverrides};
+    const effectiveQi=explicitStage?{...qi,stage:explicitStage}:qi;
+    const q={id:currentQuoteId||undefined,opp:effectiveQi.opp,customer:effectiveQi.account,rfq:effectiveQi.rfq,total:displayTotal,
+      qi:effectiveQi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Submitted for Closed Won approval","info");}
     else showToast("Submit failed — check your connection","error",5000);
@@ -6113,7 +6114,7 @@ const STANDARD_TERMS = [
                     style={{background:"#1a5276",border:"none",borderRadius:7,padding:"8px 18px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",gap:6}}>
                     🏗️ Create Project
                   </button>
-                  <button onClick={()=>setShowWonModal(false)}
+                  <button onClick={()=>{setWonLocked(true);setShowWonModal(false);}}
                     style={{background:"#1e8449",border:"none",borderRadius:7,padding:"8px 22px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff"}}>
                     Save &amp; Close
                   </button>
@@ -6268,7 +6269,7 @@ const STANDARD_TERMS = [
                         if(s==="Closed Won"&&wonApproval.status==="none"){
                           setTimeout(()=>{
                             const submit=window.confirm("Submit this quote for Closed Won approval?\n\nClick OK to submit, or Cancel to set the stage without submitting.");
-                            if(submit)handleSubmitWonApproval();
+                            if(submit)handleSubmitWonApproval(s);
                           },50);
                         }
                       }} style={{...sel,width:"100%"}}>
