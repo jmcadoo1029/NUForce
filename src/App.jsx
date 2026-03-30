@@ -6209,7 +6209,7 @@ const STANDARD_TERMS = [
                         <input value={qi[k]||""} onChange={e=>setQi({...qi,[k]:e.target.value})} style={{...inp,width:"100%"}}/>
                       </div>
                     ))}
-                    <div style={{marginBottom:6}}>
+                    <div style={{marginBottom:6,pointerEvents:"auto",opacity:1}}>
                       <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Stage</div>
                       <select value={qi.stage} onChange={e=>{
                         const s=e.target.value;
@@ -6249,7 +6249,8 @@ const STANDARD_TERMS = [
                   {qi.stage==="Closed Won"&&(
                     <button onClick={()=>setShowWonModal(true)}
                       style={{background:"#1e8449",border:"none",borderRadius:6,padding:"3px 10px",
-                        color:"#fff",fontWeight:700,fontSize:10,cursor:"pointer",letterSpacing:.3,display:"flex",alignItems:"center",gap:4}}>
+                        color:"#fff",fontWeight:700,fontSize:10,cursor:"pointer",letterSpacing:.3,display:"flex",alignItems:"center",gap:4,
+                        pointerEvents:"auto",opacity:1}}>
                       🏆 {wonInfo.jobNum?("Job #"+wonInfo.jobNum):"Won Details"}
                     </button>
                   )}
