@@ -3978,9 +3978,7 @@ export default function App({onLogout,currentUser}){
     if(!autoSpecs)return manual;
     if(!manual)return autoSpecs;
     if(manual.includes(autoSpecs))return manual;
-    return manual+"
-
-"+autoSpecs;
+    return manual+"\n\n"+autoSpecs;
   },[ti.tiSpecs,autoSpecs]);
 
   const notesDisplay=useMemo(()=>{
@@ -3988,9 +3986,7 @@ export default function App({onLogout,currentUser}){
     if(!autoNotes)return manual;
     if(!manual)return autoNotes;
     if(manual.includes(autoNotes))return manual;
-    return manual+"
-
-"+autoNotes;
+    return manual+"\n\n"+autoNotes;
   },[ti.tiNotes,autoNotes]);
 
   const anyOn=vibs.some(s=>s.on)||shocks.some(s=>s.on)||noises.some(s=>s.on)||envs.some(s=>s.on)||
