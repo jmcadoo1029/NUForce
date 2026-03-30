@@ -3789,23 +3789,37 @@ export default function App({onLogout,currentUser}){
     for(const id of idsToProcess){
       const q=savedQuotes[id];
       if(!q)continue;
+      const isWon=q.wonApproval?.status==="pending_won";
       const evtQ={event:decision,by:currentUser,at:now,comments:queueComments};
-      const newApproval={...q.approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(q.approval?.history||[]),evtQ]};
-      await saveQuoteToSupabase({...q,approval:newApproval,summary:q.summary,lineOrder:q.lineOrder,lineOverrides:q.lineOverrides},autoSpecs,autoNotes);
-      await sendDecisionEmail(decision.toUpperCase(),currentUser,queueComments,q.approval?.submittedBy||"");
+      if(isWon){
+        // Closed Won approval — update wonApproval, use won_approved/won_rejected statuses
+        const wonStatus=decision==="approved"?"won_approved":"won_rejected";
+        const newWonApproval={...q.wonApproval,status:wonStatus,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(q.wonApproval?.history||[]),evtQ]};
+        await saveQuoteToSupabase({...q,wonApproval:newWonApproval,summary:q.summary,lineOrder:q.lineOrder,lineOverrides:q.lineOverrides},autoSpecs,autoNotes);
+        await sendDecisionEmail("CLOSED WON "+decision.toUpperCase(),currentUser,queueComments,q.wonApproval?.submittedBy||"");
+        // If this quote is currently open in the form, sync its state
+        if(currentQuoteId&&String(currentQuoteId)===String(id)){
+          setWonApproval(newWonApproval);
+        }
+      } else {
+        // Regular quote approval
+        const newApproval={...q.approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(q.approval?.history||[]),evtQ]};
+        await saveQuoteToSupabase({...q,approval:newApproval,summary:q.summary,lineOrder:q.lineOrder,lineOverrides:q.lineOverrides},autoSpecs,autoNotes);
+        await sendDecisionEmail(decision.toUpperCase(),currentUser,queueComments,q.approval?.submittedBy||"");
+        // If this quote is currently open in the form, sync its state
+        if(currentQuoteId&&String(currentQuoteId)===String(id)){
+          const evtQL={event:decision,by:currentUser,at:now,comments:queueComments};
+          const newApprovalL={...approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(approval.history||[]),evtQL]};
+          setApproval(newApprovalL);
+          if(decision==="rejected")setLocked(false);
+        }
+      }
     }
     // Reload from Supabase to ensure UI is fully in sync
     const refreshed=await loadQuotesFromSupabase();
     setSavedQuotes(refreshed);
     setQueueSelected(new Set());
     setQueueComments("");
-    // If the currently loaded quote was one of these, update its approval state
-    if(currentQuoteId&&idsToProcess.includes(String(currentQuoteId))){
-      const evtQL={event:decision,by:currentUser,at:now,comments:queueComments};
-      const newApproval={...approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(approval.history||[]),evtQL]};
-      setApproval(newApproval);
-      if(decision==="rejected")setLocked(false);
-    }
   };
 
   // ── Open Quotes panel handlers ───────────────────────────────────────────────
