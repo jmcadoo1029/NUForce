@@ -2669,7 +2669,7 @@ function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
 
 
 // ── Account Dashboard Modal ───────────────────────────────────────────────────
-function AccountDashboard({accountName, onClose, onLoadQuote}){
+function AccountDashboard({accountName, onClose, onLoadQuote, onNewQuote}){
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [expandedYear, setExpandedYear] = useState(null);
@@ -2759,10 +2759,18 @@ function AccountDashboard({accountName, onClose, onLoadQuote}){
               </div>
               <div style={{fontSize:20,fontWeight:800,color:"#1a2332"}}>{accountName}</div>
             </div>
-            <button onClick={onClose}
-              style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#6b7a8d",marginTop:-4}}>
-              ×
-            </button>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <button
+                onClick={()=>{onNewQuote&&onNewQuote(accountName);onClose();}}
+                style={{background:"#1a5276",border:"none",borderRadius:7,padding:"7px 16px",
+                  color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
+                + New Quote
+              </button>
+              <button onClick={onClose}
+                style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#6b7a8d",marginTop:-4}}>
+                ×
+              </button>
+            </div>
           </div>
           {!loading&&data&&(
             <div style={{display:"flex",gap:28,marginTop:14,flexWrap:"wrap"}}>
@@ -2876,7 +2884,7 @@ function AccountDashboard({accountName, onClose, onLoadQuote}){
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-function Dashboard({onEnterQuote, onLoadQuote, currentUser, isApprover, pendingQuotes, onQueueDecision}){
+function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser, isApprover, pendingQuotes, onQueueDecision}){
   const [data, setData]       = useState(null);
   const [qSelected, setQSelected] = useState(new Set());
   const [qComments, setQComments] = useState("");
@@ -2936,15 +2944,23 @@ function Dashboard({onEnterQuote, onLoadQuote, currentUser, isApprover, pendingQ
       });
     }
 
-    // ── Quotes created this month (source=vibrato) ──
+    // ── Quotes created this month + Closed Won this month — run in parallel ──
     const thisMonth = months[3];
-    const { data: createdRaw } = await supabase
-      .from("quotes")
-      .select("id, opportunity, customer, total, created_at, revision, data")
-      .eq("source","vibrato")
-      .gte("created_at", thisMonth.start)
-      .lt("created_at",  thisMonth.end)
-      .order("opportunity", {ascending: true});
+    const [{ data: createdRaw }, { data: wonRaw }] = await Promise.all([
+      supabase
+        .from("quotes")
+        .select("id, opportunity, customer, total, created_at, revision, data")
+        .eq("source","vibrato")
+        .gte("created_at", thisMonth.start)
+        .lt("created_at",  thisMonth.end)
+        .order("opportunity", {ascending: true}),
+      supabase
+        .from("quotes")
+        .select("id, opportunity, total, won_date, data")
+        .eq("stage","Closed Won")
+        .gte("won_date", thisMonth.start.slice(0,10))
+        .lt("won_date",  thisMonth.end.slice(0,10)),
+    ]);
     const created = createdRaw || [];
 
     // ── Top 10 product codes this month ──
@@ -2987,13 +3003,6 @@ function Dashboard({onEnterQuote, onLoadQuote, currentUser, isApprover, pendingQ
       return { label: m.label, count: rows.length, total, isCurrent: m.isCurrent };
     }));
 
-    // ── Closed Won this month by won_date ──
-    const { data: wonRaw } = await supabase
-      .from("quotes")
-      .select("id, opportunity, total, won_date, data")
-      .eq("stage","Closed Won")
-      .gte("won_date", thisMonth.start.slice(0,10))
-      .lt("won_date",  thisMonth.end.slice(0,10));
     const won = (wonRaw||[]).map(q => ({
       ...q,
       type: q.data?.qi?.type || "New Business",
@@ -3080,6 +3089,7 @@ function Dashboard({onEnterQuote, onLoadQuote, currentUser, isApprover, pendingQ
             accountName={acctModal}
             onClose={()=>setAcctModal(null)}
             onLoadQuote={q=>{onLoadQuote&&onLoadQuote(q);setAcctModal(null);}}
+            onNewQuote={name=>{onNewQuoteForAccount&&onNewQuoteForAccount(name);setAcctModal(null);}}
           />
         )}
 
@@ -3551,7 +3561,6 @@ export default function App({onLogout,currentUser}){
   const [fixtureDrawing,setFixtureDrawing]=useState({on:false,price:"2950"});
   const [inStockModal,setInStockModal]=useState({on:false,targetProc:""});
   // persist to saves
-  const splitProcReportRef=splitProcReport;
   const [savedQuotes,setSavedQuotes]=useState({});
 
   // ── Approval system ────────────────────────────────────────────────────────
@@ -3729,7 +3738,6 @@ export default function App({onLogout,currentUser}){
   };
 
   // ── Approval Queue (approver dashboard) ──
-  const [showApprovalQueue,setShowApprovalQueue]=useState(false);
   const [queueSelected,setQueueSelected]=useState(new Set());
   const [queueComments,setQueueComments]=useState("");
 
@@ -5694,7 +5702,7 @@ const STANDARD_TERMS = [
       <div style={{flex:1,display:"flex",overflow:"hidden"}}>
 
         {showDashboard?(
-          <Dashboard onEnterQuote={()=>{handleNewQuote(true);setShowDashboard(false);}} onLoadQuote={q=>{handleLoad(q);setShowDashboard(false);}} currentUser={currentUser} isApprover={isApprover} pendingQuotes={pendingQuotes} onQueueDecision={handleQueueDecision}/>
+          <Dashboard onEnterQuote={()=>{handleNewQuote(true);setShowDashboard(false);}} onLoadQuote={q=>{handleLoad(q);setShowDashboard(false);}} onNewQuoteForAccount={name=>{handleNewQuote(true);setQi(q=>({...q,account:name}));setShowDashboard(false);}} currentUser={currentUser} isApprover={isApprover} pendingQuotes={pendingQuotes} onQueueDecision={handleQueueDecision}/>
         ):(
         <>{/* ── Left: scrollable form column ── */}
         <div style={{flex:1,overflowY:"auto",background:C.bg,padding:14}}>
@@ -5729,139 +5737,7 @@ const STANDARD_TERMS = [
             </div>
           )}
 
-          {/* ── Approval Queue Modal ── */}
-          {showApprovalQueue&&isApprover&&(
-            <div style={{position:"fixed",inset:0,zIndex:2000,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:60}}
-              onClick={e=>{if(e.target===e.currentTarget)setShowApprovalQueue(false);}}>
-              <div style={{background:"#fff",borderRadius:14,width:680,maxWidth:"95vw",maxHeight:"80vh",
-                boxShadow:"0 8px 40px rgba(0,0,0,0.3)",display:"flex",flexDirection:"column"}}>
 
-                {/* Header */}
-                <div style={{padding:"18px 24px",borderBottom:"1px solid #e8ecf0",display:"flex",alignItems:"center",gap:12}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontWeight:700,fontSize:16,color:"#1a2332"}}>📥 Approval Queue</div>
-                    <div style={{fontSize:11,color:"#6b7a8d",marginTop:2}}>
-                      {pendingQuoteApprovals.length} quote approval{pendingQuoteApprovals.length!==1?"s":""} · {pendingWonApprovals.length} closed won approval{pendingWonApprovals.length!==1?"s":""}
-                    </div>
-                  </div>
-                  {queueSelected.size>0&&(
-                    <div style={{fontSize:11,color:"#6d28d9",fontWeight:600}}>
-                      {queueSelected.size} selected
-                    </div>
-                  )}
-                  <button onClick={()=>setShowApprovalQueue(false)}
-                    style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#6b7a8d",lineHeight:1}}>
-                    ×
-                  </button>
-                </div>
-
-                {/* Quote list */}
-                <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
-                  {pendingQuotes.length===0?(
-                    <div style={{padding:40,textAlign:"center",color:"#6b7a8d",fontSize:13}}>
-                      No quotes pending approval
-                    </div>
-                  ):(
-                    <>
-                      {/* Select all */}
-                      <div style={{padding:"6px 24px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid #f0f2f5"}}>
-                        <input type="checkbox"
-                          checked={queueSelected.size===pendingQuotes.length&&pendingQuotes.length>0}
-                          onChange={e=>{
-                            if(e.target.checked)setQueueSelected(new Set(pendingQuotes.map(q=>String(q.id))));
-                            else setQueueSelected(new Set());
-                          }}
-                          style={{accentColor:"#6d28d9",width:14,height:14}}/>
-                        <span style={{fontSize:11,color:"#6b7a8d",fontWeight:600}}>SELECT ALL</span>
-                      </div>
-                      {pendingQuotes.map(q=>{
-                        const sel=queueSelected.has(String(q.id));
-                        const subAt=q.approval?.submittedAt?new Date(q.approval.submittedAt).toLocaleDateString():"";
-                        return(
-                          <div key={q.id}
-                            style={{padding:"12px 24px",borderBottom:"1px solid #f0f2f5",
-                              background:sel?"#f5f3ff":"#fff",
-                              display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}
-                            onClick={()=>{
-                              const s=new Set(queueSelected);
-                              if(s.has(String(q.id)))s.delete(String(q.id));
-                              else s.add(String(q.id));
-                              setQueueSelected(s);
-                            }}>
-                            <input type="checkbox" checked={sel} onChange={()=>{}}
-                              style={{accentColor:"#6d28d9",width:14,height:14,flexShrink:0,pointerEvents:"none"}}/>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{fontWeight:600,fontSize:13,color:"#1a2332",marginBottom:2,display:"flex",alignItems:"center",gap:8}}>
-                                {(q.qi?.opp||q.opp||"(no opportunity #)")+(q.qi?.rev||q.rev||"")}
-                                {q.wonApproval?.status==="pending_won"
-                                  ?<span style={{fontSize:9,background:"#d1fae5",color:"#065f46",borderRadius:4,padding:"2px 6px",fontWeight:700}}>🏆 CLOSED WON</span>
-                                  :<span style={{fontSize:9,background:"#ede9fe",color:"#4c1d95",borderRadius:4,padding:"2px 6px",fontWeight:700}}>📋 QUOTE</span>
-                                }
-                              </div>
-                              <div style={{fontSize:11,color:"#6b7a8d",display:"flex",gap:12,flexWrap:"wrap"}}>
-                                {(q.qi?.customer||q.customer)&&<span>{q.qi?.customer||q.customer}</span>}
-                                {(q.qi?.rfq||q.rfq)&&<span>RFQ: {q.qi?.rfq||q.rfq}</span>}
-                                {subAt&&<span>Submitted: {subAt}</span>}
-                                {q.approval?.submittedBy&&<span>By: {q.approval.submittedBy}</span>}
-                              </div>
-                            </div>
-                            <div style={{textAlign:"right",flexShrink:0}}>
-                              <div style={{fontWeight:700,fontSize:13,color:"#1e8449"}}>
-                                {money(q.total||0)}
-                              </div>
-                              <button
-                                onClick={e=>{e.stopPropagation();handleLoad(q);setShowApprovalQueue(false);}}
-                                style={{marginTop:4,background:"none",border:"1px solid #d0d7de",borderRadius:5,
-                                  padding:"2px 10px",fontSize:10,cursor:"pointer",color:"#1a2332",fontWeight:600}}>
-                                Open
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </>
-                  )}
-                </div>
-
-                {/* Action footer */}
-                {pendingQuotes.length>0&&(
-                  <div style={{padding:"14px 24px",borderTop:"1px solid #e8ecf0",background:"#f8f9fb",borderRadius:"0 0 14px 14px"}}>
-                    <div style={{marginBottom:10}}>
-                      <div style={{fontSize:11,color:"#6b7a8d",fontWeight:600,marginBottom:4}}>
-                        COMMENTS (applied to selected decisions)
-                      </div>
-                      <textarea value={queueComments} onChange={e=>setQueueComments(e.target.value)}
-                        placeholder="Optional comments…"
-                        style={{width:"100%",height:52,border:"1px solid #d0d7de",borderRadius:7,
-                          padding:"6px 10px",fontSize:12,resize:"none",fontFamily:"inherit",
-                          boxSizing:"border-box"}}/>
-                    </div>
-                    <div style={{display:"flex",gap:8,justifyContent:"flex-end",alignItems:"center"}}>
-                      {queueSelected.size===0&&(
-                        <span style={{fontSize:11,color:"#6b7a8d",marginRight:8}}>Select quotes above to act on them</span>
-                      )}
-                      <button
-                        disabled={queueSelected.size===0}
-                        onClick={()=>handleQueueDecision("rejected",[...queueSelected])}
-                        style={{background:queueSelected.size>0?"#c0392b":"#e8ecf0",border:"none",borderRadius:7,
-                          padding:"8px 18px",fontWeight:700,fontSize:12,cursor:queueSelected.size>0?"pointer":"not-allowed",
-                          color:queueSelected.size>0?"#fff":"#aaa"}}>
-                        ❌ Reject {queueSelected.size>1?`(${queueSelected.size})`:""}
-                      </button>
-                      <button
-                        disabled={queueSelected.size===0}
-                        onClick={()=>handleQueueDecision("approved",[...queueSelected])}
-                        style={{background:queueSelected.size>0?"#1e8449":"#e8ecf0",border:"none",borderRadius:7,
-                          padding:"8px 18px",fontWeight:700,fontSize:12,cursor:queueSelected.size>0?"pointer":"not-allowed",
-                          color:queueSelected.size>0?"#fff":"#aaa"}}>
-                        ✅ Approve {queueSelected.size>1?`(${queueSelected.size})`:""}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
           {/* ── Approval History Modal ── */}
           {showApprovalHistory&&(
             <div style={{position:"fixed",inset:0,zIndex:2000,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}
