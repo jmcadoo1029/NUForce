@@ -2958,7 +2958,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
         .order("opportunity", {ascending: true}),
       supabase
         .from("quotes")
-        .select("id, opportunity, total, won_date, data")
+        .select("id, opportunity, customer, total, won_date, data")
         .eq("stage","Closed Won")
         .gte("won_date", thisMonth.start.slice(0,10))
         .lt("won_date",  thisMonth.end.slice(0,10)),
@@ -3232,13 +3232,37 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                       <div style={{fontSize:22,fontWeight:800,color,marginBottom:8}}>
                         {money(items.reduce((a,q)=>a+(q.total||0),0))}
                       </div>
-                      {items.map(q=>(
-                        <div key={q.id} style={{display:"flex",justifyContent:"space-between",
-                          fontSize:11,color:"#6b7a8d",borderTop:"1px solid #f0f2f5",padding:"5px 0"}}>
-                          <span style={{fontWeight:600,color:"#1a2332"}}>{q.opportunity}</span>
-                          <span>{money(q.total||0)}</span>
-                        </div>
-                      ))}
+                      {/* Column headers */}
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+                        fontSize:9,fontWeight:700,letterSpacing:.8,color:"#9aa5b1",
+                        borderBottom:"1px solid #e8ecf0",paddingBottom:4,marginBottom:2,gap:8}}>
+                        <span style={{flexShrink:0}}>OPP #</span>
+                        <span style={{flex:1}}>ACCOUNT</span>
+                        <span style={{flexShrink:0}}>TOTAL</span>
+                      </div>
+                      {items.map(q=>{
+                        const acct=q.customer||q.data?.qi?.account||"";
+                        return(
+                          <div key={q.id} style={{display:"flex",alignItems:"center",
+                            justifyContent:"space-between",fontSize:11,color:"#6b7a8d",
+                            borderTop:"1px solid #f0f2f5",padding:"5px 0",gap:8}}>
+                            <span
+                              onClick={()=>onLoadQuote&&onLoadQuote(q)}
+                              style={{fontWeight:700,color:"#1a5276",cursor:"pointer",
+                                textDecoration:"underline",textDecorationColor:"rgba(26,82,118,0.4)",
+                                flexShrink:0}}>
+                              {q.opportunity}
+                            </span>
+                            <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",
+                              whiteSpace:"nowrap",color:"#6b7a8d"}}>
+                              {acct}
+                            </span>
+                            <span style={{fontWeight:600,color:"#1a2332",flexShrink:0}}>
+                              {money(q.total||0)}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </>
                   )}
                 </div>
