@@ -4118,6 +4118,16 @@ export default function App({onLogout,currentUser}){
 
   // Load quote from search
   const handleLoad=q=>{
+    // Pre-seed prevAutoSpecs/prevAutoNotes so the sync useEffect doesn't re-append
+    // on load (the saved tiSpecs already contains the auto-generated text)
+    const loadedAutoSpecs=buildSpecs(
+      q.vibs||[newVib()], q.shocks||[newShock()], q.noises||[newNoise()],
+      q.envs||[newEnv()], q.hfvs||[newHfv()], q.shos||[newSho()],
+      q.dcms||[newDcm()], q.emis||[newEmi()], q.pqs||[newPq()],
+      q.abs||[newAb()], q.sbs||[newSb()]
+    );
+    prevAutoSpecs.current=loadedAutoSpecs;
+    prevAutoNotes.current=""; // notes will re-sync cleanly
     if(q.qi)setQi(q.qi);
     if(q.ti)setTi(q.ti);
     if(q.vibs)setVibs(q.vibs);
