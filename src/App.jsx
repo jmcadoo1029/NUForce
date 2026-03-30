@@ -3636,7 +3636,23 @@ export default function App({onLogout,currentUser}){
   // ── Refresh pending quotes every time dashboard becomes visible ──────────────
   useEffect(()=>{
     if(showDashboard){
-      loadPendingQuotes().then(q=>setSavedQuotes(prev=>({...prev,...q})));
+      loadPendingQuotes().then(fresh=>{
+        setSavedQuotes(prev=>{
+          // Remove any previously-pending quotes that are no longer pending,
+          // then merge in the freshly fetched ones
+          const cleaned={...prev};
+          Object.entries(cleaned).forEach(([id,q])=>{
+            const wasQueuePending=q.approval?.status==="pending";
+            const wasWonPending=q.wonApproval?.status==="pending_won";
+            const stillInFresh=fresh[id];
+            if((wasQueuePending||wasWonPending)&&!stillInFresh){
+              // Re-fetch this quote's current state from fresh data or drop it
+              delete cleaned[id];
+            }
+          });
+          return {...cleaned,...fresh};
+        });
+      });
     }
   },[showDashboard]);
 
