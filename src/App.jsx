@@ -6142,6 +6142,13 @@ const STANDARD_TERMS = [
                         setQi({...qi,stage:s});
                         if(s==="Closed Won"&&!wonInfo.wonDate)
                           setWonInfo(w=>({...w,wonDate:new Date().toLocaleDateString("en-US")}));
+                        // Prompt to submit for won approval when changing to Closed Won
+                        if(s==="Closed Won"&&wonApproval.status==="none"){
+                          setTimeout(()=>{
+                            const submit=window.confirm("Submit this quote for Closed Won approval?\n\nClick OK to submit, or Cancel to set the stage without submitting.");
+                            if(submit)handleSubmitWonApproval();
+                          },50);
+                        }
                       }} style={{...sel,width:"100%"}}>
                         {["Proposal/Price Quote","Budgetary","Closed Won","Closed Lost","Other"].map(o=><option key={o}>{o}</option>)}
                       </select>
