@@ -4111,6 +4111,9 @@ export default function App({onLogout,currentUser}){
   useEffect(()=>{
     const prev=prevAutoSpecs.current;
     prevAutoSpecs.current=autoSpecs;
+    // If the auto text hasn't changed, don't touch tiSpecs — the user may have
+    // intentionally deleted it and we must not re-append it on every re-render
+    if(prev===autoSpecs)return;
     setTi(t=>{
       const cur=t.tiSpecs||"";
       // Remove the previous auto block (exact match) to get the manual-only portion
@@ -4130,6 +4133,8 @@ export default function App({onLogout,currentUser}){
   useEffect(()=>{
     const prev=prevAutoNotes.current;
     prevAutoNotes.current=autoNotes;
+    // Same guard: if auto text unchanged, don't re-append deleted content
+    if(prev===autoNotes)return;
     setTi(t=>{
       const cur=t.tiNotes||"";
       let manual=cur;
@@ -6224,7 +6229,7 @@ const STANDARD_TERMS = [
                     style={{background:"#1a5276",border:"none",borderRadius:7,padding:"8px 18px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",gap:6}}>
                     🏗️ Create Project
                   </button>
-                  <button onClick={()=>{setWonLocked(true);setShowWonModal(false);handleSave();}}
+                  <button onClick={()=>{setWonLocked(true);setShowWonModal(false);}}
                     style={{background:"#1e8449",border:"none",borderRadius:7,padding:"8px 22px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff"}}>
                     Save &amp; Close
                   </button>
@@ -6380,15 +6385,6 @@ const STANDARD_TERMS = [
                           setTimeout(()=>{
                             const submit=window.confirm("Submit this quote for Closed Won approval?\n\nClick OK to submit, or Cancel to set the stage without submitting.");
                             if(submit)handleSubmitWonApproval(s);
-                            else{
-                              // User declined approval prompt — still save the stage change
-                              const q={id:currentQuoteId||undefined,opp:s===qi.stage?qi.opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-                                qi:{...qi,stage:s},ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
-                              saveQuoteToSupabase(q,autoSpecs,autoNotes).then(newId=>{
-                                if(newId){setCurrentQuoteId(newId);showToast("Saved — "+(qi.opp||"Untitled"),"success");}
-                                else showToast("Save failed — check your connection","error",5000);
-                              });
-                            }
                           },50);
                         }
                       }} style={{...sel,width:"100%"}}>
