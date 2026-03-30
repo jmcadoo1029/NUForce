@@ -3247,17 +3247,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                             justifyContent:"space-between",fontSize:11,color:"#6b7a8d",
                             borderTop:"1px solid #f0f2f5",padding:"5px 0",gap:8}}>
                             <span
-                              onClick={()=>{
-                                if(!onLoadQuote)return;
-                                const blob=q.data||{};
-                                onLoadQuote({
-                                  ...blob,
-                                  id:q.id,
-                                  source:blob.source||"vibrato",
-                                  customer:q.customer||blob.customer,
-                                  total:q.total||blob.total,
-                                });
-                              }}
+                              onClick={()=>onLoadQuote&&onLoadQuote(q)}
                               style={{fontWeight:700,color:"#1a5276",cursor:"pointer",
                                 textDecoration:"underline",textDecorationColor:"rgba(26,82,118,0.4)",
                                 flexShrink:0}}>
@@ -6234,7 +6224,7 @@ const STANDARD_TERMS = [
                     style={{background:"#1a5276",border:"none",borderRadius:7,padding:"8px 18px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",gap:6}}>
                     🏗️ Create Project
                   </button>
-                  <button onClick={()=>{setWonLocked(true);setShowWonModal(false);}}
+                  <button onClick={()=>{setWonLocked(true);setShowWonModal(false);handleSave();}}
                     style={{background:"#1e8449",border:"none",borderRadius:7,padding:"8px 22px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff"}}>
                     Save &amp; Close
                   </button>
@@ -6390,6 +6380,15 @@ const STANDARD_TERMS = [
                           setTimeout(()=>{
                             const submit=window.confirm("Submit this quote for Closed Won approval?\n\nClick OK to submit, or Cancel to set the stage without submitting.");
                             if(submit)handleSubmitWonApproval(s);
+                            else{
+                              // User declined approval prompt — still save the stage change
+                              const q={id:currentQuoteId||undefined,opp:s===qi.stage?qi.opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
+                                qi:{...qi,stage:s},ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
+                              saveQuoteToSupabase(q,autoSpecs,autoNotes).then(newId=>{
+                                if(newId){setCurrentQuoteId(newId);showToast("Saved — "+(qi.opp||"Untitled"),"success");}
+                                else showToast("Save failed — check your connection","error",5000);
+                              });
+                            }
                           },50);
                         }
                       }} style={{...sel,width:"100%"}}>
