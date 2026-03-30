@@ -2208,7 +2208,9 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     currentUnit=idx;
     const pre=idx>0?" #"+(idx+1)+(s.identifier?" ("+s.identifier+")":""):"";
     const pm=s.pia||1;
-    const noiseSetup=sectionSetup(s,globalSetup)||sf(NOISE_FAC[s.chamber],1000);
+    // Noise setup: chamber factor is the base; addlCosts from section can be added but NOT globalSetup fab/drill
+    const noiseBase=sf(s.stdSetup,sf(NOISE_FAC[s.chamber],1000));
+    const noiseSetup=Math.round(noiseBase+sf(s.addlCosts,0));
     add("Noise"+pre+" – Setup",noiseSetup*pm,null,"11");
     add("Noise"+pre+" – Testing",sf(s.testing)*pm,null,"11");
     (s.customRows||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Custom",r.price,null,r.code||pcode(r.label||""));});
@@ -2390,7 +2392,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
         if((hasHfv||hasSho) && (hasVib||hasMW||hasLW||hasNoise||hasAb)) autoTd=Math.min(autoTd+250,1500);
         if(autoTd===0) autoTd=500; // fallback for anything not covered
       }
-      autoTd=Math.min(autoTd,1500);
+      autoTd=Math.max(Math.min(autoTd,1500),500); // never less than 500
       const tdVal=sf(td)>0?sf(td):autoTd;
       add("Tear Down",tdVal,null,"96");
     }
@@ -3865,11 +3867,14 @@ export default function App({onLogout,currentUser}){
 
   const handleOpenQuoteClick=async(row)=>{
     if(!row.opportunity.trim())return;
-    const result=window.confirm("Save the current quote before switching?\n\nClick OK to save, or Cancel to discard.");
-    if(result){
-      const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
-        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
-      await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+    // Only prompt to save if we're in the quote form with an active quote
+    if(!showDashboard&&(qi.opp||currentQuoteId)){
+      const result=window.confirm("Save the current quote before switching?\n\nClick OK to save, or Cancel to discard.");
+      if(result){
+        const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
+        await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+      }
     }
     // Search Supabase directly by opportunity name
     const {data:matchData}=await supabase
@@ -3887,6 +3892,7 @@ export default function App({onLogout,currentUser}){
         approval:{...(q.approval||{}),status:matchData.approval_status||q.approval?.status||"none"}};
       handleLoad(match);
       setOpenQuotesPanel(false);
+      setShowDashboard(false);
     } else {
       const create=window.confirm("No quote found for \""+row.opportunity+"\"\n\nWould you like to create a new quote with this opportunity number?");
       if(create){
@@ -3905,6 +3911,7 @@ export default function App({onLogout,currentUser}){
         setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
         setLocked(false);setCurrentQuoteId(null);
         setOpenQuotesPanel(false);
+        setShowDashboard(false);
         window.scrollTo({top:0,behavior:"smooth"});
       }
     }
@@ -3964,6 +3971,27 @@ export default function App({onLogout,currentUser}){
     lines.push("Refer to the notes section at the bottom of this quote for additional details.");
     return lines.join("\n\n");
   },[noises,pqs,emis,abs,sbs,modalAnalysis,fixtureDrawing,inStockModal]);
+
+  // Stable display values for specs/notes textareas — avoids re-render duplication bug
+  const specsDisplay=useMemo(()=>{
+    const manual=ti.tiSpecs||"";
+    if(!autoSpecs)return manual;
+    if(!manual)return autoSpecs;
+    if(manual.includes(autoSpecs))return manual;
+    return manual+"
+
+"+autoSpecs;
+  },[ti.tiSpecs,autoSpecs]);
+
+  const notesDisplay=useMemo(()=>{
+    const manual=ti.tiNotes||"";
+    if(!autoNotes)return manual;
+    if(!manual)return autoNotes;
+    if(manual.includes(autoNotes))return manual;
+    return manual+"
+
+"+autoNotes;
+  },[ti.tiNotes,autoNotes]);
 
   const anyOn=vibs.some(s=>s.on)||shocks.some(s=>s.on)||noises.some(s=>s.on)||envs.some(s=>s.on)||
     hfvs.some(s=>s.on)||shos.some(s=>s.on)||dcms.some(s=>s.on)||pqs.some(s=>s.on)||emis.some(s=>s.on)||
@@ -6405,16 +6433,9 @@ const STANDARD_TERMS = [
                 <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2,marginBottom:3}}>SPECIFICATIONS</div>
                 <div style={{fontSize:9,color:C.dim,marginBottom:4}}>Auto-generated from enabled tests. Shown on quote PDF. Edit to override.</div>
                 <textarea
-                  value={(()=>{
-                    const manual=ti.tiSpecs||"";
-                    if(!autoSpecs)return manual;
-                    if(!manual)return autoSpecs;
-                    // If auto specs already appended, don't double-add
-                    if(manual.includes(autoSpecs))return manual;
-                    return manual+"\n\n"+autoSpecs;
-                  })()}
+                  value={specsDisplay}
                   onChange={e=>{
-                    // Strip auto-generated portion so manual edits are preserved cleanly
+                    // Store only the manual portion — auto specs are appended via specsDisplay memo
                     const val=e.target.value;
                     const stripped=autoSpecs?val.replace("\n\n"+autoSpecs,"").replace(autoSpecs,""):val;
                     setTi({...ti,tiSpecs:stripped});
@@ -6431,8 +6452,14 @@ const STANDARD_TERMS = [
                 <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2,marginBottom:3}}>NOTES</div>
                 <div style={{fontSize:9,color:C.dim,marginBottom:4}}>Customer-facing notes. Shown on quote PDF. Auto-populates based on selected tests.</div>
                 <textarea
-                  value={ti.tiNotes||autoNotes||""}
-                  onChange={e=>setTi({...ti,tiNotes:e.target.value})}
+                  value={notesDisplay}
+                  onChange={e=>{
+                    const val=e.target.value;
+                    const stripped=autoNotes?val.replace("
+
+"+autoNotes,"").replace(autoNotes,""):val;
+                    setTi({...ti,tiNotes:stripped});
+                  }}
                   placeholder="Notes will auto-populate based on selected tests..."
                   rows={5}
                   style={{...inp,width:"100%",resize:"vertical",fontSize:11,lineHeight:1.6}}/>
