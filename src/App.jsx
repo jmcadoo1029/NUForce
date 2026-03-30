@@ -1622,7 +1622,7 @@ async function loadQuotesFromSupabase() {
       opp:         row.opportunity || q.opp,
       customer:    row.customer    || q.customer,
       rfq:         row.rfq         || q.rfq,
-      total:       row.total       || q.total,
+      total:       row.total       ?? q.total,
       savedAt:     row.updated_at,
       approval:    { ...(q.approval||{}), status: row.approval_status || q.approval?.status || "none" },
       wonApproval: { ...(q.wonApproval||{}), status: row.won_approval_status || q.wonApproval?.status || "none" },
@@ -1657,7 +1657,7 @@ async function loadPendingQuotes() {
       opp:         row.opportunity || q.opp,
       customer:    row.customer    || q.customer,
       rfq:         row.rfq         || q.rfq,
-      total:       row.total       || q.total,
+      total:       row.total       ?? q.total,
       savedAt:     row.updated_at,
       approval:    { ...(q.approval||{}), status: row.approval_status || q.approval?.status || "none" },
       wonApproval: q.wonApproval || {status:"none"},
@@ -1879,7 +1879,7 @@ function QuoteSearch({onLoad}){
       rev:row.revision||q.qi?.rev||q.rev||"",
       customer:row.customer||q.customer,
       rfq:row.rfq||q.rfq,
-      total:row.total||q.total,
+      total:row.total??q.total,
       savedAt:row.updated_at,
       stage:row.stage||q.qi?.stage||"",
       item:q.ti?.item||"",
@@ -3886,7 +3886,7 @@ export default function App({onLogout,currentUser}){
       const q=matchData.data||{};
       const match={...q,id:matchData.id,opp:matchData.opportunity||q.opp,
         customer:matchData.customer||q.customer,rfq:matchData.rfq||q.rfq,
-        total:matchData.total||q.total,savedAt:matchData.updated_at,
+        total:matchData.total??q.total,savedAt:matchData.updated_at,
         source:matchData.source||"vibrato",
         approval:{...(q.approval||{}),status:matchData.approval_status||q.approval?.status||"none"}};
       handleLoad(match);
@@ -4100,6 +4100,11 @@ export default function App({onLogout,currentUser}){
     if(newId){
       setCurrentQuoteId(newId);
       showToast("Saved — "+(qi.opp||"Untitled"),"success");
+      // Update savedQuotes so approval queue reflects new total immediately
+      setSavedQuotes(prev=>({
+        ...prev,
+        [newId]:{...(prev[newId]||{}), ...q, id:newId, total:displayTotal}
+      }));
     } else {
       showToast("Save failed — check your connection and try again.","error",5000);
     }
@@ -4211,7 +4216,7 @@ export default function App({onLogout,currentUser}){
           opp:data.opportunity||q.opp,
           customer:data.customer||q.customer,
           rfq:data.rfq||q.rfq,
-          total:data.total||q.total,
+          total:data.total??q.total,
           savedAt:data.updated_at,
           source:data.source||"vibrato",
           approval:{...(q.approval||{}),status:data.approval_status||q.approval?.status||"none"},
