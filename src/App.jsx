@@ -3633,6 +3633,13 @@ export default function App({onLogout,currentUser}){
     loadPendingQuotes().then(q=>setSavedQuotes(prev=>({...prev,...q})));
   },[]);
 
+  // ── Refresh pending quotes every time dashboard becomes visible ──────────────
+  useEffect(()=>{
+    if(showDashboard){
+      loadPendingQuotes().then(q=>setSavedQuotes(prev=>({...prev,...q})));
+    }
+  },[showDashboard]);
+
   const loadEmailJS=()=>new Promise((res,rej)=>{
     if(window.emailjs){res();return;}
     const s=document.createElement("script");
