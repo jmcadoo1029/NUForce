@@ -3918,7 +3918,22 @@ export default function App({onLogout,currentUser}){
   };
   // Multi-instance helpers
   const mkUpdater=(_arr,setArr)=>(idx,val)=>setArr(prev=>prev.map((x,i)=>i===idx?(typeof val==="function"?val(x):val):x));
-  const mkAdder=(_arr,setArr,newFn)=>()=>setArr(prev=>[...prev,{...newFn(),identifier:""}]);
+  // New instances inherit settings from the first active instance (same chamber, level, etc.)
+  // but get a fresh id, on:false, identifier:"", and reset custom rows
+  const mkAdder=(_arr,setArr,newFn)=>()=>setArr(prev=>{
+    const base=newFn();
+    const firstOn=prev.find(i=>i.on);
+    const inherit=firstOn?{
+      ...firstOn,
+      id:Date.now(),
+      on:false,
+      identifier:"",
+      customRows:[],
+      proc:false,
+      report:false,
+    }:{...base,identifier:""};
+    return [...prev,inherit];
+  });
   const mkRemover=(_arr,setArr)=>idx=>setArr(prev=>prev.filter((_,i)=>i!==idx));
 
   const vibSetup=vibs.find(v=>v.on)?sf(vibs.find(v=>v.on).setup):0;
@@ -3977,15 +3992,18 @@ export default function App({onLogout,currentUser}){
   useEffect(()=>{
     const prev=prevAutoSpecs.current;
     prevAutoSpecs.current=autoSpecs;
-    if(!autoSpecs)return;
     setTi(t=>{
       const cur=t.tiSpecs||"";
-      // Remove old auto lines that are no longer relevant
-      let base=prev?cur.replace("\n\n"+prev,"").replace(prev,"").trimEnd():cur;
-      // Append new auto lines not already present
-      if(!base)return {...t,tiSpecs:autoSpecs};
-      if(base.includes(autoSpecs))return t;
-      return {...t,tiSpecs:base+"\n\n"+autoSpecs};
+      // Remove the previous auto block (exact match) to get the manual-only portion
+      let manual=cur;
+      if(prev){
+        if(manual.includes("\n\n"+prev))manual=manual.replace("\n\n"+prev,"").trimEnd();
+        else if(manual===prev)manual="";
+      }
+      // Now append the new auto block (if any)
+      if(!autoSpecs)return {...t,tiSpecs:manual};
+      if(!manual)return {...t,tiSpecs:autoSpecs};
+      return {...t,tiSpecs:manual+"\n\n"+autoSpecs};
     });
   },[autoSpecs]);
 
@@ -3993,13 +4011,16 @@ export default function App({onLogout,currentUser}){
   useEffect(()=>{
     const prev=prevAutoNotes.current;
     prevAutoNotes.current=autoNotes;
-    if(!autoNotes)return;
     setTi(t=>{
       const cur=t.tiNotes||"";
-      let base=prev?cur.replace("\n\n"+prev,"").replace(prev,"").trimEnd():cur;
-      if(!base)return {...t,tiNotes:autoNotes};
-      if(base.includes(autoNotes))return t;
-      return {...t,tiNotes:base+"\n\n"+autoNotes};
+      let manual=cur;
+      if(prev){
+        if(manual.includes("\n\n"+prev))manual=manual.replace("\n\n"+prev,"").trimEnd();
+        else if(manual===prev)manual="";
+      }
+      if(!autoNotes)return {...t,tiNotes:manual};
+      if(!manual)return {...t,tiNotes:autoNotes};
+      return {...t,tiNotes:manual+"\n\n"+autoNotes};
     });
   },[autoNotes]);
 
