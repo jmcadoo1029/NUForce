@@ -3672,7 +3672,7 @@ export default function App({onLogout,currentUser}){
       await window.emailjs.send(EMAILJS_SERVICE_ID,EMAILJS_SUBMIT_TPL,{
         quote_opp:   qi.opp||"Untitled",
         quote_rfq:   qi.rfq||"—",
-        quote_total: money(summary.total),
+        quote_total: money(displayTotal),
         submitted_by:submitter,
         submitted_at:new Date().toLocaleString(),
         to_email:    APPROVERS.map(a=>a.email).join(","),
@@ -3686,7 +3686,7 @@ export default function App({onLogout,currentUser}){
       await window.emailjs.send(EMAILJS_SERVICE_ID,EMAILJS_DECISION_TPL,{
         quote_opp:   qi.opp||"Untitled",
         quote_rfq:   qi.rfq||"—",
-        quote_total: money(summary.total),
+        quote_total: money(displayTotal),
         decision:    decision,
         decided_by:  decider,
         decided_at:  new Date().toLocaleString(),
@@ -3702,7 +3702,7 @@ export default function App({onLogout,currentUser}){
     setApproval(newApproval);
     setLocked(true);
     setShowApprovalModal(false);
-    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Submitted for approval","info");}
@@ -3715,7 +3715,7 @@ export default function App({onLogout,currentUser}){
     const newApproval={...approval,status:"approved",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:approvalComments,history:[...(approval.history||[]),evtA]};
     setApproval(newApproval);
     setApprovalComments("");
-    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Quote approved ✓","success");}
@@ -3729,7 +3729,7 @@ export default function App({onLogout,currentUser}){
     setApproval(newApproval);
     setLocked(false);
     setApprovalComments("");
-    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Quote rejected","info");}
@@ -3746,7 +3746,7 @@ export default function App({onLogout,currentUser}){
     const newWonApproval={status:"pending_won",submittedBy:currentUser,submittedAt:new Date().toISOString(),decidedBy:"",decidedAt:"",comments:""};
     setWonApproval(newWonApproval);
     setLocked(true);
-    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Submitted for Closed Won approval","info");}
@@ -3756,7 +3756,7 @@ export default function App({onLogout,currentUser}){
   const handleWonApprove=async(comments)=>{
     const newWonApproval={...wonApproval,status:"won_approved",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:comments||""};
     setWonApproval(newWonApproval);
-    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Closed Won approved ✓","success");}
@@ -3767,7 +3767,7 @@ export default function App({onLogout,currentUser}){
     const newWonApproval={...wonApproval,status:"won_rejected",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:comments||""};
     setWonApproval(newWonApproval);
     setLocked(false);
-    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Closed Won rejected","info");}
@@ -3870,7 +3870,7 @@ export default function App({onLogout,currentUser}){
     if(!showDashboard&&(qi.opp||currentQuoteId)){
       const result=window.confirm("Save the current quote before switching?\n\nClick OK to save, or Cancel to discard.");
       if(result){
-        const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+        const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
           qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
         await saveQuoteToSupabase(q,autoSpecs,autoNotes);
       }
@@ -4038,7 +4038,7 @@ export default function App({onLogout,currentUser}){
   const handleClone=()=>{
     const result=window.confirm("Save the current quote before cloning?\n\nClick OK to save first, or Cancel to clone without saving.");
     if(result){
-      const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+      const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
         qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
       saveQuoteToSupabase(q,autoSpecs,autoNotes);
     }
@@ -4067,7 +4067,7 @@ export default function App({onLogout,currentUser}){
       const result=window.confirm("Save the current quote before starting a new one?\n\nClick OK to save, or Cancel to discard and continue.");
       if(result){
         const id=currentQuoteId||undefined;
-        const q={id,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+        const q={id,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
           qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
         saveQuoteToSupabase(q,autoSpecs,autoNotes);
       }
@@ -4094,7 +4094,7 @@ export default function App({onLogout,currentUser}){
 
   // Save quote to Supabase
   const handleSave=async()=>{
-    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:summary.total,
+    const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){
