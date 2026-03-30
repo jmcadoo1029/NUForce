@@ -1538,7 +1538,7 @@ async function saveQuoteToSupabase(quote, autoSpecs, autoNotes) {
     total:            quote.total      || null,
     job_number:       quote.wonInfo?.jobNum  || null,
     po_number:        quote.wonInfo?.poNum   || null,
-    won_date:         quote.wonInfo?.wonDate || null,
+    won_date:         (()=>{const d=quote.wonInfo?.wonDate;if(!d)return null;const p=new Date(d);return isNaN(p)?null:p.toISOString().slice(0,10);})(),
     approval_status:  quote.approval?.status || "none",
     won_approval_status: quote.wonApproval?.status || "none",
     submitted_by:     quote.approval?.submittedBy || null,
