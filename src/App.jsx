@@ -6652,6 +6652,7 @@ const STANDARD_TERMS = [
                       },0))}
                     </span>
                   </div>
+                  <div style={{pointerEvents:"auto",opacity:1}}>
                   <button onClick={exportPDF}
                     style={{width:"100%",marginTop:8,background:C.red,border:"none",borderRadius:8,
                       padding:"9px 0",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:1}}>
@@ -6699,6 +6700,7 @@ const STANDARD_TERMS = [
                       461G — TEST SPECIFICATIONS
                     </button>
                   )}
+                  </div>
                 </>
               )}
             </div>{/* end Row 4 */}
