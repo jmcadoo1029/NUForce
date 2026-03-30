@@ -1660,7 +1660,7 @@ async function loadPendingQuotes() {
       total:       row.total       ?? q.total,
       savedAt:     row.updated_at,
       approval:    { ...(q.approval||{}), status: row.approval_status || q.approval?.status || "none" },
-      wonApproval: q.wonApproval || {status:"none"},
+      wonApproval: { ...(q.wonApproval||{}), status: row.won_approval_status || q.wonApproval?.status || "none" },
     };
   });
   return map;
@@ -2965,6 +2965,28 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     ]);
     const created = createdRaw || [];
 
+    // ── Also catch Closed Won quotes where won_date column is null but wonInfo has a date this month ──
+    // This covers quotes where won details were saved but won_date column wasn't written (e.g. pre-fix SF imports)
+    const { data: wonNullRaw } = await supabase
+      .from("quotes")
+      .select("id, opportunity, total, won_date, data")
+      .eq("stage","Closed Won")
+      .is("won_date", null)
+      .gte("updated_at", thisMonth.start)
+      .lt("updated_at",  thisMonth.end);
+    const monthStart = new Date(thisMonth.start);
+    const monthEnd   = new Date(thisMonth.end);
+    const wonNullFiltered = (wonNullRaw||[]).filter(q => {
+      const d = q.data?.wonInfo?.wonDate;
+      if(!d) return false;
+      const parsed = new Date(d);
+      return !isNaN(parsed) && parsed >= monthStart && parsed < monthEnd;
+    });
+    // Merge — deduplicate by id in case any overlap
+    const wonRawMerged = [...(wonRaw||[])];
+    const wonRawIds = new Set(wonRawMerged.map(q=>q.id));
+    wonNullFiltered.forEach(q=>{ if(!wonRawIds.has(q.id)) wonRawMerged.push(q); });
+
     // ── Top 10 product codes this month ──
     const pcodeMap = {};
     created.forEach(q => {
@@ -3005,7 +3027,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       return { label: m.label, count: rows.length, total, isCurrent: m.isCurrent };
     }));
 
-    const won = (wonRaw||[]).map(q => ({
+    const won = wonRawMerged.map(q => ({
       ...q,
       type: q.data?.qi?.type || "New Business",
       total: q.total || 0,
@@ -3021,9 +3043,9 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
 
   useEffect(()=>{ load(); },[]);
 
-  const TARGET = 160000;
+  const TARGET = 175000;
   const money  = n => "$"+Math.round(n).toLocaleString();
-  const pct    = v => Math.min(100, Math.round((v/TARGET)*100));
+  const pct    = v => Math.round((v/TARGET)*100);
 
 
   return(
@@ -3121,22 +3143,74 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
               </div>
 
               {/* Target progress */}
-              <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0"}}>
-                <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:8}}>TARGET: $160,000</div>
-                <div style={{fontSize:36,fontWeight:800,color:data.wonTotal>=TARGET?"#1e8449":"#1a2332",lineHeight:1}}>
-                  {pct(data.wonTotal)}%
-                </div>
-                <div style={{marginTop:10,height:8,background:"#e8ecf0",borderRadius:4,overflow:"hidden"}}>
-                  <div style={{height:"100%",width:pct(data.wonTotal)+"%",
-                    background:data.wonTotal>=TARGET?"#1e8449":data.wonTotal>TARGET*0.7?"#b7791f":"#1a5276",
-                    borderRadius:4,transition:"width 0.5s ease"}}/>
-                </div>
-                <div style={{fontSize:11,color:"#6b7a8d",marginTop:6}}>
-                  {data.wonTotal>=TARGET
-                    ? "🎉 Target reached!"
-                    : money(TARGET-data.wonTotal)+" remaining"}
-                </div>
-              </div>
+              {(()=>{
+                const over = data.wonTotal >= TARGET;
+                const rawPct = pct(data.wonTotal);
+                // Bar: if under target, fill proportionally. If over, show target bar + overflow bar side by side.
+                const barColor = over ? "#1e8449" : data.wonTotal > TARGET*0.7 ? "#b7791f" : "#1a5276";
+                const overflowAmt = over ? data.wonTotal - TARGET : 0;
+                const overflowPct = over ? Math.round((overflowAmt/TARGET)*100) : 0;
+                // Scale bars so they always fit: cap display at 133% (target + 33% over)
+                const displayScale = Math.max(1, data.wonTotal / TARGET);
+                const targetBarW = Math.round((1 / displayScale) * 100);
+                const actualBarW = Math.round(Math.min(data.wonTotal / TARGET, 1) / displayScale * 100);
+                const overBarW   = Math.round((overflowAmt / TARGET) / displayScale * 100);
+                return(
+                  <div style={{background:over?"#f0faf4":"#fff",borderRadius:12,padding:"20px 24px",
+                    boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
+                    border:"1px solid "+(over?"#a7f3d0":"#e8ecf0")}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                      <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>MONTHLY TARGET</div>
+                      {over&&<span style={{fontSize:10,background:"#d1fae5",color:"#065f46",borderRadius:4,padding:"2px 7px",fontWeight:700}}>🎉 EXCEEDED</span>}
+                    </div>
+                    {/* Big number */}
+                    <div style={{fontSize:32,fontWeight:800,color:over?"#1e8449":"#1a2332",lineHeight:1}}>
+                      {money(data.wonTotal)}
+                    </div>
+                    <div style={{fontSize:11,color:"#9aa5b1",marginBottom:12,marginTop:2}}>
+                      target {money(TARGET)} · <span style={{fontWeight:700,color:over?"#1e8449":barColor}}>{rawPct}%</span>
+                    </div>
+                    {/* Stacked bar chart */}
+                    <div style={{marginBottom:8}}>
+                      {/* Labels */}
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                        <span style={{fontSize:9,color:"#9aa5b1",fontWeight:600}}>$0</span>
+                        <span style={{fontSize:9,color:"#9aa5b1",fontWeight:600}}>{money(TARGET)}</span>
+                        {over&&<span style={{fontSize:9,color:"#1e8449",fontWeight:700}}>{money(data.wonTotal)}</span>}
+                      </div>
+                      {/* Bar track */}
+                      <div style={{position:"relative",height:16,background:"#e8ecf0",borderRadius:8,overflow:"hidden"}}>
+                        {/* Actual won (up to target) */}
+                        <div style={{
+                          position:"absolute",left:0,top:0,bottom:0,
+                          width:(over?targetBarW:Math.round(Math.min(data.wonTotal/TARGET,1)*100))+"%",
+                          background:barColor,borderRadius:"8px 0 0 8px",
+                          transition:"width 0.6s ease"
+                        }}/>
+                        {/* Overflow portion */}
+                        {over&&<div style={{
+                          position:"absolute",left:targetBarW+"%",top:2,bottom:2,
+                          width:overBarW+"%",
+                          background:"#34d399",borderRadius:"0 6px 6px 0",
+                          transition:"width 0.6s ease"
+                        }}/>}
+                        {/* Target marker line */}
+                        <div style={{
+                          position:"absolute",left:targetBarW+"%",top:0,bottom:0,
+                          width:2,background:"rgba(255,255,255,0.8)"
+                        }}/>
+                      </div>
+                    </div>
+                    {/* Footer */}
+                    <div style={{fontSize:11,color:"#6b7a8d",display:"flex",justifyContent:"space-between"}}>
+                      {over
+                        ? <><span style={{color:"#1e8449",fontWeight:700}}>+{money(overflowAmt)} over target</span><span>+{overflowPct}%</span></>
+                        : <><span>{money(TARGET-data.wonTotal)} remaining</span><span>{100-rawPct}% to go</span></>
+                      }
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* ── Closed Won breakdown ── */}
@@ -4180,7 +4254,7 @@ export default function App({onLogout,currentUser}){
     if(q.wonInfo)setWonInfo(q.wonInfo); else setWonInfo({wonDate:"",jobNum:"",poNum:""});
     if(q.lineOrder!==undefined)setLineOrder(q.lineOrder); else setLineOrder(null);
     if(q.lineOverrides!==undefined)setLineOverrides(q.lineOverrides); else setLineOverrides({});
-    setWonLocked(false);
+    setWonLocked(!!(q.wonInfo?.wonDate||q.wonInfo?.jobNum||q.wonInfo?.poNum));
     setCurrentQuoteId(q.id||null);
     if(q.id){localStorage.setItem("vibrato_last_quote_id",String(q.id));}
     setCurrentQuoteSource(q.source||"vibrato");
@@ -4196,14 +4270,7 @@ export default function App({onLogout,currentUser}){
           pcode:l.code||"",
         }))});
       }
-      // Closed Won — use wonInfo already stored in the data blob (populated by update scripts)
-      if(q.qi?.stage==="Closed Won"&&q.wonInfo){
-        setWonInfo({
-          wonDate:q.wonInfo.wonDate||q.qi?.date||"",
-          jobNum:q.wonInfo.jobNum||"",
-          poNum:q.wonInfo.poNum||"",
-        });
-      }
+      // wonInfo is already loaded from the blob at line 4165 above — no need to re-apply here
     }
   };
 
