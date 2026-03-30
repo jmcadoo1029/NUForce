@@ -3972,22 +3972,36 @@ export default function App({onLogout,currentUser}){
     return lines.join("\n\n");
   },[noises,pqs,emis,abs,sbs,modalAnalysis,fixtureDrawing,inStockModal]);
 
-  // Stable display values for specs/notes textareas — avoids re-render duplication bug
-  const specsDisplay=useMemo(()=>{
-    const manual=ti.tiSpecs||"";
-    if(!autoSpecs)return manual;
-    if(!manual)return autoSpecs;
-    if(manual.includes(autoSpecs))return manual;
-    return manual+"\n\n"+autoSpecs;
-  },[ti.tiSpecs,autoSpecs]);
+  // Sync auto-generated specs into tiSpecs when tests change (append new lines only)
+  const prevAutoSpecs=useRef("");
+  useEffect(()=>{
+    const prev=prevAutoSpecs.current;
+    prevAutoSpecs.current=autoSpecs;
+    if(!autoSpecs)return;
+    setTi(t=>{
+      const cur=t.tiSpecs||"";
+      // Remove old auto lines that are no longer relevant
+      let base=prev?cur.replace("\n\n"+prev,"").replace(prev,"").trimEnd():cur;
+      // Append new auto lines not already present
+      if(!base)return {...t,tiSpecs:autoSpecs};
+      if(base.includes(autoSpecs))return t;
+      return {...t,tiSpecs:base+"\n\n"+autoSpecs};
+    });
+  },[autoSpecs]);
 
-  const notesDisplay=useMemo(()=>{
-    const manual=ti.tiNotes||"";
-    if(!autoNotes)return manual;
-    if(!manual)return autoNotes;
-    if(manual.includes(autoNotes))return manual;
-    return manual+"\n\n"+autoNotes;
-  },[ti.tiNotes,autoNotes]);
+  const prevAutoNotes=useRef("");
+  useEffect(()=>{
+    const prev=prevAutoNotes.current;
+    prevAutoNotes.current=autoNotes;
+    if(!autoNotes)return;
+    setTi(t=>{
+      const cur=t.tiNotes||"";
+      let base=prev?cur.replace("\n\n"+prev,"").replace(prev,"").trimEnd():cur;
+      if(!base)return {...t,tiNotes:autoNotes};
+      if(base.includes(autoNotes))return t;
+      return {...t,tiNotes:base+"\n\n"+autoNotes};
+    });
+  },[autoNotes]);
 
   const anyOn=vibs.some(s=>s.on)||shocks.some(s=>s.on)||noises.some(s=>s.on)||envs.some(s=>s.on)||
     hfvs.some(s=>s.on)||shos.some(s=>s.on)||dcms.some(s=>s.on)||pqs.some(s=>s.on)||emis.some(s=>s.on)||
@@ -6429,13 +6443,8 @@ const STANDARD_TERMS = [
                 <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2,marginBottom:3}}>SPECIFICATIONS</div>
                 <div style={{fontSize:9,color:C.dim,marginBottom:4}}>Auto-generated from enabled tests. Shown on quote PDF. Edit to override.</div>
                 <textarea
-                  value={specsDisplay}
-                  onChange={e=>{
-                    // Store only the manual portion — auto specs are appended via specsDisplay memo
-                    const val=e.target.value;
-                    const stripped=autoSpecs?val.replace("\n\n"+autoSpecs,"").replace(autoSpecs,""):val;
-                    setTi({...ti,tiSpecs:stripped});
-                  }}
+                  value={ti.tiSpecs||""}
+                  onChange={e=>setTi({...ti,tiSpecs:e.target.value})}
                   placeholder="Enable test sections to auto-generate scope text, or type here..."
                   rows={5}
                   style={{...inp,width:"100%",resize:"vertical",fontSize:11,lineHeight:1.6}}/>
@@ -6448,12 +6457,8 @@ const STANDARD_TERMS = [
                 <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2,marginBottom:3}}>NOTES</div>
                 <div style={{fontSize:9,color:C.dim,marginBottom:4}}>Customer-facing notes. Shown on quote PDF. Auto-populates based on selected tests.</div>
                 <textarea
-                  value={notesDisplay}
-                  onChange={e=>{
-                    const val=e.target.value;
-                    const stripped=autoNotes?val.replace("\n\n"+autoNotes,"").replace(autoNotes,""):val;
-                    setTi({...ti,tiNotes:stripped});
-                  }}
+                  value={ti.tiNotes||""}
+                  onChange={e=>setTi({...ti,tiNotes:e.target.value})}
                   placeholder="Notes will auto-populate based on selected tests..."
                   rows={5}
                   style={{...inp,width:"100%",resize:"vertical",fontSize:11,lineHeight:1.6}}/>
