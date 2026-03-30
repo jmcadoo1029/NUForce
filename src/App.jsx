@@ -3644,7 +3644,12 @@ export default function App({onLogout,currentUser}){
   const [showApprovalHistory,setShowApprovalHistory]=useState(false);
   const [showFabGuide,setShowFabGuide]=useState(false);
   const [approvalComments,setApprovalComments]=useState("");
+
   const [showApprovalModal,setShowApprovalModal]=useState(false);
+  const [showChatter,setShowChatter]=useState(false);
+  const [chatterEntries,setChatterEntries]=useState([]);
+  const [chatterInput,setChatterInput]=useState("");
+  const [chatterSaving,setChatterSaving]=useState(false);
   const [wonInfo,setWonInfo]=useState({wonDate:"",jobNum:"",poNum:""});
   const [wonLocked,setWonLocked]=useState(false);
   const [showWonModal,setShowWonModal]=useState(false);
@@ -3777,7 +3782,7 @@ export default function App({onLogout,currentUser}){
     setLocked(true);
     setShowApprovalModal(false);
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary,lineOrder,lineOverrides};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Submitted for approval","info");}
     else showToast("Submit failed — check your connection","error",5000);
@@ -3790,7 +3795,7 @@ export default function App({onLogout,currentUser}){
     setApproval(newApproval);
     setApprovalComments("");
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary,lineOrder,lineOverrides};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Quote approved ✓","success");}
     else showToast("Save failed — check your connection","error",5000);
@@ -3804,7 +3809,7 @@ export default function App({onLogout,currentUser}){
     setLocked(false);
     setApprovalComments("");
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,summary,lineOrder,lineOverrides};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Quote rejected","info");}
     else showToast("Save failed — check your connection","error",5000);
@@ -3822,7 +3827,7 @@ export default function App({onLogout,currentUser}){
     setLocked(true);
     const effectiveQi=explicitStage?{...qi,stage:explicitStage}:qi;
     const q={id:currentQuoteId||undefined,opp:effectiveQi.opp,customer:effectiveQi.account,rfq:effectiveQi.rfq,total:displayTotal,
-      qi:effectiveQi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,summary,lineOrder,lineOverrides};
+      qi:effectiveQi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Submitted for Closed Won approval","info");}
     else showToast("Submit failed — check your connection","error",5000);
@@ -3832,7 +3837,7 @@ export default function App({onLogout,currentUser}){
     const newWonApproval={...wonApproval,status:"won_approved",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:comments||""};
     setWonApproval(newWonApproval);
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,summary,lineOrder,lineOverrides};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Closed Won approved ✓","success");}
     else showToast("Save failed — check your connection","error",5000);
@@ -3843,7 +3848,7 @@ export default function App({onLogout,currentUser}){
     setWonApproval(newWonApproval);
     setLocked(false);
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,summary,lineOrder,lineOverrides};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Closed Won rejected","info");}
     else showToast("Save failed — check your connection","error",5000);
@@ -3870,7 +3875,7 @@ export default function App({onLogout,currentUser}){
         // Closed Won approval — update wonApproval, use won_approved/won_rejected statuses
         const wonStatus=decision==="approved"?"won_approved":"won_rejected";
         const newWonApproval={...q.wonApproval,status:wonStatus,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(q.wonApproval?.history||[]),evtQ]};
-        await saveQuoteToSupabase({...q,wonApproval:newWonApproval,summary:q.summary,lineOrder:q.lineOrder,lineOverrides:q.lineOverrides},autoSpecs,autoNotes);
+        await saveQuoteToSupabase({...q,wonApproval:newWonApproval,chatterEntries:q.chatterEntries||[],summary:q.summary,lineOrder:q.lineOrder,lineOverrides:q.lineOverrides},autoSpecs,autoNotes);
         await sendDecisionEmail("CLOSED WON "+decision.toUpperCase(),currentUser,queueComments,q.wonApproval?.submittedBy||"");
         // If this quote is currently open in the form, sync its state
         if(currentQuoteId&&String(currentQuoteId)===String(id)){
@@ -3879,7 +3884,7 @@ export default function App({onLogout,currentUser}){
       } else {
         // Regular quote approval
         const newApproval={...q.approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(q.approval?.history||[]),evtQ]};
-        await saveQuoteToSupabase({...q,approval:newApproval,summary:q.summary,lineOrder:q.lineOrder,lineOverrides:q.lineOverrides},autoSpecs,autoNotes);
+        await saveQuoteToSupabase({...q,approval:newApproval,chatterEntries:q.chatterEntries||[],summary:q.summary,lineOrder:q.lineOrder,lineOverrides:q.lineOverrides},autoSpecs,autoNotes);
         await sendDecisionEmail(decision.toUpperCase(),currentUser,queueComments,q.approval?.submittedBy||"");
         // If this quote is currently open in the form, sync its state
         if(currentQuoteId&&String(currentQuoteId)===String(id)){
@@ -3960,7 +3965,7 @@ export default function App({onLogout,currentUser}){
       const result=window.confirm("Save the current quote before switching?\n\nClick OK to save, or Cancel to discard.");
       if(result){
         const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
+          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
         await saveQuoteToSupabase(q,autoSpecs,autoNotes);
       }
     }
@@ -3997,6 +4002,7 @@ export default function App({onLogout,currentUser}){
         setModalAnalysis({on:false,price:"6250"});setFixtureDrawing({on:false,price:"2950"});setInStockModal({on:false,targetProc:""});
         setWonInfo({wonDate:"",jobNum:"",poNum:""});setWonLocked(false);
         setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
+        setChatterEntries([]);setChatterInput("");
         setLocked(false);setCurrentQuoteId(null);
         setOpenQuotesPanel(false);
         setShowDashboard(false);
@@ -4128,7 +4134,7 @@ export default function App({onLogout,currentUser}){
     const result=window.confirm("Save the current quote before cloning?\n\nClick OK to save first, or Cancel to clone without saving.");
     if(result){
       const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
+        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
       saveQuoteToSupabase(q,autoSpecs,autoNotes);
     }
     setCloneOppInput("");
@@ -4144,6 +4150,7 @@ export default function App({onLogout,currentUser}){
     setLineOverrides({});
     setCurrentQuoteSource("vibrato");
     setLocked(false);
+    setChatterEntries([]);setChatterInput("");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setShowCloneModal(false);
@@ -4157,7 +4164,7 @@ export default function App({onLogout,currentUser}){
       if(result){
         const id=currentQuoteId||undefined;
         const q={id,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
+          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
         saveQuoteToSupabase(q,autoSpecs,autoNotes);
       }
     }
@@ -4177,6 +4184,7 @@ export default function App({onLogout,currentUser}){
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("vibrato");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
+    setChatterEntries([]);setChatterInput("");
     localStorage.removeItem("vibrato_last_quote_id");
     window.scrollTo({top:0,behavior:"smooth"});
   };
@@ -4184,7 +4192,7 @@ export default function App({onLogout,currentUser}){
   // Save quote to Supabase
   const handleSave=async()=>{
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,summary,lineOrder,lineOverrides};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){
       setCurrentQuoteId(newId);
@@ -4252,9 +4260,10 @@ export default function App({onLogout,currentUser}){
     if(q.approval)setApproval(q.approval); else setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     if(q.wonApproval)setWonApproval(q.wonApproval); else setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
     if(q.wonInfo)setWonInfo(q.wonInfo); else setWonInfo({wonDate:"",jobNum:"",poNum:""});
+    setChatterEntries(q.chatterEntries||[]);
     if(q.lineOrder!==undefined)setLineOrder(q.lineOrder); else setLineOrder(null);
     if(q.lineOverrides!==undefined)setLineOverrides(q.lineOverrides); else setLineOverrides({});
-    setWonLocked(!!(q.wonInfo?.wonDate||q.wonInfo?.jobNum||q.wonInfo?.poNum));
+    {const wd=q.wonInfo?.wonDate||"";const validDate=wd&&!isNaN(new Date(wd))&&!/^\d+$/.test(wd.trim());setWonLocked(!!(validDate||q.wonInfo?.jobNum?.trim()||q.wonInfo?.poNum?.trim()));}
     setCurrentQuoteId(q.id||null);
     if(q.id){localStorage.setItem("vibrato_last_quote_id",String(q.id));}
     setCurrentQuoteSource(q.source||"vibrato");
@@ -5873,6 +5882,15 @@ const STANDARD_TERMS = [
               </>
             )}
             <div style={{flex:1}}/>
+            {!showDashboard&&currentQuoteId&&(
+              <button onClick={()=>setShowChatter(c=>!c)}
+                style={{background:showChatter?"rgba(26,82,118,0.9)":"rgba(255,255,255,0.12)",
+                  border:"1px solid rgba(255,255,255,0.2)",borderRadius:5,padding:"3px 10px",
+                  color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",
+                  display:"flex",alignItems:"center",gap:5}}>
+                💬 CHATTER{chatterEntries.length>0&&<span style={{background:"rgba(255,255,255,0.25)",borderRadius:10,padding:"1px 6px",fontSize:10}}>{chatterEntries.length}</span>}
+              </button>
+            )}
 
             <button
               onClick={()=>{ const pendingLock=approval.status==="pending"; if(!pendingLock||isApprover) setLocked(l=>!l); }}
@@ -6969,7 +6987,83 @@ const STANDARD_TERMS = [
       </>)}{/* end dashboard/form conditional */}
       </div>{/* end body flex row */}
 
-      {/* ── Toast notification ── */}
+      {/* ── Chatter panel ── */}
+      {showChatter&&<div onClick={()=>setShowChatter(false)} style={{position:"fixed",inset:0,zIndex:1100,background:"rgba(0,0,0,0.25)"}}/>}
+      <div style={{position:"fixed",top:0,right:showChatter?0:-440,width:420,bottom:0,zIndex:1150,
+        background:"#fff",boxShadow:"-4px 0 24px rgba(0,0,0,0.15)",transition:"right 0.3s ease",
+        display:"flex",flexDirection:"column",fontFamily:"Segoe UI,system-ui,sans-serif"}}>
+        {/* Header */}
+        <div style={{background:"#1a5276",padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+          <div>
+            <div style={{fontWeight:700,fontSize:14,color:"#fff",letterSpacing:.5}}>💬 Chatter</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginTop:2}}>{qi?.opp||"(no opportunity)"} · {chatterEntries.length} entr{chatterEntries.length===1?"y":"ies"}</div>
+          </div>
+          <button onClick={()=>setShowChatter(false)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:6,color:"#fff",fontSize:16,cursor:"pointer",padding:"4px 10px",fontWeight:700}}>✕</button>
+        </div>
+        {/* Entries */}
+        <div style={{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
+          {chatterEntries.length===0?(
+            <div style={{textAlign:"center",color:"#9aa5b1",fontSize:13,padding:"40px 20px",lineHeight:1.8}}>
+              No entries yet.<br/>Be the first to add a note.
+            </div>
+          ):(
+            [...chatterEntries].reverse().map((e,i)=>(
+              <div key={i} style={{background:"#f8f9fa",borderRadius:8,padding:"10px 13px",
+                border:"1px solid #e8ecf0"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                  <span style={{fontSize:11,fontWeight:700,color:"#1a5276"}}>{e.by||"Unknown"}</span>
+                  <span style={{fontSize:10,color:"#9aa5b1"}}>
+                    {e.at?new Date(e.at).toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}):""}
+                  </span>
+                </div>
+                <div style={{fontSize:12,color:"#1a2332",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{e.msg}</div>
+              </div>
+            ))
+          )}
+        </div>
+        {/* Input */}
+        <div style={{padding:"12px 16px",borderTop:"1px solid #e8ecf0",flexShrink:0,background:"#f8f9fa"}}>
+          {!currentQuoteId&&(
+            <div style={{fontSize:11,color:"#b7791f",marginBottom:8,background:"#fffbeb",borderRadius:6,padding:"6px 10px",border:"1px solid #f6d860"}}>
+              ⚠️ Save the quote first before adding chatter.
+            </div>
+          )}
+          <textarea
+            value={chatterInput}
+            onChange={e=>setChatterInput(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter"&&(e.metaKey||e.ctrlKey))document.getElementById("chatter-post-btn")?.click();}}
+            placeholder="Add a note, update, or question… (Ctrl+Enter to post)"
+            rows={3}
+            style={{width:"100%",fontSize:12,borderRadius:7,border:"1px solid #d0d7de",padding:"8px 10px",
+              resize:"none",fontFamily:"inherit",boxSizing:"border-box",outline:"none",lineHeight:1.6}}
+          />
+          <div style={{display:"flex",justifyContent:"flex-end",marginTop:8}}>
+            <button id="chatter-post-btn"
+              disabled={!chatterInput.trim()||!currentQuoteId||chatterSaving}
+              onClick={async()=>{
+                if(!chatterInput.trim()||!currentQuoteId)return;
+                setChatterSaving(true);
+                const entry={by:currentUser,at:new Date().toISOString(),msg:chatterInput.trim()};
+                const updated=[...chatterEntries,entry];
+                setChatterEntries(updated);
+                setChatterInput("");
+                // Save immediately so chatter persists without requiring manual SAVE
+                const q={id:currentQuoteId,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
+                  qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries:updated,summary,lineOrder,lineOverrides};
+                await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+                setChatterSaving(false);
+              }}
+              style={{background:!chatterInput.trim()||!currentQuoteId?"#e8ecf0":"#1a5276",
+                border:"none",borderRadius:7,padding:"7px 20px",fontWeight:700,fontSize:12,
+                cursor:!chatterInput.trim()||!currentQuoteId?"default":"pointer",
+                color:!chatterInput.trim()||!currentQuoteId?"#9aa5b1":"#fff",
+                display:"flex",alignItems:"center",gap:6}}>
+              {chatterSaving?"Saving…":"💬 Post"}
+            </button>
+          </div>
+        </div>
+      </div>
+
       {toast&&(
         <div style={{
           position:"fixed",bottom:24,right:24,zIndex:9999,
