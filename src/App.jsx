@@ -3027,12 +3027,13 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       return { label: m.label, count: rows.length, total, isCurrent: m.isCurrent };
     }));
 
-    const won = wonRawMerged.map(q => ({
-      ...q,
-      type: q.data?.qi?.type || "New Business",
-      total: q.total || 0,
-    }));
+    const sortByOpp = arr => [...arr].sort((a,b) => {
+      const oa = a.opportunity||a.data?.qi?.opp||"";
+      const ob = b.opportunity||b.data?.qi?.opp||"";
+      return oa.localeCompare(ob, undefined, {numeric:true, sensitivity:"base"});
+    });
 
+    const won         = sortByOpp(wonRawMerged.map(q => ({...q, type: q.data?.qi?.type||"New Business", total: q.total||0})));
     const wonNew      = won.filter(q => q.type === "New Business");
     const wonExisting = won.filter(q => q.type === "Existing Business");
     const wonTotal    = won.reduce((a,q) => a + (q.total||0), 0);
