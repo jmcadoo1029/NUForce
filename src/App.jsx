@@ -3827,7 +3827,7 @@ export default function App({onLogout,currentUser}){
   const [showApprovalModal,setShowApprovalModal]=useState(false);
   const [showChatter,setShowChatter]=useState(false);
   const [chatterEntries,setChatterEntries]=useState([]);
-  const chatterRef=useRef([]);  // mirrors chatterEntries — survives stale closure resets
+  const chatterRef=useRef({});  // map of quoteId->chatterEntries, survives stale closure resets
   const [chatterInput,setChatterInput]=useState("");
   const [chatterSaving,setChatterSaving]=useState(false);
   const [wonInfo,setWonInfo]=useState({wonDate:"",jobNum:"",poNum:""});
@@ -3887,17 +3887,17 @@ export default function App({onLogout,currentUser}){
     }
   },[currentQuoteId]);
 
-  // ── Guard: restore chatterEntries from ref if React wiped it during load ─────
-  // handleLoad writes chatterRef.current then calls setChatterEntries.
-  // For SF quotes, a subsequent setCustom (line item hydration) triggers a
-  // re-render that can clear chatterEntries back to []. This effect runs after
-  // every render and restores from the ref whenever there's a mismatch.
-  // It's a no-op when ref and state agree (the common case).
+  // ── Guard: restore chatterEntries if React wiped it after SF quote load ──────
+  // SF quotes call setCustom at the end of handleLoad which can trigger a
+  // re-render that resets chatterEntries to []. The ref stores entries keyed
+  // by quoteId so we can safely restore for the correct quote only.
   useEffect(()=>{
-    if(chatterRef.current.length>0&&chatterEntries.length===0){
-      setChatterEntries([...chatterRef.current]);
+    if(!currentQuoteId)return;
+    const saved=chatterRef.current[currentQuoteId];
+    if(saved&&saved.length>0&&chatterEntries.length===0){
+      setChatterEntries([...saved]);
     }
-  });
+  },[currentQuoteId,chatterEntries.length]);
 
   // ── Load saved quotes on startup + Supabase Realtime sync ──────────────────
   useEffect(()=>{
@@ -4224,7 +4224,7 @@ export default function App({onLogout,currentUser}){
         setModalAnalysis({on:false,price:"6250"});setFixtureDrawing({on:false,price:"2950"});setInStockModal({on:false,targetProc:""});
         setWonInfo({wonDate:"",jobNum:"",poNum:""});setWonLocked(false);
         setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
-        chatterRef.current=[];setChatterEntries([]);setChatterInput("");
+        chatterRef.current={};setChatterEntries([]);setChatterInput("");
         setLocked(false);setCurrentQuoteId(null);
         setOpenQuotesPanel(false);
         setShowDashboard(false);
@@ -4377,7 +4377,7 @@ export default function App({onLogout,currentUser}){
     setLineOverrides({});
     setCurrentQuoteSource("vibrato");
     setLocked(false);
-    chatterRef.current=[];setChatterEntries([]);setChatterInput("");
+    chatterRef.current={};setChatterEntries([]);setChatterInput("");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setShowCloneModal(false);
@@ -4411,7 +4411,7 @@ export default function App({onLogout,currentUser}){
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("vibrato");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
-    chatterRef.current=[];setChatterEntries([]);setChatterInput("");
+    chatterRef.current={};setChatterEntries([]);setChatterInput("");
     localStorage.removeItem("vibrato_last_quote_id");
     window.scrollTo({top:0,behavior:"smooth"});
   };
@@ -4487,7 +4487,8 @@ export default function App({onLogout,currentUser}){
     if(q.approval)setApproval(q.approval); else setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     if(q.wonApproval)setWonApproval(q.wonApproval); else setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
     if(q.wonInfo)setWonInfo(q.wonInfo); else setWonInfo({wonDate:"",jobNum:"",poNum:""});
-    chatterRef.current=q.chatterEntries||[];
+    const _qid=q.id||q.qi?.opp||"__new__";
+    chatterRef.current[_qid]=q.chatterEntries||[];
     setChatterEntries(q.chatterEntries||[]);
     if(q.lineOrder!==undefined)setLineOrder(q.lineOrder); else setLineOrder(null);
     if(q.lineOverrides!==undefined)setLineOverrides(q.lineOverrides); else setLineOverrides({});
@@ -7282,7 +7283,7 @@ const STANDARD_TERMS = [
                 setChatterSaving(true);
                 const entry={by:currentUser,at:new Date().toISOString(),msg:chatterInput.trim()};
                 const updated=[...chatterEntries,entry];
-                chatterRef.current=updated;
+                if(currentQuoteId)chatterRef.current[currentQuoteId]=updated;
                 setChatterEntries(updated);
                 setChatterInput("");
                 // Save immediately so chatter persists without requiring manual SAVE
