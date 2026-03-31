@@ -4021,6 +4021,7 @@ export default function App({onLogout,currentUser}){
 
   const [showApprovalModal,setShowApprovalModal]=useState(false);
   const [showChatter,setShowChatter]=useState(false);
+  const [quoteSentAt,setQuoteSentAt]=useState(null); // date string if this quote has been marked sent
   const [chatterEntries,setChatterEntries]=useState([]);
   const [chatterInput,setChatterInput]=useState("");
   const [chatterSaving,setChatterSaving]=useState(false);
@@ -4081,6 +4082,16 @@ export default function App({onLogout,currentUser}){
   useEffect(()=>{
     if(currentQuoteId){
       localStorage.setItem("vibrato_last_quote_id",String(currentQuoteId));
+      // Load sent status for this quote
+      supabase.from("follow_ups")
+        .select("sent_at")
+        .eq("quote_id",currentQuoteId)
+        .order("sent_at",{ascending:false})
+        .limit(1)
+        .maybeSingle()
+        .then(({data})=>setQuoteSentAt(data?.sent_at||null));
+    } else {
+      setQuoteSentAt(null);
     }
   },[currentQuoteId]);
 
@@ -4607,7 +4618,7 @@ export default function App({onLogout,currentUser}){
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("vibrato");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
-    setChatterEntries([]);setChatterInput("");
+    setChatterEntries([]);setChatterInput("");setQuoteSentAt(null);
     localStorage.removeItem("vibrato_last_quote_id");
     window.scrollTo({top:0,behavior:"smooth"});
   };
@@ -6354,23 +6365,33 @@ const STANDARD_TERMS = [
               </button>
             )}
             {!showDashboard&&currentQuoteId&&(
-              <button onClick={async()=>{
-                  const already=await supabase.from("follow_ups").select("id").eq("quote_id",currentQuoteId).maybeSingle();
-                  if(already.data){showToast("Already marked as sent","info");return;}
-                  const {error}=await supabase.from("follow_ups").insert({
-                    quote_id:currentQuoteId,
-                    opportunity:qi.opp,
-                    customer:qi.account,
-                    sent_by:currentUser,
-                  });
-                  if(error)showToast("Error marking as sent","error",4000);
-                  else showToast("✉️ Marked as sent — will appear in Follow-ups in 30 days","success",4000);
-                }}
-                style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",
-                  borderRadius:5,padding:"3px 10px",color:"#fff",fontWeight:700,fontSize:11,
-                  cursor:"pointer"}}>
-                ✉️ Mark as Sent
-              </button>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                {quoteSentAt&&(
+                  <span style={{background:"rgba(30,132,73,0.85)",borderRadius:5,
+                    padding:"3px 8px",color:"#fff",fontSize:10,fontWeight:700,
+                    letterSpacing:.3,whiteSpace:"nowrap"}}>
+                    ✓ Sent {new Date(quoteSentAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+                  </span>
+                )}
+                <button onClick={async()=>{
+                    const {error,data}=await supabase.from("follow_ups").insert({
+                      quote_id:currentQuoteId,
+                      opportunity:qi.opp,
+                      customer:qi.account,
+                      sent_by:currentUser,
+                    }).select("sent_at").single();
+                    if(error)showToast("Error marking as sent","error",4000);
+                    else{
+                      setQuoteSentAt(data.sent_at);
+                      showToast("✉️ Marked as sent — will appear in Follow-ups in 30 days","success",4000);
+                    }
+                  }}
+                  style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",
+                    borderRadius:5,padding:"3px 10px",color:"#fff",fontWeight:700,fontSize:11,
+                    cursor:"pointer"}}>
+                  ✉️ Mark as Sent
+                </button>
+              </div>
             )}
 
             <button
