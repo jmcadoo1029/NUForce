@@ -3827,6 +3827,8 @@ export default function App({onLogout,currentUser}){
   const [showCreateProjectAlert,setShowCreateProjectAlert]=useState(false);
   const [currentQuoteSource,setCurrentQuoteSource]=useState("vibrato");
   const [showDashboard,setShowDashboard]=useState(true);
+  const recentSaveRef=useRef(0); // timestamp of last local save — suppresses self-triggered realtime toast
+  const reloadOpenQuoteRef=useRef(null); // set after handleLoad is defined — used by realtime toast button
   const [toast,setToast]=useState(null); // {msg, type: 'success'|'error'|'info'}
   const toastTimer=useRef(null);
   const showToast=(msg,type="success",duration=3000)=>{
@@ -3898,7 +3900,21 @@ export default function App({onLogout,currentUser}){
           setDashboardNeedsRefresh(prev=>prev||true);
           setCurrentQuoteId(prevId=>{
             if(prevId&&String(payload.new?.id)===String(prevId)){
-              showToast("⚠️ This quote was just saved by another user — consider refreshing","info",6000);
+              // Only show if this wasn't our own save (grace window of 5 seconds)
+              const msSinceSave=Date.now()-recentSaveRef.current;
+              if(msSinceSave>5000){
+                showToast(
+                  <span>
+                    ⚠️ This quote was updated by another user.{" "}
+                    <span
+                      onClick={()=>reloadOpenQuoteRef.current&&reloadOpenQuoteRef.current(String(prevId))}
+                      style={{textDecoration:"underline",cursor:"pointer",fontWeight:700}}>
+                      Reload quote
+                    </span>
+                  </span>,
+                  "info", 10000
+                );
+              }
             }
             return prevId;
           });
@@ -3973,6 +3989,7 @@ export default function App({onLogout,currentUser}){
   };
 
   const handleSubmitApproval=async()=>{
+    recentSaveRef.current=Date.now();
     const evt={event:"submitted",by:currentUser,at:new Date().toISOString(),comments:""};
     const newApproval={status:"pending",submittedBy:currentUser,submittedAt:new Date().toISOString(),decidedBy:"",decidedAt:"",comments:"",history:[...(approval.history||[]),evt]};
     setApproval(newApproval);
@@ -4019,6 +4036,7 @@ export default function App({onLogout,currentUser}){
 
   // ── Closed Won Approval ──────────────────────────────────────────────────────
   const handleSubmitWonApproval=async(explicitStage)=>{
+    recentSaveRef.current=Date.now();
     const newWonApproval={status:"pending_won",submittedBy:currentUser,submittedAt:new Date().toISOString(),decidedBy:"",decidedAt:"",comments:""};
     setWonApproval(newWonApproval);
     setLocked(true);
@@ -4388,6 +4406,7 @@ export default function App({onLogout,currentUser}){
 
   // Save quote to Supabase
   const handleSave=async()=>{
+    recentSaveRef.current=Date.now();
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
@@ -4498,6 +4517,24 @@ export default function App({onLogout,currentUser}){
       }
       // wonInfo is already loaded from the blob at line 4165 above — no need to re-apply here
     }
+  };
+  // Keep ref pointing at latest handleLoad so realtime toast button can call it
+  reloadOpenQuoteRef.current=(id)=>{
+    supabase.from("quotes")
+      .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data, source")
+      .eq("id",id).single()
+      .then(({data:row,error})=>{
+        if(error||!row)return;
+        const q=row.data||{};
+        handleLoad({...q,id:row.id,opp:row.opportunity||q.opp,
+          customer:row.customer||q.customer,rfq:row.rfq||q.rfq,
+          total:row.total??q.total,savedAt:row.updated_at,
+          source:row.source||"vibrato",
+          approval:{...(q.approval||{}),status:row.approval_status||q.approval?.status||"none"},
+          wonApproval:{...(q.wonApproval||{}),status:row.won_approval_status||q.wonApproval?.status||"none"},
+        });
+        showToast("Quote reloaded ✓","success");
+      });
   };
 
   const setupProps={setup};
