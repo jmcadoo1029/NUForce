@@ -6353,7 +6353,7 @@ const STANDARD_TERMS = [
                 💬 CHATTER{chatterEntries.length>0&&<span style={{background:"rgba(255,255,255,0.25)",borderRadius:10,padding:"1px 6px",fontSize:10}}>{chatterEntries.length}</span>}
               </button>
             )}
-            {!showDashboard&&currentQuoteId&&isFollowUpUser&&(
+            {!showDashboard&&currentQuoteId&&(
               <button onClick={async()=>{
                   const already=await supabase.from("follow_ups").select("id").eq("quote_id",currentQuoteId).maybeSingle();
                   if(already.data){showToast("Already marked as sent","info");return;}
