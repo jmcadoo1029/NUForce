@@ -3038,25 +3038,15 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     const wonExisting = won.filter(q => q.type === "Existing Business");
     const wonTotal    = won.reduce((a,q) => a + (q.total||0), 0);
 
-    // ── YTD data ──
     const yrPrefix = String(year).slice(-2);
     const ytdStart = new Date(year, 0, 1).toISOString();
     const ytdEnd   = new Date(year + 1, 0, 1).toISOString();
-
     const [{ data: ytdCreatedRaw }, { data: ytdWonRaw }] = await Promise.all([
-      supabase
-        .from("quotes")
-        .select("id, opportunity, total, data")
-        .eq("source","vibrato")
-        .gte("created_at", ytdStart)
-        .lt("created_at",  ytdEnd)
+      supabase.from("quotes").select("id, opportunity, total, data")
+        .eq("source","vibrato").gte("created_at", ytdStart).lt("created_at", ytdEnd)
         .like("opportunity", yrPrefix + "%"),
-      supabase
-        .from("quotes")
-        .select("id, opportunity, total, won_date, data")
-        .eq("stage","Closed Won")
-        .gte("won_date", ytdStart.slice(0,10))
-        .lt("won_date",  ytdEnd.slice(0,10)),
+      supabase.from("quotes").select("id, opportunity, total, won_date, data")
+        .eq("stage","Closed Won").gte("won_date", ytdStart.slice(0,10)).lt("won_date", ytdEnd.slice(0,10)),
     ]);
     const ytdCreated     = ytdCreatedRaw || [];
     const ytdWonAll      = (ytdWonRaw || []).map(q => ({...q, type: q.data?.qi?.type||"New Business"}));
@@ -3066,10 +3056,8 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     const ytdWonNewTotal = ytdWonNew.reduce((a,q) => a + (q.total||0), 0);
     const ytdWonExTotal  = ytdWonExisting.reduce((a,q) => a + (q.total||0), 0);
     const ytdWonTotal    = ytdWonNewTotal + ytdWonExTotal;
-
     setData({ created, monthCounts, won, wonNew, wonExisting, wonTotal, topCodes, topAccounts,
-      ytdQuoteCount: ytdCreated.length, ytdQuoteTotal, ytdWonNewTotal, ytdWonExTotal,
-      ytdWonTotal, yrPrefix });
+      ytdQuoteCount: ytdCreated.length, ytdQuoteTotal, ytdWonNewTotal, ytdWonExTotal, ytdWonTotal, yrPrefix });
     setLoading(false);
   };
 
@@ -3154,15 +3142,12 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
           <div>
             {/* ── Top stat cards — 2 cols: Quotes | Won+Target ── */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:16,marginBottom:20}}>
-
-              {/* Quotes this month */}
               <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0"}}>
                 <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:8}}>QUOTES THIS MONTH</div>
                 <div style={{fontSize:36,fontWeight:800,color:"#1a2332",lineHeight:1}}>{data.created.length}</div>
                 <div style={{fontSize:12,color:"#6b7a8d",marginTop:6}}>
                   Total value: <span style={{fontWeight:700,color:"#1a5276"}}>{money(data.created.reduce((a,q)=>a+(q.total||0),0))}</span>
                 </div>
-                {/* Capture rate */}
                 {(()=>{
                   const createdCount=data.created.length;
                   const wonCount=data.won.length;
@@ -3182,8 +3167,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                   ):null;
                 })()}
               </div>
-
-              {/* Closed Won + Target — combined */}
               {(()=>{
                 const over=data.wonTotal>=TARGET;
                 const rawPct=pct(data.wonTotal);
@@ -3195,8 +3178,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                 const overBarW=Math.round((overflowAmt/TARGET)/displayScale*100);
                 return(
                   <div style={{background:over?"#f0faf4":"#fff",borderRadius:12,padding:"20px 24px",
-                    boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
-                    border:"1px solid "+(over?"#a7f3d0":"#e8ecf0")}}>
+                    boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid "+(over?"#a7f3d0":"#e8ecf0")}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                       <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>CLOSED WON THIS MONTH · MONTHLY TARGET</div>
                       {over&&<span style={{fontSize:10,background:"#d1fae5",color:"#065f46",borderRadius:4,padding:"2px 7px",fontWeight:700}}>🎉 EXCEEDED</span>}
@@ -3216,15 +3198,11 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     </div>
                     <div style={{margin:"12px 0 8px"}}>
                       <div style={{position:"relative",height:16,background:"#e8ecf0",borderRadius:8,overflow:"hidden"}}>
-                        <div style={{
-                          position:"absolute",left:0,top:0,bottom:0,
+                        <div style={{position:"absolute",left:0,top:0,bottom:0,
                           width:(over?targetBarW:Math.round(Math.min(data.wonTotal/TARGET,1)*100))+"%",
-                          background:barColor,borderRadius:"8px 0 0 8px",transition:"width 0.6s ease"
-                        }}/>
-                        {over&&<div style={{
-                          position:"absolute",left:targetBarW+"%",top:2,bottom:2,
-                          width:overBarW+"%",background:"#34d399",borderRadius:"0 6px 6px 0",transition:"width 0.6s ease"
-                        }}/>}
+                          background:barColor,borderRadius:"8px 0 0 8px",transition:"width 0.6s ease"}}/>
+                        {over&&<div style={{position:"absolute",left:targetBarW+"%",top:2,bottom:2,
+                          width:overBarW+"%",background:"#34d399",borderRadius:"0 6px 6px 0",transition:"width 0.6s ease"}}/>}
                         <div style={{position:"absolute",left:targetBarW+"%",top:0,bottom:0,width:2,background:"rgba(255,255,255,0.8)"}}/>
                       </div>
                     </div>
@@ -3272,7 +3250,17 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                             justifyContent:"space-between",fontSize:11,color:"#6b7a8d",
                             borderTop:"1px solid #f0f2f5",padding:"5px 0",gap:8}}>
                             <span
-                              onClick={()=>onLoadQuote&&onLoadQuote(q)}
+                              onClick={()=>{
+                                if(!onLoadQuote)return;
+                                const blob=q.data||{};
+                                onLoadQuote({
+                                  ...blob,
+                                  id:q.id,
+                                  source:blob.source||"vibrato",
+                                  customer:q.customer||blob.customer,
+                                  total:q.total||blob.total,
+                                });
+                              }}
                               style={{fontWeight:700,color:"#1a5276",cursor:"pointer",
                                 textDecoration:"underline",textDecorationColor:"rgba(26,82,118,0.4)",
                                 flexShrink:0}}>
@@ -3827,7 +3815,6 @@ export default function App({onLogout,currentUser}){
   const [showApprovalModal,setShowApprovalModal]=useState(false);
   const [showChatter,setShowChatter]=useState(false);
   const [chatterEntries,setChatterEntries]=useState([]);
-  const chatterRef=useRef({});  // map of quoteId->chatterEntries, survives stale closure resets
   const [chatterInput,setChatterInput]=useState("");
   const [chatterSaving,setChatterSaving]=useState(false);
   const [wonInfo,setWonInfo]=useState({wonDate:"",jobNum:"",poNum:""});
@@ -3886,18 +3873,6 @@ export default function App({onLogout,currentUser}){
       localStorage.setItem("vibrato_last_quote_id",String(currentQuoteId));
     }
   },[currentQuoteId]);
-
-  // ── Guard: restore chatterEntries if React wiped it after SF quote load ──────
-  // SF quotes call setCustom at the end of handleLoad which can trigger a
-  // re-render that resets chatterEntries to []. The ref stores entries keyed
-  // by quoteId so we can safely restore for the correct quote only.
-  useEffect(()=>{
-    if(!currentQuoteId)return;
-    const saved=chatterRef.current[currentQuoteId];
-    if(saved&&saved.length>0&&chatterEntries.length===0){
-      setChatterEntries([...saved]);
-    }
-  },[currentQuoteId,chatterEntries.length]);
 
   // ── Load saved quotes on startup + Supabase Realtime sync ──────────────────
   useEffect(()=>{
@@ -4224,7 +4199,7 @@ export default function App({onLogout,currentUser}){
         setModalAnalysis({on:false,price:"6250"});setFixtureDrawing({on:false,price:"2950"});setInStockModal({on:false,targetProc:""});
         setWonInfo({wonDate:"",jobNum:"",poNum:""});setWonLocked(false);
         setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
-        chatterRef.current={};setChatterEntries([]);setChatterInput("");
+        setChatterEntries([]);setChatterInput("");
         setLocked(false);setCurrentQuoteId(null);
         setOpenQuotesPanel(false);
         setShowDashboard(false);
@@ -4308,18 +4283,14 @@ export default function App({onLogout,currentUser}){
   useEffect(()=>{
     const prev=prevAutoSpecs.current;
     prevAutoSpecs.current=autoSpecs;
-    // If the auto text hasn't changed, don't touch tiSpecs — the user may have
-    // intentionally deleted it and we must not re-append it on every re-render
     if(prev===autoSpecs)return;
     setTi(t=>{
       const cur=t.tiSpecs||"";
-      // Remove the previous auto block (exact match) to get the manual-only portion
       let manual=cur;
       if(prev){
         if(manual.includes("\n\n"+prev))manual=manual.replace("\n\n"+prev,"").trimEnd();
         else if(manual===prev)manual="";
       }
-      // Now append the new auto block (if any)
       if(!autoSpecs)return {...t,tiSpecs:manual};
       if(!manual)return {...t,tiSpecs:autoSpecs};
       return {...t,tiSpecs:manual+"\n\n"+autoSpecs};
@@ -4330,7 +4301,6 @@ export default function App({onLogout,currentUser}){
   useEffect(()=>{
     const prev=prevAutoNotes.current;
     prevAutoNotes.current=autoNotes;
-    // Same guard: if auto text unchanged, don't re-append deleted content
     if(prev===autoNotes)return;
     setTi(t=>{
       const cur=t.tiNotes||"";
@@ -4377,7 +4347,7 @@ export default function App({onLogout,currentUser}){
     setLineOverrides({});
     setCurrentQuoteSource("vibrato");
     setLocked(false);
-    chatterRef.current={};setChatterEntries([]);setChatterInput("");
+    setChatterEntries([]);setChatterInput("");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setShowCloneModal(false);
@@ -4411,7 +4381,7 @@ export default function App({onLogout,currentUser}){
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("vibrato");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
-    chatterRef.current={};setChatterEntries([]);setChatterInput("");
+    setChatterEntries([]);setChatterInput("");
     localStorage.removeItem("vibrato_last_quote_id");
     window.scrollTo({top:0,behavior:"smooth"});
   };
@@ -4487,8 +4457,6 @@ export default function App({onLogout,currentUser}){
     if(q.approval)setApproval(q.approval); else setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     if(q.wonApproval)setWonApproval(q.wonApproval); else setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
     if(q.wonInfo)setWonInfo(q.wonInfo); else setWonInfo({wonDate:"",jobNum:"",poNum:""});
-    const _qid=q.id||q.qi?.opp||"__new__";
-    chatterRef.current[_qid]=q.chatterEntries||[];
     setChatterEntries(q.chatterEntries||[]);
     if(q.lineOrder!==undefined)setLineOrder(q.lineOrder); else setLineOrder(null);
     if(q.lineOverrides!==undefined)setLineOverrides(q.lineOverrides); else setLineOverrides({});
@@ -6585,7 +6553,6 @@ const STANDARD_TERMS = [
                             const submit=window.confirm("Submit this quote for Closed Won approval?\n\nClick OK to submit, or Cancel to set the stage without submitting.");
                             if(submit)handleSubmitWonApproval(s);
                             else{
-                              // User declined approval prompt — still save the stage change
                               const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
                                 qi:{...qi,stage:s},ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
                               saveQuoteToSupabase(q,autoSpecs,autoNotes).then(newId=>{
@@ -7283,7 +7250,6 @@ const STANDARD_TERMS = [
                 setChatterSaving(true);
                 const entry={by:currentUser,at:new Date().toISOString(),msg:chatterInput.trim()};
                 const updated=[...chatterEntries,entry];
-                if(currentQuoteId)chatterRef.current[currentQuoteId]=updated;
                 setChatterEntries(updated);
                 setChatterInput("");
                 // Save immediately so chatter persists without requiring manual SAVE
