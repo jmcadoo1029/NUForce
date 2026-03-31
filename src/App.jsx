@@ -3827,6 +3827,7 @@ export default function App({onLogout,currentUser}){
   const [showApprovalModal,setShowApprovalModal]=useState(false);
   const [showChatter,setShowChatter]=useState(false);
   const [chatterEntries,setChatterEntries]=useState([]);
+  const chatterRef=useRef([]);  // mirrors chatterEntries — survives stale closure resets
   const [chatterInput,setChatterInput]=useState("");
   const [chatterSaving,setChatterSaving]=useState(false);
   const [wonInfo,setWonInfo]=useState({wonDate:"",jobNum:"",poNum:""});
@@ -3885,6 +3886,16 @@ export default function App({onLogout,currentUser}){
       localStorage.setItem("vibrato_last_quote_id",String(currentQuoteId));
     }
   },[currentQuoteId]);
+
+  // ── Guard: restore chatterEntries from ref if React wiped it during load ─────
+  // handleLoad sets both the ref and state simultaneously. If a cascading
+  // re-render (e.g. autoSpecs useEffect) clears chatterEntries state back to [],
+  // this effect detects the mismatch and restores from the ref.
+  useEffect(()=>{
+    if(chatterRef.current.length>0&&chatterEntries.length===0){
+      setChatterEntries(chatterRef.current);
+    }
+  },[currentQuoteId,chatterEntries.length]);
 
   // ── Load saved quotes on startup + Supabase Realtime sync ──────────────────
   useEffect(()=>{
@@ -4211,7 +4222,7 @@ export default function App({onLogout,currentUser}){
         setModalAnalysis({on:false,price:"6250"});setFixtureDrawing({on:false,price:"2950"});setInStockModal({on:false,targetProc:""});
         setWonInfo({wonDate:"",jobNum:"",poNum:""});setWonLocked(false);
         setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
-        setChatterEntries([]);setChatterInput("");
+        chatterRef.current=[];setChatterEntries([]);setChatterInput("");
         setLocked(false);setCurrentQuoteId(null);
         setOpenQuotesPanel(false);
         setShowDashboard(false);
@@ -4364,7 +4375,7 @@ export default function App({onLogout,currentUser}){
     setLineOverrides({});
     setCurrentQuoteSource("vibrato");
     setLocked(false);
-    setChatterEntries([]);setChatterInput("");
+    chatterRef.current=[];setChatterEntries([]);setChatterInput("");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setShowCloneModal(false);
@@ -4398,7 +4409,7 @@ export default function App({onLogout,currentUser}){
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("vibrato");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
-    setChatterEntries([]);setChatterInput("");
+    chatterRef.current=[];setChatterEntries([]);setChatterInput("");
     localStorage.removeItem("vibrato_last_quote_id");
     window.scrollTo({top:0,behavior:"smooth"});
   };
@@ -4474,7 +4485,7 @@ export default function App({onLogout,currentUser}){
     if(q.approval)setApproval(q.approval); else setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     if(q.wonApproval)setWonApproval(q.wonApproval); else setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
     if(q.wonInfo)setWonInfo(q.wonInfo); else setWonInfo({wonDate:"",jobNum:"",poNum:""});
-    console.log('[handleLoad] chatterEntries:', q.chatterEntries?.length ?? 'undefined', q.id, q.opp||q.qi?.opp);
+    chatterRef.current=q.chatterEntries||[];
     setChatterEntries(q.chatterEntries||[]);
     if(q.lineOrder!==undefined)setLineOrder(q.lineOrder); else setLineOrder(null);
     if(q.lineOverrides!==undefined)setLineOverrides(q.lineOverrides); else setLineOverrides({});
@@ -7269,6 +7280,7 @@ const STANDARD_TERMS = [
                 setChatterSaving(true);
                 const entry={by:currentUser,at:new Date().toISOString(),msg:chatterInput.trim()};
                 const updated=[...chatterEntries,entry];
+                chatterRef.current=updated;
                 setChatterEntries(updated);
                 setChatterInput("");
                 // Save immediately so chatter persists without requiring manual SAVE
