@@ -3888,14 +3888,16 @@ export default function App({onLogout,currentUser}){
   },[currentQuoteId]);
 
   // ── Guard: restore chatterEntries from ref if React wiped it during load ─────
-  // handleLoad sets both the ref and state simultaneously. If a cascading
-  // re-render (e.g. autoSpecs useEffect) clears chatterEntries state back to [],
-  // this effect detects the mismatch and restores from the ref.
+  // handleLoad writes chatterRef.current then calls setChatterEntries.
+  // For SF quotes, a subsequent setCustom (line item hydration) triggers a
+  // re-render that can clear chatterEntries back to []. This effect runs after
+  // every render and restores from the ref whenever there's a mismatch.
+  // It's a no-op when ref and state agree (the common case).
   useEffect(()=>{
     if(chatterRef.current.length>0&&chatterEntries.length===0){
-      setChatterEntries(chatterRef.current);
+      setChatterEntries([...chatterRef.current]);
     }
-  },[currentQuoteId,chatterEntries.length]);
+  });
 
   // ── Load saved quotes on startup + Supabase Realtime sync ──────────────────
   useEffect(()=>{
