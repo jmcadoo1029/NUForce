@@ -3038,14 +3038,46 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     const wonExisting = won.filter(q => q.type === "Existing Business");
     const wonTotal    = won.reduce((a,q) => a + (q.total||0), 0);
 
-    setData({ created, monthCounts, won, wonNew, wonExisting, wonTotal, topCodes, topAccounts });
+    // ── YTD data ──
+    // Year prefix: 2026 → "26", 2027 → "27", etc.
+    const yrPrefix = String(year).slice(-2);
+    const ytdStart = new Date(year, 0, 1).toISOString();
+    const ytdEnd   = new Date(year + 1, 0, 1).toISOString();
+
+    const [{ data: ytdCreatedRaw }, { data: ytdWonRaw }] = await Promise.all([
+      supabase
+        .from("quotes")
+        .select("id, opportunity, total, data")
+        .eq("source","vibrato")
+        .gte("created_at", ytdStart)
+        .lt("created_at",  ytdEnd)
+        .like("opportunity", yrPrefix + "%"),
+      supabase
+        .from("quotes")
+        .select("id, opportunity, total, won_date, data")
+        .eq("stage","Closed Won")
+        .gte("won_date", ytdStart.slice(0,10))
+        .lt("won_date",  ytdEnd.slice(0,10)),
+    ]);
+    const ytdCreated     = ytdCreatedRaw || [];
+    const ytdWonAll      = (ytdWonRaw || []).map(q => ({...q, type: q.data?.qi?.type||"New Business"}));
+    const ytdWonNew      = ytdWonAll.filter(q => q.type === "New Business");
+    const ytdWonExisting = ytdWonAll.filter(q => q.type === "Existing Business");
+    const ytdQuoteTotal  = ytdCreated.reduce((a,q) => a + (q.total||0), 0);
+    const ytdWonNewTotal = ytdWonNew.reduce((a,q) => a + (q.total||0), 0);
+    const ytdWonExTotal  = ytdWonExisting.reduce((a,q) => a + (q.total||0), 0);
+    const ytdWonTotal    = ytdWonNewTotal + ytdWonExTotal;
+
+    setData({ created, monthCounts, won, wonNew, wonExisting, wonTotal, topCodes, topAccounts,
+      ytdQuoteCount: ytdCreated.length, ytdQuoteTotal, ytdWonNewTotal, ytdWonExTotal,
+      ytdWonTotal, yrPrefix });
     setLoading(false);
   };
 
   useEffect(()=>{ load(); },[]);
 
   const TARGET = 175000;
-  const money  = n => "$"+Math.round(n).toLocaleString();
+  const money  = n => "$"+(isNaN(n)||n==null?0:Math.round(n)).toLocaleString();
   const pct    = v => Math.round((v/TARGET)*100);
 
 
