@@ -4426,7 +4426,27 @@ export default function App({onLogout,currentUser}){
       q.abs||[newAb()], q.sbs||[newSb()]
     );
     prevAutoSpecs.current=loadedAutoSpecs;
-    prevAutoNotes.current=""; // notes will re-sync cleanly
+    // Pre-seed autoNotes the same way — compute from loaded tests so the
+    // guard fires correctly and doesn't re-append on load
+    const loadedAutoNotes=(()=>{
+      const lines=[];
+      const n=q.noises||[newNoise()];
+      const p=q.pqs||[newPq()];
+      const e=q.emis||[newEmi()];
+      const im=q.inStockModal||{on:false};
+      const ma=q.modalAnalysis||{on:false};
+      const fd=q.fixtureDrawing||{on:false};
+      if(n.some(s=>s.on))lines.push("Frequencies below 100Hz to be performed as a best effort. All cabling that connects to the unit should be a minimum of 20 feet unless otherwise discussed.");
+      if(n.some(s=>s.on&&s.level==="170dB"))lines.push("OASPLs greater than 170dB will be performed as a best effort.");
+      if(p.some(s=>s.on&&s.cw))lines.push("Current Waveform testing performed using facility power.");
+      if(e.some(s=>s.on))lines.push("EMI Notes:\n* This quote assumes that the susceptibility criteria can be determined in less than 3 seconds during real-time operation of the EUT, and that if additional monitoring personnel are needed, they would be provided by the customer. Customer to supply cables and all peripheral and monitoring equipment, and one mode of operation (operating or standby). Susceptibility determination provided by the customer. Pricing is based on customer-supplied information, the assumptions listed here, and acceptance of an approved test procedure.\n* Pricing and feasibility may be reevaluated upon completion and review of the NU Laboratories Test Configuration Form.\n* This quote assumes that the number of cables and outside diameter of the cables under test are within NU Laboratories capabilities/limitations.\n* Pricing assumes the standard list of tests from MIL-STD-461G, and that all testing is performed at NU Labs. Any tests requiring subcontracting will incur additional charges.");
+      if(im?.on)lines.push("The test procedure will include an in-stock modal analysis of the proposed test fixture. Any additional analysis or alterations to the proposed test setup or fixture may incur additional charges.");
+      if(ma?.on)lines.push("The modal analysis reflects the initial run of the analysis. Additional runs may incur additional charges.");
+      if(fd?.on)lines.push("Test fixture drawings represent the initial design. Alterations to the design of the proposed test fixture may incur additional charges. These changes also may affect the price of test fixture fabrication.");
+      lines.push("Refer to the notes section at the bottom of this quote for additional details.");
+      return lines.join("\n\n");
+    })();
+    prevAutoNotes.current=loadedAutoNotes;
     if(q.qi)setQi(q.qi);
     if(q.ti)setTi(q.ti);
     if(q.vibs)setVibs(q.vibs);
