@@ -2886,7 +2886,7 @@ function AccountDashboard({accountName, onClose, onLoadQuote, onNewQuote}){
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser, isApprover, pendingQuotes, onQueueDecision, needsRefresh, onRefreshComplete}){
+function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser, isApprover, isFollowUpUser, pendingQuotes, onQueueDecision, needsRefresh, onRefreshComplete}){
   const [data, setData]       = useState(null);
   const [qSelected, setQSelected] = useState(new Set());
   const [qComments, setQComments] = useState("");
@@ -2926,6 +2926,99 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     return()=>document.removeEventListener("mousedown",h);
   },[]);
   const [loading, setLoading] = useState(true);
+  const [followUps, setFollowUps]   = useState([]);
+  const [fuLoading, setFuLoading]   = useState(false);
+  const [fuEmail, setFuEmail]       = useState(null);   // {quoteId, text} — generated email
+  const [fuEmailLoading, setFuEmailLoading] = useState(null); // quoteId generating for
+
+  const loadFollowUps = async () => {
+    if(!isFollowUpUser)return;
+    setFuLoading(true);
+    const thirtyDaysAgo = new Date(Date.now() - 30*24*60*60*1000).toISOString();
+    const ninetyDaysAgo = new Date(Date.now() - 90*24*60*60*1000).toISOString();
+    const today = new Date().toISOString().slice(0,10);
+    // Get follow_ups that are either:
+    //   a) sent 30+ days ago and not yet followed up
+    //   b) have a followup_again_at date <= today and not yet followed up again
+    const {data,error} = await supabase
+      .from("follow_ups")
+      .select("*, quotes(opportunity, customer, data)")
+      .eq("followed_up", false)
+      .or(`sent_at.lte.${thirtyDaysAgo},followup_again_at.lte.${today}`)
+      .order("sent_at", {ascending: true});
+    if(!error) setFollowUps(data||[]);
+    setFuLoading(false);
+  };
+
+  const generateFollowUpEmail = async (fu) => {
+    setFuEmailLoading(fu.id);
+    const q = fu.quotes;
+    const blob = q?.data || {};
+    const tests = [];
+    if(blob.vibs?.some(s=>s.on))tests.push("Vibration");
+    if(blob.shocks?.some(s=>s.on))tests.push("Shock");
+    if(blob.noises?.some(s=>s.on))tests.push("Acoustic Noise");
+    if(blob.envs?.some(s=>s.on))tests.push("Environmental");
+    if(blob.emis?.some(s=>s.on))tests.push("EMI/EMC");
+    if(blob.pqs?.some(s=>s.on))tests.push("Power Quality");
+    if(blob.hfvs?.some(s=>s.on))tests.push("High Frequency Vibration");
+    const testStr = tests.length>0 ? tests.join(", ") : "various tests";
+    const itemName = blob.ti?.item || blob.qi?.item || "";
+    const prompt = `You are a professional sales assistant at NU Laboratories, an environmental testing lab specializing in vibration, shock, acoustic, and EMI testing.
+
+Write a brief, friendly follow-up email for a quote that was sent about 30 days ago. Keep it concise (3-4 short paragraphs max). Do NOT be pushy.
+
+Quote details:
+- Quote Number: ${fu.opportunity || q?.opportunity || ""}
+- Customer/Account: ${fu.customer || q?.customer || ""}
+- Item Being Tested: ${itemName}
+- Tests Quoted: ${testStr}
+- Sent by: Corinne Cebello, NU Laboratories Sales
+
+The email should:
+1. Reference the quote number and gently remind them it was sent about a month ago
+2. Offer to answer any questions or provide additional information
+3. Mention NU Labs is ready to schedule when they are
+4. End with a professional sign-off from Corinne
+
+Write only the email body (no subject line). Use a warm but professional tone.`;
+
+    try {
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model:"claude-sonnet-4-20250514",
+          max_tokens:600,
+          messages:[{role:"user", content:prompt}]
+        })
+      });
+      const json = await resp.json();
+      const text = json.content?.[0]?.text || "Could not generate email.";
+      setFuEmail({id:fu.id, text});
+    } catch(e) {
+      setFuEmail({id:fu.id, text:"Error generating email — please try again."});
+    }
+    setFuEmailLoading(null);
+  };
+
+  const markFollowedUp = async (fuId, scheduleAgain) => {
+    const update = {
+      followed_up: true,
+      followed_up_at: new Date().toISOString(),
+      followed_up_by: currentUser,
+    };
+    if(scheduleAgain){
+      const d = new Date();
+      d.setDate(d.getDate()+90);
+      update.followed_up = false; // keep on list but with new date
+      update.followed_up_at = null;
+      update.followup_again_at = d.toISOString().slice(0,10);
+    }
+    await supabase.from("follow_ups").update(update).eq("id",fuId);
+    loadFollowUps();
+    if(fuEmail?.id===fuId)setFuEmail(null);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -3061,7 +3154,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     setLoading(false);
   };
 
-  useEffect(()=>{ load(); },[]);
+  useEffect(()=>{ load(); loadFollowUps(); },[]);
 
   const TARGET = 175000;
   const money  = n => "$"+(isNaN(n)||n==null?0:Math.round(n)).toLocaleString();
@@ -3409,6 +3502,120 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                 </div>
               );
             })()}
+
+            {/* ── Follow-ups widget ── */}
+            {isFollowUpUser&&(
+              <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
+                border:"1px solid #e8ecf0",overflow:"hidden",marginBottom:20}}>
+                <div style={{padding:"14px 24px",borderBottom:"1px solid #e8ecf0",
+                  display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
+                      ✉️ FOLLOW-UPS DUE
+                    </div>
+                    <div style={{fontSize:11,color:"#9aa5b1",marginTop:2}}>
+                      Quotes sent 30+ days ago with no follow-up
+                    </div>
+                  </div>
+                  <button onClick={loadFollowUps}
+                    style={{background:"none",border:"1px solid #d0d7de",borderRadius:6,
+                      padding:"4px 12px",fontSize:11,cursor:"pointer",color:"#6b7a8d"}}>
+                    ↻ Refresh
+                  </button>
+                </div>
+                {fuLoading?(
+                  <div style={{padding:24,textAlign:"center",color:"#9aa5b1",fontSize:12}}>Loading…</div>
+                ):followUps.length===0?(
+                  <div style={{padding:24,textAlign:"center",color:"#9aa5b1",fontSize:12}}>
+                    🎉 No follow-ups due right now.
+                  </div>
+                ):(
+                  <div>
+                    {followUps.map(fu=>{
+                      const daysSinceSent=Math.floor((Date.now()-new Date(fu.sent_at).getTime())/(1000*60*60*24));
+                      const isGenerating=fuEmailLoading===fu.id;
+                      const emailShown=fuEmail?.id===fu.id;
+                      return(
+                        <div key={fu.id} style={{borderTop:"1px solid #f0f2f5",padding:"14px 24px"}}>
+                          {/* Quote info row */}
+                          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+                            <div>
+                              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                                <span style={{fontWeight:700,fontSize:13,color:"#1a5276"}}>
+                                  {fu.opportunity||"—"}
+                                </span>
+                                <span style={{fontSize:12,color:"#6b7a8d"}}>{fu.customer||"—"}</span>
+                                {fu.quotes?.data?.ti?.item&&(
+                                  <span style={{fontSize:11,color:"#9aa5b1",fontStyle:"italic"}}>
+                                    {fu.quotes.data.ti.item}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{fontSize:11,color:"#9aa5b1",marginTop:3}}>
+                                Sent {daysSinceSent} day{daysSinceSent!==1?"s":""} ago by {fu.sent_by}
+                                {fu.followup_again_at&&(
+                                  <span style={{marginLeft:8,color:"#b7791f"}}>· 90-day reminder</span>
+                                )}
+                              </div>
+                            </div>
+                            {/* Action buttons */}
+                            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                              <button
+                                disabled={isGenerating}
+                                onClick={()=>emailShown?setFuEmail(null):generateFollowUpEmail(fu)}
+                                style={{background:emailShown?"#eaf2ff":"#1a5276",border:"none",
+                                  borderRadius:6,padding:"6px 14px",color:emailShown?"#1a5276":"#fff",
+                                  fontWeight:600,fontSize:11,cursor:"pointer",
+                                  border:emailShown?"1px solid #1a5276":"none"}}>
+                                {isGenerating?"✨ Generating…":emailShown?"✕ Hide Email":"✨ Generate Email"}
+                              </button>
+                              <button
+                                onClick={()=>markFollowedUp(fu.id,false)}
+                                style={{background:"#1e8449",border:"none",borderRadius:6,
+                                  padding:"6px 14px",color:"#fff",fontWeight:600,fontSize:11,cursor:"pointer"}}>
+                                ✓ Done
+                              </button>
+                              <button
+                                onClick={()=>markFollowedUp(fu.id,true)}
+                                style={{background:"none",border:"1px solid #b7791f",borderRadius:6,
+                                  padding:"6px 14px",color:"#b7791f",fontWeight:600,fontSize:11,cursor:"pointer"}}>
+                                ↻ Follow up in 90 days
+                              </button>
+                            </div>
+                          </div>
+                          {/* Generated email */}
+                          {emailShown&&fuEmail&&(
+                            <div style={{marginTop:12,background:"#f8f9fb",borderRadius:8,
+                              border:"1px solid #e8ecf0",padding:"14px 16px"}}>
+                              <div style={{display:"flex",justifyContent:"space-between",
+                                alignItems:"center",marginBottom:10}}>
+                                <div style={{fontSize:11,fontWeight:700,color:"#9aa5b1",letterSpacing:.8}}>
+                                  GENERATED FOLLOW-UP EMAIL
+                                </div>
+                                <button
+                                  onClick={()=>{
+                                    navigator.clipboard.writeText(fuEmail.text);
+                                  }}
+                                  style={{background:"#1a5276",border:"none",borderRadius:5,
+                                    padding:"4px 12px",color:"#fff",fontSize:11,fontWeight:600,
+                                    cursor:"pointer"}}>
+                                  📋 Copy
+                                </button>
+                              </div>
+                              <pre style={{fontSize:12,color:"#1a2332",lineHeight:1.7,
+                                whiteSpace:"pre-wrap",fontFamily:"Segoe UI,system-ui,sans-serif",
+                                margin:0}}>
+                                {fuEmail.text}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── Approval Queue widget (approvers only) ── */}
             {isApprover&&(
@@ -3851,6 +4058,7 @@ export default function App({onLogout,currentUser}){
   ];
   const APPROVER_EMAILS=APPROVERS.map(a=>a.email);
   const isApprover=APPROVER_EMAILS.includes(currentUser);
+  const isFollowUpUser=currentUser==="ccebello@nulabs.com"||isApprover;
   const isSalesforce=currentQuoteSource==="salesforce";
 
   // ── Browser tab title ──────────────────────────────────────────────────────
@@ -6145,6 +6353,25 @@ const STANDARD_TERMS = [
                 💬 CHATTER{chatterEntries.length>0&&<span style={{background:"rgba(255,255,255,0.25)",borderRadius:10,padding:"1px 6px",fontSize:10}}>{chatterEntries.length}</span>}
               </button>
             )}
+            {!showDashboard&&currentQuoteId&&isFollowUpUser&&(
+              <button onClick={async()=>{
+                  const already=await supabase.from("follow_ups").select("id").eq("quote_id",currentQuoteId).maybeSingle();
+                  if(already.data){showToast("Already marked as sent","info");return;}
+                  const {error}=await supabase.from("follow_ups").insert({
+                    quote_id:currentQuoteId,
+                    opportunity:qi.opp,
+                    customer:qi.account,
+                    sent_by:currentUser,
+                  });
+                  if(error)showToast("Error marking as sent","error",4000);
+                  else showToast("✉️ Marked as sent — will appear in Follow-ups in 30 days","success",4000);
+                }}
+                style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",
+                  borderRadius:5,padding:"3px 10px",color:"#fff",fontWeight:700,fontSize:11,
+                  cursor:"pointer"}}>
+                ✉️ Mark as Sent
+              </button>
+            )}
 
             <button
               onClick={()=>{ const pendingLock=approval.status==="pending"; if(!pendingLock||isApprover) setLocked(l=>!l); }}
@@ -6164,7 +6391,7 @@ const STANDARD_TERMS = [
       <div style={{flex:1,display:"flex",overflow:"hidden"}}>
 
         {showDashboard?(
-          <Dashboard onEnterQuote={()=>{handleNewQuote(true);setShowDashboard(false);}} onLoadQuote={q=>{handleLoad(q);setShowDashboard(false);}} onNewQuoteForAccount={name=>{handleNewQuote(true);setQi(q=>({...q,account:name}));setShowDashboard(false);}} currentUser={currentUser} isApprover={isApprover} pendingQuotes={pendingQuotes} onQueueDecision={handleQueueDecision} needsRefresh={dashboardNeedsRefresh} onRefreshComplete={()=>setDashboardNeedsRefresh(false)}/>
+          <Dashboard onEnterQuote={()=>{handleNewQuote(true);setShowDashboard(false);}} onLoadQuote={q=>{handleLoad(q);setShowDashboard(false);}} onNewQuoteForAccount={name=>{handleNewQuote(true);setQi(q=>({...q,account:name}));setShowDashboard(false);}} currentUser={currentUser} isApprover={isApprover} isFollowUpUser={isFollowUpUser} pendingQuotes={pendingQuotes} onQueueDecision={handleQueueDecision} needsRefresh={dashboardNeedsRefresh} onRefreshComplete={()=>setDashboardNeedsRefresh(false)}/>
         ):(
         <>{/* ── Left: scrollable form column ── */}
         <div style={{flex:1,overflowY:"auto",background:C.bg,padding:14}}>
