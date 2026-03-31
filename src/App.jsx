@@ -2886,7 +2886,7 @@ function AccountDashboard({accountName, onClose, onLoadQuote, onNewQuote}){
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser, isApprover, pendingQuotes, onQueueDecision}){
+function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser, isApprover, pendingQuotes, onQueueDecision, needsRefresh, onRefreshComplete}){
   const [data, setData]       = useState(null);
   const [qSelected, setQSelected] = useState(new Set());
   const [qComments, setQComments] = useState("");
@@ -3038,46 +3038,14 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     const wonExisting = won.filter(q => q.type === "Existing Business");
     const wonTotal    = won.reduce((a,q) => a + (q.total||0), 0);
 
-    // ── YTD data ──
-    // Year prefix: 2026 → "26", 2027 → "27", etc.
-    const yrPrefix = String(year).slice(-2);
-    const ytdStart = new Date(year, 0, 1).toISOString();
-    const ytdEnd   = new Date(year + 1, 0, 1).toISOString();
-
-    const [{ data: ytdCreatedRaw }, { data: ytdWonRaw }] = await Promise.all([
-      supabase
-        .from("quotes")
-        .select("id, opportunity, total, data")
-        .eq("source","vibrato")
-        .gte("created_at", ytdStart)
-        .lt("created_at",  ytdEnd)
-        .like("opportunity", yrPrefix + "%"),
-      supabase
-        .from("quotes")
-        .select("id, opportunity, total, won_date, data")
-        .eq("stage","Closed Won")
-        .gte("won_date", ytdStart.slice(0,10))
-        .lt("won_date",  ytdEnd.slice(0,10)),
-    ]);
-    const ytdCreated     = ytdCreatedRaw || [];
-    const ytdWonAll      = (ytdWonRaw || []).map(q => ({...q, type: q.data?.qi?.type||"New Business"}));
-    const ytdWonNew      = ytdWonAll.filter(q => q.type === "New Business");
-    const ytdWonExisting = ytdWonAll.filter(q => q.type === "Existing Business");
-    const ytdQuoteTotal  = ytdCreated.reduce((a,q) => a + (q.total||0), 0);
-    const ytdWonNewTotal = ytdWonNew.reduce((a,q) => a + (q.total||0), 0);
-    const ytdWonExTotal  = ytdWonExisting.reduce((a,q) => a + (q.total||0), 0);
-    const ytdWonTotal    = ytdWonNewTotal + ytdWonExTotal;
-
-    setData({ created, monthCounts, won, wonNew, wonExisting, wonTotal, topCodes, topAccounts,
-      ytdQuoteCount: ytdCreated.length, ytdQuoteTotal, ytdWonNewTotal, ytdWonExTotal,
-      ytdWonTotal, yrPrefix });
+    setData({ created, monthCounts, won, wonNew, wonExisting, wonTotal, topCodes, topAccounts });
     setLoading(false);
   };
 
   useEffect(()=>{ load(); },[]);
 
   const TARGET = 175000;
-  const money  = n => "$"+(isNaN(n)||n==null?0:Math.round(n)).toLocaleString();
+  const money  = n => "$"+Math.round(n).toLocaleString();
   const pct    = v => Math.round((v/TARGET)*100);
 
 
@@ -3128,10 +3096,9 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                 </div>
               )}
             </div>
-            <button onClick={load}
-              style={{background:"#fff",border:"1px solid #d0d7de",borderRadius:8,padding:"8px 18px",
-                fontWeight:600,fontSize:12,cursor:"pointer",color:"#1a2332",display:"flex",alignItems:"center",gap:6}}>
-              ↻ Refresh
+            <button onClick={()=>{load();if(onRefreshComplete)onRefreshComplete();}}              style={{background:needsRefresh?"#1a5276":"#fff",border:"1px solid "+(needsRefresh?"#1a5276":"#d0d7de"),borderRadius:8,padding:"8px 18px",
+                fontWeight:600,fontSize:12,cursor:"pointer",color:needsRefresh?"#fff":"#1a2332",display:"flex",alignItems:"center",gap:6}}>
+              {needsRefresh?"↻ Updates available":"↻ Refresh"}
             </button>
             <button onClick={onEnterQuote}
               style={{background:"#1a5276",border:"none",borderRadius:8,padding:"8px 20px",
@@ -3154,8 +3121,8 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
           <div style={{textAlign:"center",padding:80,color:"#9aa5b1",fontSize:14}}>Loading…</div>
         ):(
           <div>
-            {/* ── Top stat cards — 2 cols: Quotes | Won+Target ── */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:16,marginBottom:20}}>
+            {/* ── Top stat cards ── */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:20}}>
 
               {/* Quotes this month */}
               <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0"}}>
@@ -3164,78 +3131,81 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                 <div style={{fontSize:12,color:"#6b7a8d",marginTop:6}}>
                   Total value: <span style={{fontWeight:700,color:"#1a5276"}}>{money(data.created.reduce((a,q)=>a+(q.total||0),0))}</span>
                 </div>
-                {/* Capture rate */}
-                {(()=>{
-                  const createdCount=data.created.length;
-                  const wonCount=data.won.length;
-                  const capPct=createdCount>0?Math.round((wonCount/createdCount)*100):0;
-                  const capColor=capPct>=50?"#1e8449":capPct>=25?"#b7791f":"#c0392b";
-                  return createdCount>0?(
-                    <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f0f2f5"}}>
-                      <div style={{fontSize:10,fontWeight:700,letterSpacing:1,color:"#9aa5b1",marginBottom:4}}>CAPTURE RATE</div>
-                      <div style={{display:"flex",alignItems:"baseline",gap:6}}>
-                        <span style={{fontSize:24,fontWeight:800,color:capColor}}>{capPct}%</span>
-                        <span style={{fontSize:11,color:"#6b7a8d"}}>{wonCount} won / {createdCount} quoted</span>
-                      </div>
-                      <div style={{marginTop:6,height:6,background:"#e8ecf0",borderRadius:4,overflow:"hidden"}}>
-                        <div style={{height:"100%",width:capPct+"%",background:capColor,borderRadius:4,transition:"width 0.6s ease"}}/>
-                      </div>
-                    </div>
-                  ):null;
-                })()}
               </div>
 
-              {/* Closed Won + Target — combined */}
+              {/* Closed Won total */}
+              <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0"}}>
+                <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:8}}>CLOSED WON THIS MONTH</div>
+                <div style={{fontSize:36,fontWeight:800,color:"#1e8449",lineHeight:1}}>{money(data.wonTotal)}</div>
+                <div style={{fontSize:12,color:"#6b7a8d",marginTop:6}}>
+                  {data.won.length} quote{data.won.length!==1?"s":""} · {data.wonNew.length} new · {data.wonExisting.length} existing
+                </div>
+              </div>
+
+              {/* Target progress */}
               {(()=>{
-                const over=data.wonTotal>=TARGET;
-                const rawPct=pct(data.wonTotal);
-                const barColor=over?"#1e8449":data.wonTotal>TARGET*0.7?"#b7791f":"#1a5276";
-                const overflowAmt=over?data.wonTotal-TARGET:0;
-                const overflowPct=over?Math.round((overflowAmt/TARGET)*100):0;
-                const displayScale=Math.max(1,data.wonTotal/TARGET);
-                const targetBarW=Math.round((1/displayScale)*100);
-                const overBarW=Math.round((overflowAmt/TARGET)/displayScale*100);
+                const over = data.wonTotal >= TARGET;
+                const rawPct = pct(data.wonTotal);
+                // Bar: if under target, fill proportionally. If over, show target bar + overflow bar side by side.
+                const barColor = over ? "#1e8449" : data.wonTotal > TARGET*0.7 ? "#b7791f" : "#1a5276";
+                const overflowAmt = over ? data.wonTotal - TARGET : 0;
+                const overflowPct = over ? Math.round((overflowAmt/TARGET)*100) : 0;
+                // Scale bars so they always fit: cap display at 133% (target + 33% over)
+                const displayScale = Math.max(1, data.wonTotal / TARGET);
+                const targetBarW = Math.round((1 / displayScale) * 100);
+                const actualBarW = Math.round(Math.min(data.wonTotal / TARGET, 1) / displayScale * 100);
+                const overBarW   = Math.round((overflowAmt / TARGET) / displayScale * 100);
                 return(
                   <div style={{background:over?"#f0faf4":"#fff",borderRadius:12,padding:"20px 24px",
                     boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
                     border:"1px solid "+(over?"#a7f3d0":"#e8ecf0")}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                      <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>CLOSED WON THIS MONTH · MONTHLY TARGET</div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                      <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>MONTHLY TARGET</div>
                       {over&&<span style={{fontSize:10,background:"#d1fae5",color:"#065f46",borderRadius:4,padding:"2px 7px",fontWeight:700}}>🎉 EXCEEDED</span>}
                     </div>
-                    {/* Two numbers side by side */}
-                    <div style={{display:"flex",alignItems:"baseline",gap:16,marginBottom:4}}>
-                      <div>
-                        <div style={{fontSize:32,fontWeight:800,color:over?"#1e8449":"#1a2332",lineHeight:1}}>{money(data.wonTotal)}</div>
-                        <div style={{fontSize:11,color:"#9aa5b1",marginTop:2}}>
-                          {data.won.length} quote{data.won.length!==1?"s":""} · {data.wonNew.length} new · {data.wonExisting.length} existing
-                        </div>
-                      </div>
-                      <div style={{color:"#d0d7de",fontSize:28,fontWeight:200,lineHeight:1,alignSelf:"center"}}>/</div>
-                      <div>
-                        <div style={{fontSize:32,fontWeight:800,color:"#9aa5b1",lineHeight:1}}>{money(TARGET)}</div>
-                        <div style={{fontSize:11,color:"#9aa5b1",marginTop:2}}>monthly target · <span style={{fontWeight:700,color:over?"#1e8449":barColor}}>{rawPct}%</span></div>
-                      </div>
+                    {/* Big number */}
+                    <div style={{fontSize:32,fontWeight:800,color:over?"#1e8449":"#1a2332",lineHeight:1}}>
+                      {money(data.wonTotal)}
                     </div>
-                    {/* Progress bar */}
-                    <div style={{margin:"12px 0 8px"}}>
+                    <div style={{fontSize:11,color:"#9aa5b1",marginBottom:12,marginTop:2}}>
+                      target {money(TARGET)} · <span style={{fontWeight:700,color:over?"#1e8449":barColor}}>{rawPct}%</span>
+                    </div>
+                    {/* Stacked bar chart */}
+                    <div style={{marginBottom:8}}>
+                      {/* Labels */}
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                        <span style={{fontSize:9,color:"#9aa5b1",fontWeight:600}}>$0</span>
+                        <span style={{fontSize:9,color:"#9aa5b1",fontWeight:600}}>{money(TARGET)}</span>
+                        {over&&<span style={{fontSize:9,color:"#1e8449",fontWeight:700}}>{money(data.wonTotal)}</span>}
+                      </div>
+                      {/* Bar track */}
                       <div style={{position:"relative",height:16,background:"#e8ecf0",borderRadius:8,overflow:"hidden"}}>
+                        {/* Actual won (up to target) */}
                         <div style={{
                           position:"absolute",left:0,top:0,bottom:0,
                           width:(over?targetBarW:Math.round(Math.min(data.wonTotal/TARGET,1)*100))+"%",
-                          background:barColor,borderRadius:"8px 0 0 8px",transition:"width 0.6s ease"
+                          background:barColor,borderRadius:"8px 0 0 8px",
+                          transition:"width 0.6s ease"
                         }}/>
+                        {/* Overflow portion */}
                         {over&&<div style={{
                           position:"absolute",left:targetBarW+"%",top:2,bottom:2,
-                          width:overBarW+"%",background:"#34d399",borderRadius:"0 6px 6px 0",transition:"width 0.6s ease"
+                          width:overBarW+"%",
+                          background:"#34d399",borderRadius:"0 6px 6px 0",
+                          transition:"width 0.6s ease"
                         }}/>}
-                        <div style={{position:"absolute",left:targetBarW+"%",top:0,bottom:0,width:2,background:"rgba(255,255,255,0.8)"}}/>
+                        {/* Target marker line */}
+                        <div style={{
+                          position:"absolute",left:targetBarW+"%",top:0,bottom:0,
+                          width:2,background:"rgba(255,255,255,0.8)"
+                        }}/>
                       </div>
                     </div>
+                    {/* Footer */}
                     <div style={{fontSize:11,color:"#6b7a8d",display:"flex",justifyContent:"space-between"}}>
                       {over
-                        ?<><span style={{color:"#1e8449",fontWeight:700}}>+{money(overflowAmt)} over target</span><span>+{overflowPct}%</span></>
-                        :<><span>{money(TARGET-data.wonTotal)} remaining</span><span>{100-rawPct}% to go</span></>
+                        ? <><span style={{color:"#1e8449",fontWeight:700}}>+{money(overflowAmt)} over target</span><span>+{overflowPct}%</span></>
+                        : <><span>{money(TARGET-data.wonTotal)} remaining</span><span>{100-rawPct}% to go</span></>
                       }
                     </div>
                   </div>
@@ -3297,144 +3267,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                 </div>
               ))}
             </div>
-
-            {/* ── YTD Metrics ── */}
-            {(()=>{
-              const yr="20"+data.yrPrefix;
-              return(
-                <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
-                  boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0",marginBottom:20}}>
-                  <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:14}}>
-                    YEAR TO DATE — {yr} (OPP # STARTING WITH {data.yrPrefix})
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:16}}>
-                    {/* Total quotes YTD */}
-                    <div>
-                      <div style={{fontSize:10,color:"#9aa5b1",fontWeight:600,letterSpacing:.8,marginBottom:4}}>QUOTES CREATED</div>
-                      <div style={{fontSize:26,fontWeight:800,color:"#1a2332",lineHeight:1}}>{data.ytdQuoteCount}</div>
-                      <div style={{fontSize:11,color:"#6b7a8d",marginTop:3}}>{money(data.ytdQuoteTotal)} total value</div>
-                    </div>
-                    {/* Closed Won total YTD */}
-                    <div>
-                      <div style={{fontSize:10,color:"#9aa5b1",fontWeight:600,letterSpacing:.8,marginBottom:4}}>CLOSED WON TOTAL</div>
-                      <div style={{fontSize:26,fontWeight:800,color:"#1e8449",lineHeight:1}}>{money(data.ytdWonTotal)}</div>
-                      <div style={{fontSize:11,color:"#6b7a8d",marginTop:3}}>
-                        {data.ytdQuoteTotal>0?Math.round((data.ytdWonTotal/data.ytdQuoteTotal)*100):0}% of quoted value
-                      </div>
-                    </div>
-                    {/* New Business YTD */}
-                    <div>
-                      <div style={{fontSize:10,color:"#9aa5b1",fontWeight:600,letterSpacing:.8,marginBottom:4}}>WON — NEW BUSINESS</div>
-                      <div style={{fontSize:26,fontWeight:800,color:"#1e8449",lineHeight:1}}>{money(data.ytdWonNewTotal)}</div>
-                      <div style={{fontSize:11,color:"#6b7a8d",marginTop:3}}>
-                        {data.ytdWonTotal>0?Math.round((data.ytdWonNewTotal/data.ytdWonTotal)*100):0}% of won total
-                      </div>
-                    </div>
-                    {/* Existing Business YTD */}
-                    <div>
-                      <div style={{fontSize:10,color:"#9aa5b1",fontWeight:600,letterSpacing:.8,marginBottom:4}}>WON — EXISTING BUSINESS</div>
-                      <div style={{fontSize:26,fontWeight:800,color:"#2e6da4",lineHeight:1}}>{money(data.ytdWonExTotal)}</div>
-                      <div style={{fontSize:11,color:"#6b7a8d",marginTop:3}}>
-                        {data.ytdWonTotal>0?Math.round((data.ytdWonExTotal/data.ytdWonTotal)*100):0}% of won total
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ── 3-Month Running Averages ── */}
-            {(()=>{
-              const months=data.monthCounts;
-              // Prior 3 months (indices 0,1,2); current month is index 3
-              const prior3=months.slice(0,3);
-              const current=months[3];
-              const avgCount=prior3.length>0?prior3.reduce((a,m)=>a+m.count,0)/prior3.length:0;
-              const avgTotal=prior3.length>0?prior3.reduce((a,m)=>a+m.total,0)/prior3.length:0;
-              const countDiff=current.count-avgCount;
-              const totalDiff=current.total-avgTotal;
-              const countUp=countDiff>=0;
-              const totalUp=totalDiff>=0;
-              const fmt=n=>n>=1000?"$"+(n/1000).toFixed(1)+"k":"$"+Math.round(n);
-              const diffColor=(up)=>up?"#1e8449":"#c0392b";
-              const arrow=(up)=>up?"▲":"▼";
-              return(
-                <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
-                  boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0",marginBottom:20}}>
-                  <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:14}}>
-                    3-MONTH RUNNING AVERAGES (vs. CURRENT MONTH)
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:0}}>
-                    {/* Column headers */}
-                    <div style={{fontSize:9,fontWeight:700,letterSpacing:.8,color:"#9aa5b1",paddingBottom:8,borderBottom:"1px solid #f0f2f5"}}></div>
-                    {prior3.map(m=>(
-                      <div key={m.label} style={{fontSize:9,fontWeight:700,letterSpacing:.8,color:"#9aa5b1",
-                        paddingBottom:8,borderBottom:"1px solid #f0f2f5",textAlign:"center"}}>{m.label}</div>
-                    ))}
-                    {/* Quote count row */}
-                    <div style={{fontSize:10,fontWeight:700,color:"#6b7a8d",padding:"10px 0 6px",borderBottom:"1px solid #f0f2f5"}}># QUOTES</div>
-                    {prior3.map(m=>(
-                      <div key={m.label} style={{textAlign:"center",padding:"10px 0 6px",borderBottom:"1px solid #f0f2f5"}}>
-                        <span style={{fontSize:16,fontWeight:700,color:m.isCurrent?"#1a5276":"#1a2332"}}>{m.count}</span>
-                      </div>
-                    ))}
-                    {/* Avg quote value row */}
-                    <div style={{fontSize:10,fontWeight:700,color:"#6b7a8d",padding:"10px 0 6px",borderBottom:"1px solid #f0f2f5"}}>AVG QUOTE VALUE</div>
-                    {prior3.map(m=>(
-                      <div key={m.label} style={{textAlign:"center",padding:"10px 0 6px",borderBottom:"1px solid #f0f2f5"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:"#1a2332"}}>{m.count>0?fmt(m.total/m.count):"—"}</span>
-                      </div>
-                    ))}
-                    {/* Total value row */}
-                    <div style={{fontSize:10,fontWeight:700,color:"#6b7a8d",padding:"10px 0 0"}}>TOTAL VALUE</div>
-                    {prior3.map(m=>(
-                      <div key={m.label} style={{textAlign:"center",padding:"10px 0 0"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:"#1a5276"}}>{fmt(m.total)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {/* Current month vs averages summary bar */}
-                  <div style={{marginTop:14,paddingTop:14,borderTop:"2px solid #f0f2f5",
-                    display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
-                    <div>
-                      <div style={{fontSize:9,fontWeight:700,letterSpacing:.8,color:"#9aa5b1",marginBottom:4}}>
-                        {current.label.toUpperCase()} — QUOTES
-                      </div>
-                      <div style={{display:"flex",alignItems:"baseline",gap:8}}>
-                        <span style={{fontSize:22,fontWeight:800,color:"#1a5276"}}>{current.count}</span>
-                        <span style={{fontSize:11,fontWeight:700,color:diffColor(countUp)}}>
-                          {arrow(countUp)} {Math.abs(countDiff).toFixed(1)} vs 3-mo avg ({Math.round(avgCount)})
-                        </span>
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{fontSize:9,fontWeight:700,letterSpacing:.8,color:"#9aa5b1",marginBottom:4}}>
-                        {current.label.toUpperCase()} — AVG QUOTE VALUE
-                      </div>
-                      <div style={{display:"flex",alignItems:"baseline",gap:8}}>
-                        <span style={{fontSize:22,fontWeight:800,color:"#1a2332"}}>{current.count>0?fmt(current.total/current.count):"—"}</span>
-                        {current.count>0&&avgCount>0&&(
-                          <span style={{fontSize:11,fontWeight:700,color:diffColor((current.total/current.count)>=(avgTotal/avgCount))}}>
-                            {arrow((current.total/current.count)>=(avgTotal/avgCount))} {fmt(Math.abs((current.total/current.count)-(avgTotal/avgCount)))} vs avg
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{fontSize:9,fontWeight:700,letterSpacing:.8,color:"#9aa5b1",marginBottom:4}}>
-                        {current.label.toUpperCase()} — TOTAL VALUE
-                      </div>
-                      <div style={{display:"flex",alignItems:"baseline",gap:8}}>
-                        <span style={{fontSize:22,fontWeight:800,color:"#1a5276"}}>{fmt(current.total)}</span>
-                        <span style={{fontSize:11,fontWeight:700,color:diffColor(totalUp)}}>
-                          {arrow(totalUp)} {fmt(Math.abs(totalDiff))} vs 3-mo avg
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
 
             {/* ── Approval Queue widget (approvers only) ── */}
             {isApprover&&(
@@ -3830,6 +3662,7 @@ export default function App({onLogout,currentUser}){
   const [inStockModal,setInStockModal]=useState({on:false,targetProc:""});
   // persist to saves
   const [savedQuotes,setSavedQuotes]=useState({});
+  const [dashboardNeedsRefresh,setDashboardNeedsRefresh]=useState(false);
 
   // ── Approval system ────────────────────────────────────────────────────────
   const [approval,setApproval]=useState({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
@@ -3899,15 +3732,51 @@ export default function App({onLogout,currentUser}){
     }
   },[currentQuoteId]);
 
-  // ── Load saved quotes on startup ────────────────────────────────────────────
+  // ── Load saved quotes on startup + Supabase Realtime sync ──────────────────
   useEffect(()=>{
     loadQuotesFromSupabase().then(q=>setSavedQuotes(q));
     loadPendingQuotes().then(q=>setSavedQuotes(prev=>({...prev,...q})));
+
+    // Subscribe to all changes on the quotes table so every open tab/user
+    // stays in sync without needing a manual refresh
+    const channel=supabase
+      .channel("quotes-realtime")
+      .on("postgres_changes",
+        {event:"*", schema:"public", table:"quotes"},
+        (payload)=>{
+          // Always refresh the approval queue + savedQuotes silently
+          loadPendingQuotes().then(fresh=>{
+            setSavedQuotes(prev=>{
+              const cleaned={...prev};
+              Object.entries(cleaned).forEach(([id,q])=>{
+                const wasPending=q.approval?.status==="pending"||q.wonApproval?.status==="pending_won";
+                if(wasPending&&!fresh[id])delete cleaned[id];
+              });
+              return {...cleaned,...fresh};
+            });
+          });
+          loadQuotesFromSupabase().then(q=>setSavedQuotes(prev=>({...prev,...q})));
+          // If the dashboard is currently visible, flag it as needing a refresh
+          // rather than wiping the data out from under the user
+          setDashboardNeedsRefresh(prev=>prev||true);
+          // If a quote is open and ANOTHER user just saved it, warn the current user
+          setCurrentQuoteId(prevId=>{
+            if(prevId&&String(payload.new?.id)===String(prevId)){
+              showToast("⚠️ This quote was just saved by another user — consider refreshing","info",6000);
+            }
+            return prevId;
+          });
+        }
+      )
+      .subscribe();
+
+    return ()=>{ supabase.removeChannel(channel); };
   },[]);
 
   // ── Refresh pending quotes every time dashboard becomes visible ──────────────
   useEffect(()=>{
     if(showDashboard){
+      setDashboardNeedsRefresh(false);
       loadPendingQuotes().then(fresh=>{
         setSavedQuotes(prev=>{
           // Remove any previously-pending quotes that are no longer pending,
@@ -6102,7 +5971,7 @@ const STANDARD_TERMS = [
       <div style={{flex:1,display:"flex",overflow:"hidden"}}>
 
         {showDashboard?(
-          <Dashboard onEnterQuote={()=>{handleNewQuote(true);setShowDashboard(false);}} onLoadQuote={q=>{handleLoad(q);setShowDashboard(false);}} onNewQuoteForAccount={name=>{handleNewQuote(true);setQi(q=>({...q,account:name}));setShowDashboard(false);}} currentUser={currentUser} isApprover={isApprover} pendingQuotes={pendingQuotes} onQueueDecision={handleQueueDecision}/>
+          <Dashboard onEnterQuote={()=>{handleNewQuote(true);setShowDashboard(false);}} onLoadQuote={q=>{handleLoad(q);setShowDashboard(false);}} onNewQuoteForAccount={name=>{handleNewQuote(true);setQi(q=>({...q,account:name}));setShowDashboard(false);}} currentUser={currentUser} isApprover={isApprover} pendingQuotes={pendingQuotes} onQueueDecision={handleQueueDecision} needsRefresh={dashboardNeedsRefresh} onRefreshComplete={()=>setDashboardNeedsRefresh(false)}/>
         ):(
         <>{/* ── Left: scrollable form column ── */}
         <div style={{flex:1,overflowY:"auto",background:C.bg,padding:14}}>
