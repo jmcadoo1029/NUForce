@@ -2674,9 +2674,6 @@ function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
 function AccountDashboard({accountName, onClose, onLoadQuote, onNewQuote}){
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showPrevMonth, setShowPrevMonth] = useState(false);
-  const [prevMonthData, setPrevMonthData] = useState(null);
-  const [prevMonthLoading, setPrevMonthLoading] = useState(false);
   const [expandedYear, setExpandedYear] = useState(null);
 
   useEffect(()=>{
@@ -2929,6 +2926,9 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     return()=>document.removeEventListener("mousedown",h);
   },[]);
   const [loading, setLoading] = useState(true);
+  const [showPrevMonth, setShowPrevMonth] = useState(false);
+  const [prevMonthData, setPrevMonthData] = useState(null);
+  const [prevMonthLoading, setPrevMonthLoading] = useState(false);
   const [followUps, setFollowUps]   = useState([]);
   const [fuLoading, setFuLoading]   = useState(false);
   const [fuEmail, setFuEmail]       = useState(null);   // {quoteId, text} — generated email
