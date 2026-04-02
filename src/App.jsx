@@ -2674,6 +2674,9 @@ function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
 function AccountDashboard({accountName, onClose, onLoadQuote, onNewQuote}){
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showPrevMonth, setShowPrevMonth] = useState(false);
+  const [prevMonthData, setPrevMonthData] = useState(null);
+  const [prevMonthLoading, setPrevMonthLoading] = useState(false);
   const [expandedYear, setExpandedYear] = useState(null);
 
   useEffect(()=>{
@@ -3020,6 +3023,71 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
     if(fuEmail?.id===fuId)setFuEmail(null);
   };
 
+  const loadPrevMonth = async () => {
+    setPrevMonthLoading(true);
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0-indexed
+    const prevStart = new Date(year, month - 1, 1).toISOString();
+    const prevEnd   = new Date(year, month, 1).toISOString();
+    const prevLabel = new Date(year, month - 1, 1).toLocaleString("en-US",{month:"long",year:"numeric"});
+
+    const [
+      {data:createdRaw},
+      {data:wonRaw},
+    ] = await Promise.all([
+      supabase.from("quotes").select("id, opportunity, customer, total, data")
+        .eq("source","vibrato")
+        .gte("created_at", prevStart).lt("created_at", prevEnd),
+      supabase.from("quotes").select("id, opportunity, customer, total, won_date, data")
+        .eq("stage","Closed Won")
+        .gte("won_date", prevStart.slice(0,10)).lt("won_date", prevEnd.slice(0,10)),
+    ]);
+
+    const created = createdRaw || [];
+    const won     = (wonRaw || []).map(q=>({...q, type:q.data?.qi?.type||"New Business", total:q.total||0}));
+    const wonNew  = won.filter(q=>q.type==="New Business");
+    const wonEx   = won.filter(q=>q.type==="Existing Business");
+
+    // Top accounts
+    const acctMap = {};
+    created.forEach(q=>{
+      const name=q.customer||q.data?.qi?.account||"(Unknown)";
+      if(!acctMap[name])acctMap[name]={name,total:0,count:0};
+      acctMap[name].total+=q.total||0;
+      acctMap[name].count+=1;
+    });
+    const topAccounts=Object.values(acctMap).sort((a,b)=>b.total-a.total).slice(0,5);
+
+    // Top product codes
+    const pcodeMap = {};
+    created.forEach(q=>{
+      (q.data?.summary?.lines||[]).forEach(l=>{
+        if(!l.code||!l.val)return;
+        if(!pcodeMap[l.code])pcodeMap[l.code]={code:l.code,total:0,count:0};
+        pcodeMap[l.code].total+=l.val;
+        pcodeMap[l.code].count+=1;
+      });
+    });
+    const topCodes=Object.values(pcodeMap).sort((a,b)=>b.total-a.total).slice(0,8);
+
+    const quoteTotal = created.reduce((a,q)=>a+(q.total||0),0);
+    const wonTotal   = won.reduce((a,q)=>a+(q.total||0),0);
+    const wonNewTotal= wonNew.reduce((a,q)=>a+(q.total||0),0);
+    const wonExTotal = wonEx.reduce((a,q)=>a+(q.total||0),0);
+    const capPct     = created.length>0?Math.round((won.length/created.length)*100):0;
+    const avgQuote   = created.length>0?Math.round(quoteTotal/created.length):0;
+
+    setPrevMonthData({
+      label:prevLabel, created, won, wonNew, wonEx,
+      quoteCount:created.length, quoteTotal,
+      wonTotal, wonNewTotal, wonExTotal,
+      wonCount:won.length, wonNewCount:wonNew.length, wonExCount:wonEx.length,
+      capPct, avgQuote, topAccounts, topCodes,
+    });
+    setPrevMonthLoading(false);
+  };
+
   const load = async () => {
     setLoading(true);
     const now   = new Date();
@@ -3212,6 +3280,11 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
                 fontWeight:600,fontSize:12,cursor:"pointer",color:needsRefresh?"#fff":"#1a2332",display:"flex",alignItems:"center",gap:6}}>
               {needsRefresh?"↻ Updates available":"↻ Refresh"}
             </button>
+            <button onClick={()=>{setShowPrevMonth(true);if(!prevMonthData)loadPrevMonth();}}
+              style={{background:"#fff",border:"1px solid #d0d7de",borderRadius:8,padding:"8px 18px",
+                fontWeight:600,fontSize:12,cursor:"pointer",color:"#1a2332",display:"flex",alignItems:"center",gap:6}}>
+              📅 Last Month
+            </button>
             <button onClick={onEnterQuote}
               style={{background:"#1a5276",border:"none",borderRadius:8,padding:"8px 20px",
                 fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",letterSpacing:.5}}>
@@ -3219,6 +3292,105 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
             </button>
           </div>
         </div>
+        {/* Previous Month Snapshot Modal */}
+        {showPrevMonth&&(
+          <div onClick={e=>{if(e.target===e.currentTarget)setShowPrevMonth(false);}}
+            style={{position:"fixed",inset:0,zIndex:2000,background:"rgba(0,0,0,0.45)",
+              display:"flex",alignItems:"flex-start",justifyContent:"center",
+              overflowY:"auto",padding:"40px 16px"}}>
+            <div style={{background:"#fff",borderRadius:14,width:"100%",maxWidth:760,
+              boxShadow:"0 8px 40px rgba(0,0,0,0.18)",padding:"28px 32px",position:"relative"}}>
+              {/* Close */}
+              <button onClick={()=>setShowPrevMonth(false)}
+                style={{position:"absolute",top:16,right:16,background:"none",border:"none",
+                  fontSize:20,cursor:"pointer",color:"#9aa5b1",lineHeight:1}}>✕</button>
+
+              <div style={{fontSize:18,fontWeight:800,color:"#1a2332",marginBottom:4}}>
+                📅 {prevMonthData?.label||"Last Month"} — Snapshot
+              </div>
+              <div style={{fontSize:12,color:"#9aa5b1",marginBottom:20}}>
+                All figures are final for the completed month
+              </div>
+
+              {prevMonthLoading?(
+                <div style={{textAlign:"center",padding:40,color:"#9aa5b1"}}>Loading…</div>
+              ):prevMonthData&&(()=>{
+                const pm=prevMonthData;
+                const money=n=>"$"+(isNaN(n)||n==null?0:Math.round(n)).toLocaleString();
+                const capColor=pm.capPct>=50?"#1e8449":pm.capPct>=25?"#b7791f":"#c0392b";
+                return(
+                  <div>
+                    {/* Top stat row */}
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
+                      {[
+                        {label:"QUOTES CREATED", val:pm.quoteCount, sub:money(pm.quoteTotal)+" total value", color:"#1a2332"},
+                        {label:"AVG QUOTE VALUE", val:money(pm.avgQuote), sub:pm.quoteCount+" quotes", color:"#1a2332"},
+                        {label:"CLOSED WON", val:money(pm.wonTotal), sub:pm.wonCount+" quote"+(pm.wonCount!==1?"s":""), color:"#1e8449"},
+                        {label:"CAPTURE RATE", val:pm.capPct+"%", sub:pm.wonCount+" won / "+pm.quoteCount+" quoted", color:capColor},
+                      ].map(s=>(
+                        <div key={s.label} style={{background:"#f8f9fb",borderRadius:10,padding:"14px 16px",border:"1px solid #e8ecf0"}}>
+                          <div style={{fontSize:9,fontWeight:700,letterSpacing:1.2,color:"#9aa5b1",marginBottom:6}}>{s.label}</div>
+                          <div style={{fontSize:22,fontWeight:800,color:s.color,lineHeight:1}}>{s.val}</div>
+                          <div style={{fontSize:11,color:"#9aa5b1",marginTop:4}}>{s.sub}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Closed Won breakdown */}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
+                      {[
+                        {label:"NEW BUSINESS", val:pm.wonNewTotal, count:pm.wonNewCount, color:"#1e8449"},
+                        {label:"EXISTING BUSINESS", val:pm.wonExTotal, count:pm.wonExCount, color:"#2e6da4"},
+                      ].map(s=>(
+                        <div key={s.label} style={{background:"#f8f9fb",borderRadius:10,padding:"14px 16px",border:"1px solid #e8ecf0"}}>
+                          <div style={{fontSize:9,fontWeight:700,letterSpacing:1.2,color:"#9aa5b1",marginBottom:4}}>CLOSED WON — {s.label}</div>
+                          <div style={{fontSize:22,fontWeight:800,color:s.color,lineHeight:1}}>{money(s.val)}</div>
+                          <div style={{fontSize:11,color:"#9aa5b1",marginTop:3}}>{s.count} quote{s.count!==1?"s":""}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Top accounts + top codes side by side */}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                      {/* Top accounts */}
+                      <div style={{background:"#f8f9fb",borderRadius:10,padding:"14px 16px",border:"1px solid #e8ecf0"}}>
+                        <div style={{fontSize:9,fontWeight:700,letterSpacing:1.2,color:"#9aa5b1",marginBottom:10}}>TOP ACCOUNTS BY QUOTE VALUE</div>
+                        {pm.topAccounts.length===0?(
+                          <div style={{fontSize:12,color:"#9aa5b1",fontStyle:"italic"}}>None</div>
+                        ):pm.topAccounts.map((a,i)=>(
+                          <div key={a.name} style={{display:"flex",justifyContent:"space-between",
+                            alignItems:"center",padding:"5px 0",
+                            borderTop:i>0?"1px solid #e8ecf0":"none",fontSize:12}}>
+                            <span style={{color:"#1a2332",fontWeight:i===0?700:400,
+                              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
+                              maxWidth:"60%"}}>{a.name}</span>
+                            <span style={{color:"#1a5276",fontWeight:600,flexShrink:0}}>{money(a.total)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Top product codes */}
+                      <div style={{background:"#f8f9fb",borderRadius:10,padding:"14px 16px",border:"1px solid #e8ecf0"}}>
+                        <div style={{fontSize:9,fontWeight:700,letterSpacing:1.2,color:"#9aa5b1",marginBottom:10}}>TOP PRODUCT CODES</div>
+                        {pm.topCodes.length===0?(
+                          <div style={{fontSize:12,color:"#9aa5b1",fontStyle:"italic"}}>None</div>
+                        ):pm.topCodes.map((c,i)=>(
+                          <div key={c.code} style={{display:"flex",justifyContent:"space-between",
+                            alignItems:"center",padding:"5px 0",
+                            borderTop:i>0?"1px solid #e8ecf0":"none",fontSize:12}}>
+                            <span style={{color:"#1a2332",fontWeight:600}}>{c.code}</span>
+                            <span style={{color:"#6b7a8d"}}>{c.count}×</span>
+                            <span style={{color:"#1a5276",fontWeight:600}}>{money(c.total)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
         {/* Account Dashboard modal */}
         {acctModal&&(
           <AccountDashboard
