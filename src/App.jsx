@@ -2929,6 +2929,12 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   const [showPrevMonth, setShowPrevMonth] = useState(false);
   const [prevMonthData, setPrevMonthData] = useState(null);
   const [prevMonthLoading, setPrevMonthLoading] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(()=>{
+    // Default to last month
+    const d = new Date();
+    return { month: d.getMonth() === 0 ? 11 : d.getMonth() - 1,
+             year:  d.getMonth() === 0 ? d.getFullYear() - 1 : d.getFullYear() };
+  });
   const [followUps, setFollowUps]   = useState([]);
   const [fuLoading, setFuLoading]   = useState(false);
   const [fuEmail, setFuEmail]       = useState(null);   // {quoteId, text} — generated email
@@ -3023,14 +3029,11 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
     if(fuEmail?.id===fuId)setFuEmail(null);
   };
 
-  const loadPrevMonth = async () => {
+  const loadPrevMonth = async (mon, yr) => {
     setPrevMonthLoading(true);
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth(); // 0-indexed
-    const prevStart = new Date(year, month - 1, 1).toISOString();
-    const prevEnd   = new Date(year, month, 1).toISOString();
-    const prevLabel = new Date(year, month - 1, 1).toLocaleString("en-US",{month:"long",year:"numeric"});
+    const prevStart = new Date(yr, mon, 1).toISOString();
+    const prevEnd   = new Date(yr, mon + 1, 1).toISOString();
+    const prevLabel = new Date(yr, mon, 1).toLocaleString("en-US",{month:"long",year:"numeric"});
 
     const [
       {data:createdRaw},
@@ -3085,6 +3088,15 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
       capPct, avgQuote, topAccounts, topCodes,
     });
     setPrevMonthLoading(false);
+  };
+
+  const goMonth=(mon,yr)=>{
+    const now=new Date();
+    // Don't allow future months
+    if(yr>now.getFullYear()||(yr===now.getFullYear()&&mon>=now.getMonth()))return;
+    setSelectedMonth({month:mon,year:yr});
+    setPrevMonthData(null);
+    loadPrevMonth(mon,yr);
   };
 
   const load = async () => {
@@ -3276,7 +3288,7 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
                 fontWeight:600,fontSize:12,cursor:"pointer",color:needsRefresh?"#fff":"#1a2332",display:"flex",alignItems:"center",gap:6}}>
               {needsRefresh?"↻ Updates available":"↻ Refresh"}
             </button>
-            <button onClick={()=>{setShowPrevMonth(true);if(!prevMonthData)loadPrevMonth();}}
+            <button onClick={()=>{setShowPrevMonth(true);if(!prevMonthData)loadPrevMonth(selectedMonth.month,selectedMonth.year);}}
               style={{background:"#fff",border:"1px solid #d0d7de",borderRadius:8,padding:"8px 18px",
                 fontWeight:600,fontSize:12,cursor:"pointer",color:"#1a2332",display:"flex",alignItems:"center",gap:6}}>
               📅 Last Month
@@ -3301,15 +3313,59 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
                 style={{position:"absolute",top:16,right:16,background:"none",border:"none",
                   fontSize:20,cursor:"pointer",color:"#9aa5b1",lineHeight:1}}>✕</button>
 
-              <div style={{fontSize:18,fontWeight:800,color:"#1a2332",marginBottom:4}}>
-                📅 {prevMonthData?.label||"Last Month"} — Snapshot
-              </div>
-              <div style={{fontSize:12,color:"#9aa5b1",marginBottom:20}}>
-                All figures are final for the completed month
+              <div style={{fontSize:18,fontWeight:800,color:"#1a2332",marginBottom:16}}>
+                📅 Monthly Snapshot
               </div>
 
+              {/* Month / Year picker */}
+              {(()=>{
+                const MONTHS=["January","February","March","April","May","June",
+                              "July","August","September","October","November","December"];
+                const currentYear=new Date().getFullYear();
+                const years=Array.from({length:10},(_,i)=>currentYear-i);
+                const prevM=selectedMonth.month===0?11:selectedMonth.month-1;
+                const prevY=selectedMonth.month===0?selectedMonth.year-1:selectedMonth.year;
+                const nextM=selectedMonth.month===11?0:selectedMonth.month+1;
+                const nextY=selectedMonth.month===11?selectedMonth.year+1:selectedMonth.year;
+                const now=new Date();
+                const nextDisabled=nextY>now.getFullYear()||(nextY===now.getFullYear()&&nextM>=now.getMonth());
+                return(
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:20,flexWrap:"wrap"}}>
+                    <button onClick={()=>goMonth(prevM,prevY)}
+                      style={{background:"#f0f2f5",border:"none",borderRadius:6,width:30,height:30,
+                        cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      ‹
+                    </button>
+                    <select value={selectedMonth.month}
+                      onChange={e=>goMonth(Number(e.target.value),selectedMonth.year)}
+                      style={{border:"1px solid #d0d7de",borderRadius:6,padding:"6px 10px",
+                        fontSize:13,fontWeight:600,color:"#1a2332",cursor:"pointer",fontFamily:"inherit"}}>
+                      {MONTHS.map((m,i)=><option key={m} value={i}>{m}</option>)}
+                    </select>
+                    <select value={selectedMonth.year}
+                      onChange={e=>goMonth(selectedMonth.month,Number(e.target.value))}
+                      style={{border:"1px solid #d0d7de",borderRadius:6,padding:"6px 10px",
+                        fontSize:13,fontWeight:600,color:"#1a2332",cursor:"pointer",fontFamily:"inherit"}}>
+                      {years.map(y=><option key={y} value={y}>{y}</option>)}
+                    </select>
+                    <button onClick={()=>!nextDisabled&&goMonth(nextM,nextY)}
+                      style={{background:"#f0f2f5",border:"none",borderRadius:6,width:30,height:30,
+                        cursor:nextDisabled?"not-allowed":"pointer",fontSize:16,
+                        opacity:nextDisabled?0.35:1,
+                        display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      ›
+                    </button>
+                    {prevMonthLoading&&(
+                      <span style={{fontSize:12,color:"#9aa5b1",marginLeft:8}}>Loading…</span>
+                    )}
+                  </div>
+                );
+              })()}
+
               {prevMonthLoading?(
-                <div style={{textAlign:"center",padding:40,color:"#9aa5b1"}}>Loading…</div>
+                <div style={{textAlign:"center",padding:40,color:"#9aa5b1",fontSize:13}}>Loading…</div>
+              ):!prevMonthData?(
+                <div style={{textAlign:"center",padding:40,color:"#9aa5b1",fontSize:13}}>Select a month above</div>
               ):prevMonthData&&(()=>{
                 const pm=prevMonthData;
                 const money=n=>"$"+(isNaN(n)||n==null?0:Math.round(n)).toLocaleString();
