@@ -3036,8 +3036,7 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
       {data:createdRaw},
       {data:wonRaw},
     ] = await Promise.all([
-      supabase.from("quotes").select("id, opportunity, customer, total, data")
-        .eq("source","vibrato")
+      supabase.from("quotes").select("id, opportunity, customer, total, data, source")
         .gte("created_at", prevStart).lt("created_at", prevEnd),
       supabase.from("quotes").select("id, opportunity, customer, total, won_date, data")
         .eq("stage","Closed Won")
@@ -3112,8 +3111,7 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
     const [{ data: createdRaw }, { data: wonRaw }] = await Promise.all([
       supabase
         .from("quotes")
-        .select("id, opportunity, customer, total, created_at, revision, data")
-        .eq("source","vibrato")
+        .select("id, opportunity, customer, total, created_at, revision, data, source")
         .gte("created_at", thisMonth.start)
         .lt("created_at",  thisMonth.end)
         .order("opportunity", {ascending: true}),
@@ -3180,7 +3178,6 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
       const { data: mRows } = await supabase
         .from("quotes")
         .select("total")
-        .eq("source","vibrato")
         .gte("created_at", m.start)
         .lt("created_at",  m.end);
       const rows = mRows || [];
@@ -3204,8 +3201,7 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
     const ytdEnd   = new Date(year + 1, 0, 1).toISOString();
     const [{ data: ytdCreatedRaw }, { data: ytdWonRaw }] = await Promise.all([
       supabase.from("quotes").select("id, opportunity, total, data")
-        .eq("source","vibrato").gte("created_at", ytdStart).lt("created_at", ytdEnd)
-        .like("opportunity", yrPrefix + "%"),
+        .gte("created_at", ytdStart).lt("created_at", ytdEnd),
       supabase.from("quotes").select("id, opportunity, total, won_date, data")
         .eq("stage","Closed Won").gte("won_date", ytdStart.slice(0,10)).lt("won_date", ytdEnd.slice(0,10)),
     ]);
@@ -3554,7 +3550,7 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
                 <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
                   boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0",marginBottom:20}}>
                   <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:14}}>
-                    YEAR TO DATE — {yr} (OPP # STARTING WITH {data.yrPrefix})
+                    YEAR TO DATE — {yr} (ALL QUOTES)
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:16}}>
                     <div>
