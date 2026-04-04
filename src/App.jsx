@@ -1545,7 +1545,11 @@ async function saveQuoteToSupabase(quote, autoSpecs, autoNotes) {
     approved_by:      quote.approval?.decidedBy   || null,
     specifications:   combineSpecs(quote.ti?.tiSpecs, autoSpecs) || null,
     notes:            combineSpecs(quote.ti?.tiNotes, autoNotes) || null,
-    line_items:       quote.summary?.lines || null,
+    line_items:       (quote.summary?.lines||[]).map((line,i)=>{
+      const ov=(quote.lineOverrides||{})[i]||{};
+      if(ov.deleted)return null; // exclude deleted lines
+      return {...line, val: ov.price!==undefined ? parseFloat(ov.price)||0 : line.val};
+    }).filter(Boolean) || null,
     budget_items:     quote.budget?.rows   || null,
     budget_markup:    quote.budget?.markup ? parseFloat(quote.budget.markup) : null,
     budget_notes:     quote.budget?.notes  || null,
