@@ -3219,13 +3219,15 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
     const ytdStart = new Date(year, 0, 1).toISOString();
     const ytdEnd   = new Date(year + 1, 0, 1).toISOString();
     const [{ data: ytdCreatedRaw }, { data: ytdWonRaw }] = await Promise.all([
-      supabase.from("quotes").select("id, opportunity, total, data")
-        .gte("created_at", ytdStart).lt("created_at", ytdEnd),
-      supabase.from("quotes").select("id, opportunity, total, won_date, data")
-        .eq("stage","Closed Won").gte("won_date", ytdStart.slice(0,10)).lt("won_date", ytdEnd.slice(0,10)),
+      supabase.from("quotes").select("id, opportunity, total")
+        .gte("created_at", ytdStart).lt("created_at", ytdEnd)
+        .limit(2000),
+      supabase.from("quotes").select("id, opportunity, total, won_date, data->qi->>type")
+        .eq("stage","Closed Won").gte("won_date", ytdStart.slice(0,10)).lt("won_date", ytdEnd.slice(0,10))
+        .limit(2000),
     ]);
     const ytdCreated     = ytdCreatedRaw || [];
-    const ytdWonAll      = (ytdWonRaw || []).map(q => ({...q, type: q.data?.qi?.type||"New Business"}));
+    const ytdWonAll      = (ytdWonRaw || []).map(q => ({...q, type: q.type||"New Business"}));
     const ytdWonNew      = ytdWonAll.filter(q => q.type === "New Business");
     const ytdWonExisting = ytdWonAll.filter(q => q.type === "Existing Business");
     const ytdQuoteTotal  = ytdCreated.reduce((a,q) => a + (q.total||0), 0);
