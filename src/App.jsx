@@ -4279,6 +4279,8 @@ export default function App({onLogout,currentUser}){
   const [showApprovalModal,setShowApprovalModal]=useState(false);
   const [showChatter,setShowChatter]=useState(false);
   const [quoteSentAt,setQuoteSentAt]=useState(null); // date string if this quote has been marked sent
+  const [showFollowUpPopover,setShowFollowUpPopover]=useState(false);
+  const [followUpDate,setFollowUpDate]=useState("");
   const [chatterEntries,setChatterEntries]=useState([]);
   const [chatterInput,setChatterInput]=useState("");
   const [chatterSaving,setChatterSaving]=useState(false);
@@ -4875,7 +4877,7 @@ export default function App({onLogout,currentUser}){
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("vibrato");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
-    setChatterEntries([]);setChatterInput("");setQuoteSentAt(null);
+    setChatterEntries([]);setChatterInput("");setQuoteSentAt(null);setShowFollowUpPopover(false);setFollowUpDate("");
     localStorage.removeItem("vibrato_last_quote_id");
     window.scrollTo({top:0,behavior:"smooth"});
   };
@@ -6648,6 +6650,87 @@ const STANDARD_TERMS = [
                     cursor:"pointer"}}>
                   ✉️ Mark as Sent
                 </button>
+              </div>
+            )}
+
+            {!showDashboard&&currentQuoteId&&(
+              <div style={{position:"relative"}}>
+                <button onClick={()=>{
+                    setShowFollowUpPopover(v=>!v);
+                    // Default date = today
+                    if(!followUpDate)setFollowUpDate(new Date().toISOString().slice(0,10));
+                  }}
+                  style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",
+                    borderRadius:5,padding:"3px 10px",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer"}}>
+                  📌 Follow Up
+                </button>
+                {showFollowUpPopover&&(
+                  <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,zIndex:500,
+                    background:"#fff",borderRadius:10,boxShadow:"0 4px 20px rgba(0,0,0,0.15)",
+                    border:"1px solid #e8ecf0",padding:"14px 16px",minWidth:220}}>
+                    {/* Click outside to close */}
+                    <div onClick={()=>setShowFollowUpPopover(false)}
+                      style={{position:"fixed",inset:0,zIndex:-1}}/>
+                    <div style={{fontSize:11,fontWeight:700,color:"#9aa5b1",letterSpacing:.8,marginBottom:10}}>
+                      ADD TO FOLLOW-UPS
+                    </div>
+                    {/* Right now option */}
+                    <button onClick={async()=>{
+                        const today=new Date().toISOString().slice(0,10);
+                        const followupAt=new Date(Date.now()-30*24*60*60*1000).toISOString().slice(0,10);
+                        const {error}=await supabase.from("follow_ups").insert({
+                          quote_id:currentQuoteId,
+                          opportunity:qi.opp,
+                          customer:qi.account,
+                          sent_by:currentUser,
+                          sent_at:new Date(Date.now()-30*24*60*60*1000-1000).toISOString(), // 30 days ago = shows immediately
+                          followup_again_at:null,
+                        });
+                        setShowFollowUpPopover(false);
+                        if(error)showToast("Error adding follow-up","error",4000);
+                        else showToast("📌 Added to follow-ups now","success",3000);
+                      }}
+                      style={{width:"100%",background:"#1a5276",border:"none",borderRadius:7,
+                        padding:"8px 12px",color:"#fff",fontWeight:700,fontSize:12,
+                        cursor:"pointer",marginBottom:8,textAlign:"left"}}>
+                      ⚡ Follow up right now
+                    </button>
+                    {/* Scheduled option */}
+                    <div style={{fontSize:11,color:"#6b7a8d",marginBottom:6,fontWeight:600}}>
+                      — or schedule for a date —
+                    </div>
+                    <input type="date" value={followUpDate}
+                      onChange={e=>setFollowUpDate(e.target.value)}
+                      min={new Date().toISOString().slice(0,10)}
+                      style={{width:"100%",border:"1px solid #d0d7de",borderRadius:6,
+                        padding:"6px 8px",fontSize:12,fontFamily:"inherit",
+                        boxSizing:"border-box",marginBottom:8}}/>
+                    <button onClick={async()=>{
+                        if(!followUpDate){showToast("Pick a date first","info");return;}
+                        // Set sent_at far enough back that it won't show until followup_again_at
+                        const {error}=await supabase.from("follow_ups").insert({
+                          quote_id:currentQuoteId,
+                          opportunity:qi.opp,
+                          customer:qi.account,
+                          sent_by:currentUser,
+                          sent_at:new Date(Date.now()-31*24*60*60*1000).toISOString(), // already 31d old
+                          followed_up:true,  // hide from list initially
+                          followed_up_at:new Date().toISOString(),
+                          followed_up_by:currentUser,
+                          followup_again_at:followUpDate, // show on this date
+                        });
+                        setShowFollowUpPopover(false);
+                        if(error)showToast("Error scheduling follow-up","error",4000);
+                        else showToast(`📌 Follow-up scheduled for ${new Date(followUpDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`,"success",4000);
+                      }}
+                      disabled={!followUpDate}
+                      style={{width:"100%",background:followUpDate?"#1e8449":"#ccc",border:"none",
+                        borderRadius:7,padding:"8px 12px",color:"#fff",fontWeight:700,
+                        fontSize:12,cursor:followUpDate?"pointer":"not-allowed",textAlign:"left"}}>
+                      📅 Schedule for this date
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
