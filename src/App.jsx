@@ -2934,10 +2934,13 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   const [prevMonthData, setPrevMonthData] = useState(null);
   const [prevMonthLoading, setPrevMonthLoading] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(()=>{
-    // Default to last month
+    // Default to last completed month (never current or future)
     const d = new Date();
-    return { month: d.getMonth() === 0 ? 11 : d.getMonth() - 1,
-             year:  d.getMonth() === 0 ? d.getFullYear() - 1 : d.getFullYear() };
+    const m = d.getMonth(); // 0-indexed current month
+    return {
+      month: m === 0 ? 11 : m - 1,
+      year:  m === 0 ? d.getFullYear() - 1 : d.getFullYear()
+    };
   });
   const [followUps, setFollowUps]   = useState([]);
   const [fuLoading, setFuLoading]   = useState(false);
@@ -3326,7 +3329,10 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
                 const MONTHS=["January","February","March","April","May","June",
                               "July","August","September","October","November","December"];
                 const currentYear=new Date().getFullYear();
-                const years=Array.from({length:10},(_,i)=>currentYear-i);
+                const currentMonthIdx=new Date().getMonth();
+                // Go back to 2016 to cover all SF-imported historical data
+                const oldestYear=2016;
+                const years=Array.from({length:currentYear-oldestYear+1},(_,i)=>currentYear-i);
                 const prevM=selectedMonth.month===0?11:selectedMonth.month-1;
                 const prevY=selectedMonth.month===0?selectedMonth.year-1:selectedMonth.year;
                 const nextM=selectedMonth.month===11?0:selectedMonth.month+1;
@@ -3344,7 +3350,12 @@ Write only the email body (no subject line). Use a warm but professional tone.`;
                       onChange={e=>goMonth(Number(e.target.value),selectedMonth.year)}
                       style={{border:"1px solid #d0d7de",borderRadius:6,padding:"6px 10px",
                         fontSize:13,fontWeight:600,color:"#1a2332",cursor:"pointer",fontFamily:"inherit"}}>
-                      {MONTHS.map((m,i)=><option key={m} value={i}>{m}</option>)}
+                      {MONTHS.map((m,i)=>{
+                        const now=new Date();
+                        // Disable current and future months
+                        const disabled=selectedMonth.year===now.getFullYear()&&i>=now.getMonth();
+                        return <option key={m} value={i} disabled={disabled}>{m}</option>;
+                      })}
                     </select>
                     <select value={selectedMonth.year}
                       onChange={e=>goMonth(selectedMonth.month,Number(e.target.value))}
