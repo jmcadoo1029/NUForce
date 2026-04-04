@@ -1636,24 +1636,40 @@ async function loadQuotesFromSupabase() {
 }
 
 async function loadPendingQuotes() {
+  // Fetch only metadata first (no data blob) — avoids full table scan timeout
   const { data, error } = await supabase
     .from("quotes")
-    .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data")
+    .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at")
     .eq("approval_status", "pending")
-    .order("updated_at", { ascending: false });
+    .order("updated_at", { ascending: false })
+    .limit(50);
 
-  // Fetch pending_won using dedicated column
   const { data: wonData } = await supabase
     .from("quotes")
-    .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data")
+    .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at")
     .eq("won_approval_status", "pending_won")
-    .order("updated_at", { ascending: false });
-  const wonPending = wonData || [];
+    .order("updated_at", { ascending: false })
+    .limit(50);
 
+  // Now fetch the data blobs only for the actual pending IDs
+  const pendingIds = [...(data||[]), ...(wonData||[])].map(r=>r.id);
+  let blobMap = {};
+  if(pendingIds.length > 0){
+    const { data: blobs } = await supabase
+      .from("quotes")
+      .select("id, data")
+      .in("id", pendingIds);
+    (blobs||[]).forEach(b => { blobMap[b.id] = b.data || {}; });
+  }
+
+  // Merge metadata rows to look like the old shape
+  const mergeBlob = row => ({ ...row, data: blobMap[row.id] || {} });
+  const mergedData    = (data||[]).map(mergeBlob);
+  const mergedWonData = (wonData||[]).map(mergeBlob);
   if (error) { console.error("Supabase pending load error:", error); return {}; }
 
   const map = {};
-  [...(data||[]), ...(wonPending||[])].forEach(row => {
+  [...mergedData, ...mergedWonData].forEach(row => {
     const q = row.data || {};
     map[row.id] = {
       ...q,
