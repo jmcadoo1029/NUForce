@@ -5157,14 +5157,14 @@ const STANDARD_TERMS = [
   };
 
   const exportDcMagPDF = async () => {
-    if(window.jspdf){buildDcMagPDF();return;}
+    if(window.jspdf){await buildDcMagPDF();return;}
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
     script.onload = () => buildDcMagPDF();
     document.head.appendChild(script);
   };
 
-  const buildDcMagPDF = () => {
+  const buildDcMagPDF = async () => {
     const {jsPDF} = window.jspdf;
     const doc = new jsPDF({unit:"pt",format:"letter"});
     const PW = doc.internal.pageSize.getWidth();
@@ -5305,14 +5305,14 @@ const STANDARD_TERMS = [
   };
 
   const exportPq300bPDF = async () => {
-    if(window.jspdf){buildPq300bPDF();return;}
+    if(window.jspdf){await buildPq300bPDF();return;}
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
     script.onload = () => buildPq300bPDF();
     document.head.appendChild(script);
   };
 
-  const buildPq300bPDF = () => {
+  const buildPq300bPDF = async () => {
     const {jsPDF} = window.jspdf;
     const doc = new jsPDF({unit:"pt",format:"letter"});
     const PW = doc.internal.pageSize.getWidth();
@@ -5511,14 +5511,14 @@ const STANDARD_TERMS = [
   };
 
   const exportEmi461fPDF = async () => {
-    if(window.jspdf){buildEmi461fPDF();return;}
+    if(window.jspdf){await buildEmi461fPDF();return;}
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
     script.onload = () => buildEmi461fPDF();
     document.head.appendChild(script);
   };
 
-  const buildEmi461fPDF = () => {
+  const buildEmi461fPDF = async () => {
     const {jsPDF} = window.jspdf;
     const doc = new jsPDF({unit:"pt",format:"letter"});
     const PW = doc.internal.pageSize.getWidth();
@@ -5745,14 +5745,14 @@ const STANDARD_TERMS = [
   };
 
   const exportEmi461gPDF = async () => {
-    if(window.jspdf){buildEmi461gPDF();return;}
+    if(window.jspdf){await buildEmi461gPDF();return;}
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
     script.onload = () => buildEmi461gPDF();
     document.head.appendChild(script);
   };
 
-  const buildEmi461gPDF = () => {
+  const buildEmi461gPDF = async () => {
     const {jsPDF} = window.jspdf;
     const doc = new jsPDF({unit:"pt",format:"letter"});
     const PW = doc.internal.pageSize.getWidth();
@@ -5976,14 +5976,14 @@ const STANDARD_TERMS = [
   };
 
   const exportPq300Part1PDF = async () => {
-    if(window.jspdf){buildPq300Part1PDF();return;}
+    if(window.jspdf){await buildPq300Part1PDF();return;}
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
     script.onload = () => buildPq300Part1PDF();
     document.head.appendChild(script);
   };
 
-  const buildPq300Part1PDF = () => {
+  const buildPq300Part1PDF = async () => {
     const {jsPDF} = window.jspdf;
     const doc = new jsPDF({unit:"pt",format:"letter"});
     const PW = doc.internal.pageSize.getWidth();
@@ -6179,7 +6179,7 @@ const STANDARD_TERMS = [
     await savePdfAs(doc, fname);
   };
 
-  const buildPDF = (budgetOnly) => {
+  const buildPDF = async (budgetOnly) => {
     const {jsPDF} = window.jspdf;
     const doc = new jsPDF({unit:"pt",format:"letter"});
     const PW = doc.internal.pageSize.getWidth();   // 612
