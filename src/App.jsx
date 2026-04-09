@@ -3203,26 +3203,27 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   const loadRecentApproved = async (days) => {
     setRecentApprovedLoading(true);
     const since = new Date(Date.now() - days*24*60*60*1000).toISOString();
-    // Two separate queries — .or() across columns is unreliable in PostgREST
+    // Fetch recently approved — filter by updated_at broadly, then narrow by decidedAt client-side
+    // Use a wider window (3x) to catch quotes approved recently but saved earlier
+    const wideSince = new Date(Date.now() - Math.max(days,30)*3*24*60*60*1000).toISOString();
     const [{ data: approvedData }, { data: wonData }] = await Promise.all([
       supabase.from("quotes")
         .select("id, opportunity, customer, total, updated_at, approval_status, won_approval_status, data")
         .eq("approval_status", "approved")
-        .gte("updated_at", since)
+        .gte("updated_at", wideSince)
         .order("updated_at", { ascending: false })
-        .limit(100),
+        .limit(500),
       supabase.from("quotes")
         .select("id, opportunity, customer, total, updated_at, approval_status, won_approval_status, data")
         .eq("won_approval_status", "won_approved")
-        .gte("updated_at", since)
+        .gte("updated_at", wideSince)
         .order("updated_at", { ascending: false })
-        .limit(100),
+        .limit(500),
     ]);
-    // Merge and deduplicate by id, sort by updatedAt desc
+    // Merge, deduplicate, then filter by actual decidedAt within the requested window
     const seen = new Set();
     const merged = [...(approvedData||[]), ...(wonData||[])]
-      .filter(q => { if(seen.has(q.id))return false; seen.add(q.id); return true; })
-      .sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at));
+      .filter(q => { if(seen.has(q.id))return false; seen.add(q.id); return true; });
     const rows = merged.map(q=>({
       id: q.id,
       opp: q.opportunity || q.data?.qi?.opp || "—",
@@ -3238,9 +3239,15 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
         ? (q.data?.wonApproval?.decidedBy||"")
         : (q.data?.approval?.decidedBy||""),
     }));
-    // Sort by actual decision date descending
-    rows.sort((a,b)=>new Date(b.decidedAt)-new Date(a.decidedAt));
-    setRecentApproved(rows);
+    // Filter by actual decidedAt within the requested window, then sort
+    const filteredRows = rows.filter(r => r.decidedAt && new Date(r.decidedAt) >= new Date(since));
+    filteredRows.sort((a,b)=>new Date(b.decidedAt)-new Date(a.decidedAt));
+    console.log('[RecentApproved] raw merged count:', merged.length);
+    console.log('[RecentApproved] since:', since);
+    console.log('[RecentApproved] approved rows:', (approvedData||[]).length, 'won rows:', (wonData||[]).length);
+    console.log('[RecentApproved] all rows decidedAt:', rows.map(r=>({opp:r.opp,decidedAt:r.decidedAt,updatedAt:r.updatedAt})));
+    console.log('[RecentApproved] filtered count:', filteredRows.length);
+    setRecentApproved(filteredRows);
     setRecentApprovedLoading(false);
   };
 
