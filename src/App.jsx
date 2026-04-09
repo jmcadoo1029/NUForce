@@ -3203,28 +3203,38 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   const loadRecentApproved = async (days) => {
     setRecentApprovedLoading(true);
     const since = new Date(Date.now() - days*24*60*60*1000).toISOString();
-    // Fetch both regular approvals and won approvals updated recently
-    const { data, error } = await supabase
-      .from("quotes")
-      .select("id, opportunity, customer, total, updated_at, approval_status, won_approval_status, data")
-      .or(`approval_status.eq.approved,won_approval_status.eq.won_approved`)
-      .gte("updated_at", since)
-      .order("updated_at", { ascending: false })
-      .limit(100);
-    if(!error){
-      const rows=(data||[]).map(q=>({
-        id: q.id,
-        opp: q.opportunity || q.data?.qi?.opp || "—",
-        customer: q.customer || q.data?.qi?.account || "—",
-        total: q.total || 0,
-        updatedAt: q.updated_at,
-        type: q.won_approval_status==="won_approved" ? "Closed Won" : "Quote",
-        decidedBy: q.won_approval_status==="won_approved"
-          ? (q.data?.wonApproval?.decidedBy||"")
-          : (q.data?.approval?.decidedBy||""),
-      }));
-      setRecentApproved(rows);
-    }
+    // Two separate queries — .or() across columns is unreliable in PostgREST
+    const [{ data: approvedData }, { data: wonData }] = await Promise.all([
+      supabase.from("quotes")
+        .select("id, opportunity, customer, total, updated_at, approval_status, won_approval_status, data")
+        .eq("approval_status", "approved")
+        .gte("updated_at", since)
+        .order("updated_at", { ascending: false })
+        .limit(100),
+      supabase.from("quotes")
+        .select("id, opportunity, customer, total, updated_at, approval_status, won_approval_status, data")
+        .eq("won_approval_status", "won_approved")
+        .gte("updated_at", since)
+        .order("updated_at", { ascending: false })
+        .limit(100),
+    ]);
+    // Merge and deduplicate by id, sort by updatedAt desc
+    const seen = new Set();
+    const merged = [...(approvedData||[]), ...(wonData||[])]
+      .filter(q => { if(seen.has(q.id))return false; seen.add(q.id); return true; })
+      .sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at));
+    const rows = merged.map(q=>({
+      id: q.id,
+      opp: q.opportunity || q.data?.qi?.opp || "—",
+      customer: q.customer || q.data?.qi?.account || "—",
+      total: q.total || 0,
+      updatedAt: q.updated_at,
+      type: q.won_approval_status==="won_approved" ? "Closed Won" : "Quote",
+      decidedBy: q.won_approval_status==="won_approved"
+        ? (q.data?.wonApproval?.decidedBy||"")
+        : (q.data?.approval?.decidedBy||""),
+    }));
+    setRecentApproved(rows);
     setRecentApprovedLoading(false);
   };
 
