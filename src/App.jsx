@@ -460,8 +460,18 @@ function ShockForm({s,set,vibSetup,setup,ti}){
 function NoiseForm({s,set,setup,ti}){
   const COMP_COST={"<=140dB":0,"145dB":0,"150dB":0,"155dB":1500,"160dB":1500,"165dB":2000,"170dB":3500};
   const autoComp=COMP_COST[s.level]||0;
-  // Use autoComp when compBudget is "0" (default/unset) and level requires a compressor
-  const compCost=s.compBudget==="0"&&autoComp>0 ? autoComp : sf(s.compBudget,autoComp);
+  // Sync compBudget into state when it's "0" but level requires a compressor
+  // This handles both fresh forms and loaded quotes saved before compressor logic
+  const compCost=(s.compBudget==="0"||s.compBudget===undefined||s.compBudget==="")?autoComp:sf(s.compBudget,autoComp);
+  // If state is out of sync, schedule a correction (runs once per mismatch)
+  if(autoComp>0&&(s.compBudget==="0"||s.compBudget===undefined||s.compBudget==="")){
+    // Use setTimeout to avoid calling set during render
+    setTimeout(()=>set(prev=>({
+      ...prev,
+      compBudget:String(autoComp),
+      testing:String(noiseTestingPrice(prev.durVal,prev.durUnit,prev.level,autoComp))
+    })),0);
+  }
   // Auto testing price uses duration-based pricing
   const autoTesting=noiseTestingPrice(s.durVal,s.durUnit,s.level,compCost);
   // Setup price = chamber standard setup
@@ -553,15 +563,17 @@ function NoiseForm({s,set,setup,ti}){
       <Sel value={s.durUnit} onChange={v=>set({...s,durUnit:v,testing:String(noiseTestingPrice(s.durVal,v,s.level,compCost))})} options={["minutes","hours"]} width={85}/>
     </Row>
     <Row label="Compressor ($)">
-      <Inp value={(s.compBudget==="0"||s.compBudget===undefined||s.compBudget==="")&&autoComp>0?String(autoComp):s.compBudget!==undefined?s.compBudget:String(autoComp)} onChange={v=>set({...s,compBudget:v})} width={80}/>
+      <Inp value={s.compBudget!==undefined&&s.compBudget!==""?s.compBudget:String(autoComp)} onChange={v=>set({...s,compBudget:v})} width={80}/>
       <span style={{fontSize:10,color:autoComp>0?C.warn:C.dim,marginLeft:4}}>
         {autoComp>0?"auto: $"+autoComp.toLocaleString()+" → $"+Math.round(autoComp*1.25).toLocaleString()+" w/markup":"25% markup applied"}
       </span>
     </Row>
-    <div style={{fontSize:10,background:"#fffbeb",border:"1px solid #f59e0b",borderRadius:5,
-      padding:"5px 8px",marginBottom:6,color:"#92400e"}}>
-      ⚠ Remember to add the compressor rental cost to the <strong>Budget Materials</strong> section below.
-    </div>
+    {sf(s.compBudget,0)>0&&(
+      <div style={{fontSize:10,background:"#f0fdf4",border:"1px solid #86efac",borderRadius:5,
+        padding:"5px 8px",marginBottom:6,color:"#166534"}}>
+        ✓ Compressor rental (${sf(s.compBudget,0).toLocaleString()}) auto-added to Budget Materials as "Noise – Testing".
+      </div>
+    )}
     <Pia s={s} set={set}/>
     <HR/>
     <PRow label={"Std Setup (auto: "+money(chamberSetup)+")"} val={s.stdSetup||String(chamberSetup)} onChange={v=>set({...s,stdSetup:v})}/>
@@ -4316,6 +4328,27 @@ export default function App({onLogout,currentUser}){
   const [ot,setOt]=useState({on:false,rows:[]});
   const [custom,setCustom]=useState({on:false,rows:[]});
   const [budget,setBudget]=useState({on:false,rows:[],markup:"25"});
+
+  // ── Auto-add compressor budget rows when noise sections have a compressor ────
+  useEffect(()=>{
+    const noiseWithComp = noises.filter(s=>s.on&&sf(s.compBudget,0)>0);
+    if(noiseWithComp.length===0)return;
+    setBudget(prev=>{
+      let rows=[...prev.rows];
+      noiseWithComp.forEach((s,idx)=>{
+        const pre=idx>0?" #"+(idx+1)+(s.identifier?" ("+s.identifier+")":""):"";
+        const label="Noise"+pre+" – Testing"; // default rollInto target
+        const desc="Compressor Rental"+(pre?","+pre:"");
+        const cost=String(sf(s.compBudget,0));
+        // Only add if not already present for this noise instance
+        const alreadyExists=rows.some(r=>r.desc===desc);
+        if(!alreadyExists&&sf(s.compBudget,0)>0){
+          rows=[...rows,{desc,qty:"1",unitCost:cost,rollInto:label}];
+        }
+      });
+      return rows.length===prev.rows.length?prev:{...prev,rows,on:true};
+    });
+  },[noises]); // eslint-disable-line react-hooks/exhaustive-deps
   const [coc,setCoc]=useState({on:false,price:"250"});
   const [sub,setSub]=useState({on:false,rows:[]});
   const [td,setTd]=useState("0");
