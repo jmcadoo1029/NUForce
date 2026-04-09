@@ -263,11 +263,10 @@ function MultiSection({title,instances,onAdd,onRemove,onUpdate,tag,newInstance,F
     if(v&&instances.length===0){onAdd();setOpen(true);}
     else if(v){onUpdate(0,{...instances[0],on:true});setOpen(true);}
     else if(!v&&instances.length>0){
-      // Unchecking: reset ALL instances to defaults, keeping IDs stable
-      instances.forEach((_,i)=>{
-        const fresh=newInstance();
-        onUpdate(i,{...fresh,id:instances[i].id,on:false});
-      });
+      // Unchecking: set on:false for instance 0 (the master toggle)
+      // Reset to fresh defaults to clear the form
+      const fresh={...newInstance(),id:instances[0].id,on:false};
+      onUpdate(0,fresh);
     }
   };
   return(
@@ -7746,12 +7745,14 @@ const STANDARD_TERMS = [
               onAdd={mkAdder(vibs,setVibs,newVib)}
               onRemove={mkRemover(vibs,setVibs)}
               onUpdate={mkUpdater(vibs,setVibs)}
+              newInstance={newVib}
               Form={VibForm} formProps={setupProps}/>
 
             <MultiSection title="SHOCK TESTING  (MIL-STD-901)" instances={shocks}
               onAdd={mkAdder(shocks,setShocks,newShock)}
               onRemove={mkRemover(shocks,setShocks)}
               onUpdate={mkUpdater(shocks,setShocks)}
+              newInstance={newShock}
               Form={ShockForm} formProps={{vibSetup,ti,...setupProps}}/>
 
             <Section title="INSTRUMENTATION" enabled={inst.on} onToggle={v=>setInst({...inst,on:v})}>
@@ -7762,54 +7763,63 @@ const STANDARD_TERMS = [
               onAdd={mkAdder(noises,setNoises,newNoise)}
               onRemove={mkRemover(noises,setNoises)}
               onUpdate={mkUpdater(noises,setNoises)}
+              newInstance={newNoise}
               Form={NoiseForm} formProps={{ti,...setupProps}}/>
 
             <MultiSection title="ENVIRONMENTAL TESTING" instances={envs}
               onAdd={mkAdder(envs,setEnvs,newEnv)}
               onRemove={mkRemover(envs,setEnvs)}
               onUpdate={mkUpdater(envs,setEnvs)}
+              newInstance={newEnv}
               Form={EnvForm} formProps={{}}/>
 
             <MultiSection title="HIGH FREQUENCY VIBRATION" instances={hfvs}
               onAdd={mkAdder(hfvs,setHfvs,newHfv)}
               onRemove={mkRemover(hfvs,setHfvs)}
               onUpdate={mkUpdater(hfvs,setHfvs)}
+              newInstance={newHfv}
               Form={HfvForm} formProps={setupProps}/>
 
             <MultiSection title="SHOCK (OTHER)" instances={shos}
               onAdd={mkAdder(shos,setShos,newSho)}
               onRemove={mkRemover(shos,setShos)}
               onUpdate={mkUpdater(shos,setShos)}
+              newInstance={newSho}
               Form={ShoForm} formProps={setupProps}/>
 
             <MultiSection title="EMI TESTING  (MIL-STD-461)" tag="SHIFTS" instances={emis}
               onAdd={mkAdder(emis,setEmis,newEmi)}
               onRemove={mkRemover(emis,setEmis)}
               onUpdate={mkUpdater(emis,setEmis)}
+              newInstance={newEmi}
               Form={EmiForm} formProps={{ti}}/>
 
             <MultiSection title="POWER QUALITY  (MIL-STD-1399)" tag="SHIFTS" instances={pqs}
               onAdd={mkAdder(pqs,setPqs,newPq)}
               onRemove={mkRemover(pqs,setPqs)}
               onUpdate={mkUpdater(pqs,setPqs)}
+              newInstance={newPq}
               Form={PqForm} formProps={{ti}}/>
 
             <MultiSection title="DC MAGNETICS" tag="SHIFTS" instances={dcms}
               onAdd={mkAdder(dcms,setDcms,newDcm)}
               onRemove={mkRemover(dcms,setDcms)}
               onUpdate={mkUpdater(dcms,setDcms)}
+              newInstance={newDcm}
               Form={DcmForm} formProps={{}}/>
 
             <MultiSection title="AIRBORNE NOISE" instances={abs}
               onAdd={mkAdder(abs,setAbs,newAb)}
               onRemove={mkRemover(abs,setAbs)}
               onUpdate={mkUpdater(abs,setAbs)}
+              newInstance={newAb}
               Form={AbForm} formProps={setupProps}/>
 
             <MultiSection title="STRUCTUREBORNE NOISE" instances={sbs}
               onAdd={mkAdder(sbs,setSbs,newSb)}
               onRemove={mkRemover(sbs,setSbs)}
               onUpdate={mkUpdater(sbs,setSbs)}
+              newInstance={newSb}
               Form={SbForm} formProps={setupProps}/>
 
             <Section title="OVERTIME" enabled={ot.on} onToggle={v=>setOt({...ot,on:v})}>
