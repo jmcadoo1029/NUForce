@@ -2778,6 +2778,10 @@ function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
 function AccountDashboard({accountName, onClose, onLoadQuote, onNewQuote}){
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showRecentApproved, setShowRecentApproved] = useState(false);
+  const [recentApproved, setRecentApproved] = useState(null);
+  const [recentApprovedLoading, setRecentApprovedLoading] = useState(false);
+  const [recentDays, setRecentDays] = useState(7);
   const [expandedYear, setExpandedYear] = useState(null);
 
   useEffect(()=>{
@@ -3196,6 +3200,34 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     loadPrevMonth(mon,yr);
   };
 
+  const loadRecentApproved = async (days) => {
+    setRecentApprovedLoading(true);
+    const since = new Date(Date.now() - days*24*60*60*1000).toISOString();
+    // Fetch both regular approvals and won approvals updated recently
+    const { data, error } = await supabase
+      .from("quotes")
+      .select("id, opportunity, customer, total, updated_at, approval_status, won_approval_status, data")
+      .or(`approval_status.eq.approved,won_approval_status.eq.won_approved`)
+      .gte("updated_at", since)
+      .order("updated_at", { ascending: false })
+      .limit(100);
+    if(!error){
+      const rows=(data||[]).map(q=>({
+        id: q.id,
+        opp: q.opportunity || q.data?.qi?.opp || "—",
+        customer: q.customer || q.data?.qi?.account || "—",
+        total: q.total || 0,
+        updatedAt: q.updated_at,
+        type: q.won_approval_status==="won_approved" ? "Closed Won" : "Quote",
+        decidedBy: q.won_approval_status==="won_approved"
+          ? (q.data?.wonApproval?.decidedBy||"")
+          : (q.data?.approval?.decidedBy||""),
+      }));
+      setRecentApproved(rows);
+    }
+    setRecentApprovedLoading(false);
+  };
+
   const load = async () => {
     setLoading(true);
     const now   = new Date();
@@ -3546,6 +3578,87 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                   </div>
                 );
               })()}
+            </div>
+          </div>
+        )}
+
+        {/* Recently Approved Modal */}
+        {showRecentApproved&&(
+          <div onClick={e=>{if(e.target===e.currentTarget)setShowRecentApproved(false);}}
+            style={{position:"fixed",inset:0,zIndex:2000,background:"rgba(0,0,0,0.45)",
+              display:"flex",alignItems:"flex-start",justifyContent:"center",
+              overflowY:"auto",padding:"40px 16px"}}>
+            <div style={{background:"#fff",borderRadius:14,width:"100%",maxWidth:700,
+              boxShadow:"0 8px 40px rgba(0,0,0,0.18)",padding:"28px 32px",position:"relative"}}>
+              <button onClick={()=>setShowRecentApproved(false)}
+                style={{position:"absolute",top:16,right:16,background:"none",border:"none",
+                  fontSize:20,cursor:"pointer",color:"#9aa5b1",lineHeight:1}}>✕</button>
+              <div style={{fontSize:18,fontWeight:800,color:"#1a2332",marginBottom:4}}>
+                ✓ Recently Approved
+              </div>
+              {/* Day selector */}
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:20}}>
+                <span style={{fontSize:12,color:"#6b7a8d"}}>Show last</span>
+                {[7,14,30].map(d=>(
+                  <button key={d} onClick={()=>{setRecentDays(d);setRecentApproved(null);loadRecentApproved(d);}}
+                    style={{background:recentDays===d?"#1a5276":"#f0f2f5",
+                      border:"none",borderRadius:6,padding:"4px 12px",
+                      fontSize:12,fontWeight:600,cursor:"pointer",
+                      color:recentDays===d?"#fff":"#1a2332"}}>
+                    {d} days
+                  </button>
+                ))}
+                {recentApprovedLoading&&<span style={{fontSize:12,color:"#9aa5b1",marginLeft:4}}>Loading…</span>}
+              </div>
+              {/* Results */}
+              {!recentApprovedLoading&&recentApproved&&(
+                recentApproved.length===0?(
+                  <div style={{textAlign:"center",padding:"32px 0",color:"#9aa5b1",fontSize:13}}>
+                    No approvals in the last {recentDays} days
+                  </div>
+                ):(
+                  <div>
+                    {/* Header row */}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1.2fr 80px 100px 100px",
+                      gap:8,padding:"6px 0",borderBottom:"2px solid #e8ecf0",marginBottom:4}}>
+                      {["OPP #","CUSTOMER","TYPE","TOTAL","APPROVED"].map(h=>(
+                        <div key={h} style={{fontSize:9,fontWeight:700,letterSpacing:1,color:"#9aa5b1"}}>{h}</div>
+                      ))}
+                    </div>
+                    {recentApproved.map((q,i)=>(
+                      <div key={q.id}
+                        onClick={()=>{onLoadQuote&&onLoadQuote(q);setShowRecentApproved(false);}}
+                        style={{display:"grid",gridTemplateColumns:"1fr 1.2fr 80px 100px 100px",
+                          gap:8,padding:"9px 0",cursor:"pointer",
+                          borderBottom:"1px solid #f0f2f5",
+                          background:"transparent"}}
+                        onMouseEnter={e=>e.currentTarget.style.background="#f8f9fb"}
+                        onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                        <div style={{fontWeight:700,color:"#1a5276",fontSize:12}}>{q.opp}</div>
+                        <div style={{fontSize:12,color:"#1a2332",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.customer}</div>
+                        <div>
+                          <span style={{fontSize:10,fontWeight:700,
+                            background:q.type==="Closed Won"?"#d1fae5":"#eff6ff",
+                            color:q.type==="Closed Won"?"#065f46":"#1e40af",
+                            borderRadius:4,padding:"2px 6px"}}>
+                            {q.type}
+                          </span>
+                        </div>
+                        <div style={{fontSize:12,fontWeight:600,color:"#1e8449"}}>
+                          {"$"+(q.total||0).toLocaleString()}
+                        </div>
+                        <div style={{fontSize:11,color:"#6b7a8d"}}>
+                          {new Date(q.updatedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}
+                          {q.decidedBy&&<div style={{fontSize:10,color:"#9aa5b1"}}>{q.decidedBy.split("@")[0]}</div>}
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{marginTop:12,fontSize:11,color:"#9aa5b1",textAlign:"right"}}>
+                      {recentApproved.length} approval{recentApproved.length!==1?"s":""} · click a row to open the quote
+                    </div>
+                  </div>
+                )
+              )}
             </div>
           </div>
         )}
@@ -3957,12 +4070,19 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                   <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
                     APPROVAL QUEUE
                   </div>
-                  {pendingQuotes.length>0&&(
-                    <span style={{background:"#c0392b",color:"#fff",borderRadius:10,
-                      fontSize:10,fontWeight:700,padding:"2px 8px"}}>
-                      {pendingQuotes.length} pending
-                    </span>
-                  )}
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <button onClick={()=>{setShowRecentApproved(true);if(!recentApproved)loadRecentApproved(recentDays);}}
+                      style={{background:"none",border:"1px solid #d0d7de",borderRadius:6,
+                        padding:"3px 10px",fontSize:11,cursor:"pointer",color:"#1a5276",fontWeight:600}}>
+                      ✓ Recently Approved
+                    </button>
+                    {pendingQuotes.length>0&&(
+                      <span style={{background:"#c0392b",color:"#fff",borderRadius:10,
+                        fontSize:10,fontWeight:700,padding:"2px 8px"}}>
+                        {pendingQuotes.length} pending
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {pendingQuotes.length===0?(
                   <div style={{padding:"24px",textAlign:"center",color:"#9aa5b1",fontSize:12}}>
