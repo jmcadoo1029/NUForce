@@ -4384,6 +4384,8 @@ export default function App({onLogout,currentUser}){
   const [showChatter,setShowChatter]=useState(false);
   const [quoteSentAt,setQuoteSentAt]=useState(null); // date string if this quote has been marked sent
   const [showFollowUpPopover,setShowFollowUpPopover]=useState(false);
+  const [isDirty,setIsDirty]=useState(false); // true when test selections changed since last save
+  const [snapshot,setSnapshot]=useState(null); // frozen prices/specs/notes from last save
   const [followUpDate,setFollowUpDate]=useState("");
   const [chatterEntries,setChatterEntries]=useState([]);
   const [chatterInput,setChatterInput]=useState("");
@@ -4599,10 +4601,22 @@ export default function App({onLogout,currentUser}){
     setApproval(newApproval);
     setLocked(true);
     setShowApprovalModal(false);
+    const snapshotLines=(summary.lines||[]).map((l,i)=>{
+      const ov=lineOverrides[i]||{};
+      if(ov.deleted)return null;
+      return {...l, val: ov.price!==undefined ? sf(ov.price,0) : l.val};
+    }).filter(Boolean);
+    const savedSnapshot={
+      lines: snapshotLines,
+      total: displayTotal,
+      tiSpecs: ti.tiSpecs||"",
+      tiNotes: ti.tiNotes||"",
+      savedAt: new Date().toISOString(),
+    };
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides,snapshot:savedSnapshot};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
-    if(newId){setCurrentQuoteId(newId);showToast("Submitted for approval","info");}
+    if(newId){setCurrentQuoteId(newId);setSnapshot(savedSnapshot);setIsDirty(false);showToast("Submitted for approval","info");}
     else showToast("Submit failed — check your connection","error",5000);
     await sendSubmitEmail(currentUser);
   };
@@ -4645,10 +4659,22 @@ export default function App({onLogout,currentUser}){
     setWonApproval(newWonApproval);
     setLocked(true);
     const effectiveQi=explicitStage?{...qi,stage:explicitStage}:qi;
+    const snapshotLines=(summary.lines||[]).map((l,i)=>{
+      const ov=lineOverrides[i]||{};
+      if(ov.deleted)return null;
+      return {...l, val: ov.price!==undefined ? sf(ov.price,0) : l.val};
+    }).filter(Boolean);
+    const savedSnapshot={
+      lines: snapshotLines,
+      total: displayTotal,
+      tiSpecs: ti.tiSpecs||"",
+      tiNotes: ti.tiNotes||"",
+      savedAt: new Date().toISOString(),
+    };
     const q={id:currentQuoteId||undefined,opp:effectiveQi.opp,customer:effectiveQi.account,rfq:effectiveQi.rfq,total:displayTotal,
-      qi:effectiveQi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides};
+      qi:effectiveQi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides,snapshot:savedSnapshot};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
-    if(newId){setCurrentQuoteId(newId);showToast("Submitted for Closed Won approval","info");}
+    if(newId){setCurrentQuoteId(newId);setSnapshot(savedSnapshot);setIsDirty(false);showToast("Submitted for Closed Won approval","info");}
     else showToast("Submit failed — check your connection","error",5000);
   };
 
@@ -4904,6 +4930,14 @@ export default function App({onLogout,currentUser}){
     return lines.join("\n\n");
   },[noises,pqs,emis,abs,sbs,modalAnalysis,fixtureDrawing,inStockModal]);
 
+  // ── Track isDirty when test selections change ──────────────────────────────
+  // Only test selection changes mark the quote dirty (not metadata like account name)
+  // isDirty=true means live calcSummary should be used; false means use snapshot
+  useEffect(()=>{
+    if(currentQuoteId)setIsDirty(true);
+  },[vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,
+     budget,globalPR,lineOverrides,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal]);
+
   // Sync auto-generated specs into tiSpecs when tests change (append new lines only)
   const prevAutoSpecs=useRef("");
   useEffect(()=>{
@@ -4946,11 +4980,14 @@ export default function App({onLogout,currentUser}){
     abs.some(s=>s.on)||sbs.some(s=>s.on)||inst.on||ot.on||custom.on||globalPR.coc||globalPR.procs.length>0||globalPR.reps.length>0;
 
   // Nav/display total respects lineOverrides (price edits + deleted lines), matching PDF behaviour
-  const displayTotal=useMemo(()=>summary.lines.reduce((a,l,idx)=>{
+  // Use snapshot total when not dirty — immune to formula changes
+  // Use live calcSummary when dirty (user is actively editing test selections)
+  const liveTotal=useMemo(()=>summary.lines.reduce((a,l,idx)=>{
     const ov=lineOverrides[idx]||{};
     if(ov.deleted)return a;
     return a+(ov.price!==undefined?sf(ov.price,0):l.val);
   },0),[summary.lines,lineOverrides]);
+  const displayTotal=isDirty||(snapshot==null) ? liveTotal : (snapshot?.total??liveTotal);
 
   // Clone quote — optionally save original first, then open modal for new opp #
   const handleClone=()=>{
@@ -5007,7 +5044,7 @@ export default function App({onLogout,currentUser}){
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("vibrato");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
-    setChatterEntries([]);setChatterInput("");setQuoteSentAt(null);setShowFollowUpPopover(false);setFollowUpDate("");
+    setChatterEntries([]);setChatterInput("");setQuoteSentAt(null);setShowFollowUpPopover(false);setFollowUpDate("");setSnapshot(null);setIsDirty(true); // new quote — no snapshot yet, all live
     localStorage.removeItem("vibrato_last_quote_id");
     window.scrollTo({top:0,behavior:"smooth"});
   };
@@ -5015,11 +5052,26 @@ export default function App({onLogout,currentUser}){
   // Save quote to Supabase
   const handleSave=async()=>{
     recentSaveRef.current=Date.now();
+    // Build price snapshot — frozen at save time, immune to future formula changes
+    const snapshotLines=(summary.lines||[]).map((l,i)=>{
+      const ov=lineOverrides[i]||{};
+      if(ov.deleted)return null;
+      return {...l, val: ov.price!==undefined ? sf(ov.price,0) : l.val};
+    }).filter(Boolean);
+    const savedSnapshot={
+      lines: snapshotLines,
+      total: displayTotal,
+      tiSpecs: ti.tiSpecs||"",
+      tiNotes: ti.tiNotes||"",
+      savedAt: new Date().toISOString(),
+    };
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,snapshot:savedSnapshot};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){
       setCurrentQuoteId(newId);
+      setSnapshot(savedSnapshot);
+      setIsDirty(false); // quote is now clean — snapshot is current
       showToast("Saved — "+(qi.opp||"Untitled"),"success");
       // Update savedQuotes so approval queue reflects new total immediately
       setSavedQuotes(prev=>({
@@ -5126,6 +5178,9 @@ export default function App({onLogout,currentUser}){
     if(q.id){localStorage.setItem("vibrato_last_quote_id",String(q.id));}
     setCurrentQuoteSource(q.source||"vibrato");
     if(q.source==="salesforce")setLocked(true);
+    // Load snapshot and clear dirty flag
+    setSnapshot(q.snapshot||null);
+    setIsDirty(false);
     // ── Salesforce imported quotes: load line items into custom section ──
     // Only populate from SF data if the user hasn't already saved custom rows
     if(q.source==="salesforce"&&!(q.custom?.rows?.length>0)){
@@ -6390,8 +6445,9 @@ const STANDARD_TERMS = [
       y += 34;
 
       // ── SPECIFICATIONS & NOTES ───────────────────────────────────────────
-      const specsText = (ti.tiSpecs||"").trim();
-      const notesText = (ti.tiNotes||"").trim();
+      // Use snapshot specs/notes when not dirty — immune to auto-note formula changes
+      const specsText = (!isDirty&&snapshot?.tiSpecs!=null ? snapshot.tiSpecs : (ti.tiSpecs||"")).trim();
+      const notesText = (!isDirty&&snapshot?.tiNotes!=null ? snapshot.tiNotes : (ti.tiNotes||"")).trim();
       if(specsText||notesText){
         sectionHdr('Specifications & Notes');
         y += 4;
@@ -6458,10 +6514,13 @@ const STANDARD_TERMS = [
         y += 16;
       };
 
-      const order = lineOrder&&lineOrder.length===summary.lines.length ? lineOrder : summary.lines.map((_,i)=>i);
+      // Use snapshot lines when not dirty — prices frozen at last save
+      const pdfLines = (!isDirty && snapshot?.lines?.length>0) ? snapshot.lines : summary.lines;
+      const order = lineOrder&&lineOrder.length===pdfLines.length ? lineOrder : pdfLines.map((_,i)=>i);
       order.forEach((origIdx, dispIdx) => {
-        const l = summary.lines[origIdx];
-        const ov = lineOverrides[origIdx]||{};
+        const l = pdfLines[origIdx];
+        if(!l)return;
+        const ov = (!isDirty&&snapshot?.lines) ? {} : (lineOverrides[origIdx]||{});
         if(ov.deleted) return;
         const price = ov.price!==undefined ? sf2(ov.price) : l.val;
         const desc = ov.desc&&ov.desc.trim() ? ov.desc.trim() : null;
@@ -7633,8 +7692,10 @@ const STANDARD_TERMS = [
                   </div>
                 </div>
               )}
-              {qi.opp&&<div style={{fontSize:13,color:C.red,fontWeight:600,marginBottom:2}}>
+              {qi.opp&&<div style={{fontSize:13,color:C.red,fontWeight:600,marginBottom:2,display:"flex",alignItems:"center",gap:6}}>
                 {qi.opp}
+                {isDirty&&currentQuoteId&&<span title="Unsaved changes — prices are live" style={{fontSize:9,background:"#b7791f",color:"#fff",borderRadius:4,padding:"1px 5px",fontWeight:700,letterSpacing:.5}}>LIVE</span>}
+                {!isDirty&&snapshot&&<span title="Showing saved prices" style={{fontSize:9,background:"#1e8449",color:"#fff",borderRadius:4,padding:"1px 5px",fontWeight:700,letterSpacing:.5}}>SAVED</span>}
               </div>}
               {(qi.billTo||qi.account)&&<div style={{fontSize:11,color:C.muted,marginBottom:4}}>{qi.billTo||qi.account}</div>}
               {qi.rfq&&<div style={{fontSize:10,color:C.dim,marginBottom:10}}>{"RFQ: "}{qi.rfq}</div>}
@@ -7655,10 +7716,13 @@ const STANDARD_TERMS = [
                     <span/>
                   </div>
                   {(()=>{
-                    const order=lineOrder&&lineOrder.length===summary.lines.length?lineOrder:summary.lines.map((_,i)=>i);
+                    // Use snapshot lines when not dirty — immune to formula changes
+                    const displayLines=(!isDirty&&snapshot?.lines?.length>0)?snapshot.lines:summary.lines;
+                    const order=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
                     return order.map((origIdx,dispIdx)=>{
-                      const l=summary.lines[origIdx];
-                      const ov=lineOverrides[origIdx]||{};
+                      const l=displayLines[origIdx];
+                      if(!l)return null;
+                      const ov=(!isDirty&&snapshot?.lines)?{}:(lineOverrides[origIdx]||{});
                       if(ov.deleted)return null;
                       const dispPrice=ov.price!==undefined?ov.price:String(l.val);
                       const dispDesc=ov.desc!==undefined?ov.desc:"";
