@@ -4887,7 +4887,7 @@ export default function App({onLogout,currentUser}){
     if(noises.some(s=>s.on&&(()=>{
       const hrs=s.durUnit==="hours"?Math.ceil(parseFloat(s.durVal)||0):Math.ceil((parseFloat(s.durVal)||0)/60);
       return hrs>8;
-    })()))lines.push("Testing will be performed during normal business hours unless otherwise discussed, and it is acceptable for this test to be stopped and restarted.");
+    })()))lines.push("Testing will be performed during normal business hours unless otherwise discussed, and it is assumed to be acceptable for this test to be stopped and restarted.");
     if(pqs.some(s=>s.on&&s.cw))lines.push("Current Waveform testing performed using facility power.");
     if(emis.some(s=>s.on)){
       lines.push("EMI Notes:\n"+
