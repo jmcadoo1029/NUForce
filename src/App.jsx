@@ -2778,10 +2778,6 @@ function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
 function AccountDashboard({accountName, onClose, onLoadQuote, onNewQuote}){
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showRecentApproved, setShowRecentApproved] = useState(false);
-  const [recentApproved, setRecentApproved] = useState(null);
-  const [recentApprovedLoading, setRecentApprovedLoading] = useState(false);
-  const [recentDays, setRecentDays] = useState(7);
   const [expandedYear, setExpandedYear] = useState(null);
 
   useEffect(()=>{
@@ -3034,6 +3030,10 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     return()=>document.removeEventListener("mousedown",h);
   },[]);
   const [loading, setLoading] = useState(true);
+  const [showRecentApproved, setShowRecentApproved] = useState(false);
+  const [recentApproved, setRecentApproved] = useState(null);
+  const [recentApprovedLoading, setRecentApprovedLoading] = useState(false);
+  const [recentDays, setRecentDays] = useState(7);
   const [showPrevMonth, setShowPrevMonth] = useState(false);
   const [prevMonthData, setPrevMonthData] = useState(null);
   const [prevMonthLoading, setPrevMonthLoading] = useState(false);
@@ -3627,7 +3627,26 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     </div>
                     {recentApproved.map((q,i)=>(
                       <div key={q.id}
-                        onClick={()=>{onLoadQuote&&onLoadQuote(q);setShowRecentApproved(false);}}
+                        onClick={async()=>{
+                          if(!onLoadQuote)return;
+                          const {data:row}=await supabase.from("quotes")
+                            .select("id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source")
+                            .eq("id",q.id).single();
+                          if(row){
+                            const blob=row.data||{};
+                            onLoadQuote({...blob,id:row.id,
+                              opp:row.opportunity||blob.opp,
+                              customer:row.customer||blob.customer,
+                              rfq:row.rfq||blob.rfq,
+                              total:row.total??blob.total,
+                              savedAt:row.updated_at,
+                              source:row.source||"vibrato",
+                              approval:{...(blob.approval||{}),status:row.approval_status||"none"},
+                              wonApproval:{...(blob.wonApproval||{}),status:row.won_approval_status||"none"},
+                            });
+                          }
+                          setShowRecentApproved(false);
+                        }}
                         style={{display:"grid",gridTemplateColumns:"1fr 1.2fr 80px 100px 100px",
                           gap:8,padding:"9px 0",cursor:"pointer",
                           borderBottom:"1px solid #f0f2f5",
