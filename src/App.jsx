@@ -3242,11 +3242,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     // Filter by actual decidedAt within the requested window, then sort
     const filteredRows = rows.filter(r => r.decidedAt && new Date(r.decidedAt) >= new Date(since));
     filteredRows.sort((a,b)=>new Date(b.decidedAt)-new Date(a.decidedAt));
-    console.log('[RecentApproved] raw merged count:', merged.length);
-    console.log('[RecentApproved] since:', since);
-    console.log('[RecentApproved] approved rows:', (approvedData||[]).length, 'won rows:', (wonData||[]).length);
-    console.log('[RecentApproved] all rows decidedAt:', rows.map(r=>({opp:r.opp,decidedAt:r.decidedAt,updatedAt:r.updatedAt})));
-    console.log('[RecentApproved] filtered count:', filteredRows.length);
     setRecentApproved(filteredRows);
     setRecentApprovedLoading(false);
   };
