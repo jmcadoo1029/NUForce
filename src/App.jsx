@@ -5126,10 +5126,7 @@ export default function App({onLogout,currentUser}){
     if(ov.deleted)return a;
     return a+(ov.price!==undefined?sf(ov.price,0):l.val);
   },0),[summary.lines,lineOverrides]);
-  // effectiveDirty: locked quotes always treated as clean regardless of isDirty
-  // This prevents LIVE badge and live recalc on locked/SF/approved quotes
-  const effectiveDirty = isDirty && !locked;
-  const displayTotal=(!effectiveDirty&&snapshot!=null) ? (snapshot.total??liveTotal) : liveTotal;
+  const displayTotal=(!isDirty&&snapshot!=null) ? (snapshot.total??liveTotal) : liveTotal;
 
   // Clone quote — optionally save original first, then open modal for new opp #
   const handleClone=()=>{
@@ -6588,8 +6585,8 @@ const STANDARD_TERMS = [
 
       // ── SPECIFICATIONS & NOTES ───────────────────────────────────────────
       // Use snapshot specs/notes when not dirty — immune to auto-note formula changes
-      const specsText = (!effectiveDirty&&snapshot?.tiSpecs!=null ? snapshot.tiSpecs : (ti.tiSpecs||"")).trim();
-      const notesText = (!effectiveDirty&&snapshot?.tiNotes!=null ? snapshot.tiNotes : (ti.tiNotes||"")).trim();
+      const specsText = (!isDirty&&snapshot?.tiSpecs!=null ? snapshot.tiSpecs : (ti.tiSpecs||"")).trim();
+      const notesText = (!isDirty&&snapshot?.tiNotes!=null ? snapshot.tiNotes : (ti.tiNotes||"")).trim();
       if(specsText||notesText){
         sectionHdr('Specifications & Notes');
         y += 4;
@@ -6657,12 +6654,12 @@ const STANDARD_TERMS = [
       };
 
       // Use snapshot lines when not dirty — prices frozen at last save
-      const pdfLines = (!effectiveDirty && snapshot?.lines?.length>0) ? snapshot.lines : summary.lines;
+      const pdfLines = (!isDirty && snapshot?.lines?.length>0) ? snapshot.lines : summary.lines;
       const order = lineOrder&&lineOrder.length===pdfLines.length ? lineOrder : pdfLines.map((_,i)=>i);
       order.forEach((origIdx, dispIdx) => {
         const l = pdfLines[origIdx];
         if(!l)return;
-        const ov = (!effectiveDirty&&snapshot?.lines) ? {} : (lineOverrides[origIdx]||{});
+        const ov = (!isDirty&&snapshot?.lines) ? {} : (lineOverrides[origIdx]||{});
         if(ov.deleted) return;
         const price = ov.price!==undefined ? sf2(ov.price) : l.val;
         const desc = ov.desc&&ov.desc.trim() ? ov.desc.trim() : null;
@@ -7836,8 +7833,8 @@ const STANDARD_TERMS = [
               )}
               {qi.opp&&<div style={{fontSize:13,color:C.red,fontWeight:600,marginBottom:2,display:"flex",alignItems:"center",gap:6}}>
                 {qi.opp}
-                {effectiveDirty&&currentQuoteId&&<span title="Unsaved changes — prices are live" style={{fontSize:9,background:"#b7791f",color:"#fff",borderRadius:4,padding:"1px 5px",fontWeight:700,letterSpacing:.5}}>LIVE</span>}
-                {!effectiveDirty&&currentQuoteId&&snapshot&&<span title="Showing saved prices" style={{fontSize:9,background:"#1e8449",color:"#fff",borderRadius:4,padding:"1px 5px",fontWeight:700,letterSpacing:.5}}>SAVED</span>}
+                {isDirty&&snapshot&&currentQuoteId&&<span title="Unsaved changes — prices are live" style={{fontSize:9,background:"#b7791f",color:"#fff",borderRadius:4,padding:"1px 5px",fontWeight:700,letterSpacing:.5}}>LIVE</span>}
+                {!isDirty&&snapshot&&currentQuoteId&&<span title="Showing saved prices" style={{fontSize:9,background:"#1e8449",color:"#fff",borderRadius:4,padding:"1px 5px",fontWeight:700,letterSpacing:.5}}>SAVED</span>}
               </div>}
               {(qi.billTo||qi.account)&&<div style={{fontSize:11,color:C.muted,marginBottom:4}}>{qi.billTo||qi.account}</div>}
               {qi.rfq&&<div style={{fontSize:10,color:C.dim,marginBottom:10}}>{"RFQ: "}{qi.rfq}</div>}
@@ -7859,12 +7856,12 @@ const STANDARD_TERMS = [
                   </div>
                   {(()=>{
                     // Use snapshot lines when not dirty — immune to formula changes
-                    const displayLines=(!effectiveDirty&&snapshot?.lines?.length>0)?snapshot.lines:summary.lines;
+                    const displayLines=(!isDirty&&snapshot?.lines?.length>0)?snapshot.lines:summary.lines;
                     const order=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
                     return order.map((origIdx,dispIdx)=>{
                       const l=displayLines[origIdx];
                       if(!l)return null;
-                      const ov=(!effectiveDirty&&snapshot?.lines)?{}:(lineOverrides[origIdx]||{});
+                      const ov=(!isDirty&&snapshot?.lines)?{}:(lineOverrides[origIdx]||{});
                       if(ov.deleted)return null;
                       const dispPrice=ov.price!==undefined?ov.price:String(l.val);
                       const dispDesc=ov.desc!==undefined?ov.desc:"";
