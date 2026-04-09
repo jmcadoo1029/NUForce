@@ -3,6 +3,34 @@ import { useState, useMemo, useEffect, useRef } from "react";
 // ── Pricing constants ─────────────────────────────────────────────────────────
 const NOISE_BASE_30={"<=140dB":3950,"145dB":4500,"150dB":5250,"155dB":5950,"160dB":7450,"165dB":8500,"170dB":12500};
 const NOISE_BASE_60={"<=140dB":4925,"145dB":5750,"150dB":6875,"155dB":7925,"160dB":9175,"165dB":10750,"170dB":15750};
+
+// Noise duration-based pricing
+// ≤30 min → BASE_30, ≤60 min → BASE_60
+// >1 hr: per 40-hr block = base + hrs 2-20 at $500/hr + hrs 21-40 at $375/hr
+function noiseTestingPrice(durVal, durUnit, level, compCost){
+  const base30 = NOISE_BASE_30[level]||0;
+  const base60 = NOISE_BASE_60[level]||0;
+  const compUp = (compCost||0)*1.25;
+  const raw = parseFloat(durVal)||0;
+  if(raw<=0) return Math.round(base30 + compUp);
+  // Convert to hours, round up to nearest whole hour (minimum 1)
+  const totalHrs = durUnit==="hours"
+    ? Math.ceil(raw)
+    : raw<=30 ? null : Math.ceil(raw/60); // minutes: ≤30→base30, else convert
+  if(totalHrs===null) return Math.round(base30 + compUp); // ≤30 min
+  if(totalHrs<=1)     return Math.round(base60 + compUp); // up to 1 hr
+  // Multi-hour pricing
+  const BLOCK=40;
+  const fullBlocks=Math.floor((totalHrs-1)/BLOCK);
+  const remaining=totalHrs-(fullBlocks*BLOCK);
+  const blockAdder=(h)=>{
+    if(h<=1)return 0;
+    const t1=Math.min(h-1,19); // hrs 2-20 → $500/hr
+    const t2=Math.max(0,h-20); // hrs 21-40 → $375/hr
+    return t1*500+t2*375;
+  };
+  return Math.round((base60*(fullBlocks+1))+blockAdder(remaining)+compUp);
+}
 const NOISE_FAC={"Speakerbox":1000,"64 Reverb Chamber":1500,"300 Reverb Chamber":2000,"Prog Wave Tube":2750};
 const ENV_TH_PRICES={"0 to 1 Day":1000,"3 Days":1350,"5 Days":1875,"7 Days":2275,"10 Days":2950};
 const PROC_BASE=1600, REPORT_BASE=950;
@@ -90,7 +118,7 @@ function Pia({s,set}){
       {levels.map((l,i)=>(
         <label key={i} style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer"}}>
           <input type="checkbox" checked={cur===l.m}
-            onChange={()=>set({...s,pia:cur===l.m?0:l.m})}
+            onChange={()=>set(prev=>({...prev,pia:prev.pia===l.m?0:l.m}))}
             style={{accentColor:C.red,width:13,height:13}}/>
           <span style={{fontSize:11,color:cur===l.m?C.redDim:C.muted}}>{l.p}</span>
         </label>
@@ -188,7 +216,7 @@ function IdentifierInput({value,onCommit,style}){
     style={style}/>;
 }
 
-function TestInstance({inst,idx,total,Form,formProps,onUpdate,onRemove}){
+function TestInstance({inst,idx,total,Form,formProps,onUpdate,onRemove,newInstance}){
   const [localId,setLocalId]=useState(inst.identifier||"");
   useEffect(()=>setLocalId(inst.identifier||""),[inst.id]);
   const commitId=()=>onUpdate(idx,prev=>({...prev,identifier:localId}));
@@ -199,7 +227,10 @@ function TestInstance({inst,idx,total,Form,formProps,onUpdate,onRemove}){
       background:idx>0?C.panel:"transparent"}}>
       {idx>0&&(
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-          <Toggle small checked={inst.on} onChange={v=>onUpdate(idx,{...inst,on:v})}
+          <Toggle small checked={inst.on} onChange={v=>{
+              if(!v){const fresh=newInstance?newInstance():{};onUpdate(idx,{...fresh,id:inst.id,on:false});}
+              else onUpdate(idx,{...inst,on:v});
+            }}
             label={"Test #"+(idx+1)}/>
           <input value={localId} onChange={e=>setLocalId(e.target.value)} onBlur={commitId}
             placeholder="Identifier (e.g. S/N, Unit #)"
@@ -230,6 +261,11 @@ function MultiSection({title,instances,onAdd,onRemove,onUpdate,tag,newInstance,F
   useEffect(()=>{if(anyOn)setOpen(true);},[anyOn]);
   const handleToggle=v=>{
     if(v&&instances.length===0){onAdd();setOpen(true);}
+    else if(!v){
+      // Unchecking: reset this instance to default (preserving id so keys stay stable)
+      const fresh=newInstance();
+      onUpdate(0,{...fresh,id:instances[0].id,on:false});
+    }
     else{onUpdate(0,{...instances[0],on:v});if(v)setOpen(true);}
   };
   return(
@@ -254,7 +290,7 @@ function MultiSection({title,instances,onAdd,onRemove,onUpdate,tag,newInstance,F
             <TestInstance key={"ti-"+inst.id}
               inst={inst} idx={idx} total={instances.length}
               Form={Form} formProps={formProps}
-              onUpdate={onUpdate} onRemove={onRemove}/>
+              onUpdate={onUpdate} onRemove={onRemove} newInstance={newInstance}/>
           ))}
           <button onClick={onAdd}
             style={{width:"100%",marginTop:8,background:"none",border:"1px dashed "+C.border,
@@ -421,13 +457,12 @@ function ShockForm({s,set,vibSetup,setup,ti}){
 }
 
 function NoiseForm({s,set,setup,ti}){
-  const base=s.durUnit==="hours"?NOISE_BASE_60:NOISE_BASE_30;
   const COMP_COST={"<=140dB":0,"145dB":0,"150dB":0,"155dB":1500,"160dB":1500,"165dB":2000,"170dB":3500};
   const autoComp=COMP_COST[s.level]||0;
-  const compCost=sf(s.compBudget,autoComp);
-  const compUp=compCost*1.25;
-  // Testing price = base level price + compressor markup (NO setup rolled in)
-  const autoTesting=(base[s.level]||0)+compUp;
+  // Use autoComp when compBudget is "0" (default/unset) and level requires a compressor
+  const compCost=s.compBudget==="0"&&autoComp>0 ? autoComp : sf(s.compBudget,autoComp);
+  // Auto testing price uses duration-based pricing
+  const autoTesting=noiseTestingPrice(s.durVal,s.durUnit,s.level,compCost);
   // Setup price = chamber standard setup
   const chamberSetup=NOISE_FAC[s.chamber]||1000;
   const pm=s.pia||1;
@@ -474,7 +509,7 @@ function NoiseForm({s,set,setup,ti}){
   return <div>
     <Row label="Spec"><Inp value={s.spec||""} onChange={v=>set({...s,spec:v})} width={200}/></Row>
     <Row label="OASPL (pricing)">
-      <Sel value={s.level} onChange={v=>{const nb=s.durUnit==="hours"?NOISE_BASE_60:NOISE_BASE_30;set({...s,level:v,compBudget:String(COMP_COST[v]||0),testing:String(Math.round((nb[v]||0)+(COMP_COST[v]||0)*1.25))});}}
+      <Sel value={s.level} onChange={v=>{const nc=COMP_COST[v]||0;set({...s,level:v,compBudget:String(nc),testing:String(noiseTestingPrice(s.durVal,s.durUnit,v,nc))});}}
         options={["<=140dB","145dB","150dB","155dB","160dB","165dB","170dB"]} width={110}/>
     </Row>
     <Row label="OASPL (spec)"><Inp value={s.oaspl||""} onChange={v=>set({...s,oaspl:v})} width={90}/></Row>
@@ -513,11 +548,11 @@ function NoiseForm({s,set,setup,ti}){
     )}
 
     <Row label="Duration">
-      <Inp value={s.durVal} onChange={v=>set({...s,durVal:v})} width={55}/>
-      <Sel value={s.durUnit} onChange={v=>set({...s,durUnit:v})} options={["minutes","hours"]} width={85}/>
+      <Inp value={s.durVal} onChange={v=>set({...s,durVal:v,testing:String(noiseTestingPrice(v,s.durUnit,s.level,compCost))})} width={55}/>
+      <Sel value={s.durUnit} onChange={v=>set({...s,durUnit:v,testing:String(noiseTestingPrice(s.durVal,v,s.level,compCost))})} options={["minutes","hours"]} width={85}/>
     </Row>
     <Row label="Compressor ($)">
-      <Inp value={s.compBudget!==undefined?s.compBudget:String(autoComp)} onChange={v=>set({...s,compBudget:v})} width={80}/>
+      <Inp value={(s.compBudget==="0"||s.compBudget===undefined||s.compBudget==="")&&autoComp>0?String(autoComp):s.compBudget!==undefined?s.compBudget:String(autoComp)} onChange={v=>set({...s,compBudget:v})} width={80}/>
       <span style={{fontSize:10,color:autoComp>0?C.warn:C.dim,marginLeft:4}}>
         {autoComp>0?"auto: $"+autoComp.toLocaleString()+" → $"+Math.round(autoComp*1.25).toLocaleString()+" w/markup":"25% markup applied"}
       </span>
@@ -531,6 +566,23 @@ function NoiseForm({s,set,setup,ti}){
     <PRow label={"Std Setup (auto: "+money(chamberSetup)+")"} val={s.stdSetup||String(chamberSetup)} onChange={v=>set({...s,stdSetup:v})}/>
     <PRow label="Add'l Costs" val={s.addlCosts||"0"} onChange={v=>set({...s,addlCosts:v})}/>
     <PRow label={"Testing (auto: "+money(autoTesting)+")"} val={s.testing} onChange={v=>set({...s,testing:v})}/>
+    {(()=>{
+      const hrs=s.durUnit==="hours"?Math.ceil(parseFloat(s.durVal)||1):Math.ceil((parseFloat(s.durVal)||30)/60);
+      if(hrs<=1)return null;
+      const base60=NOISE_BASE_60[s.level]||0;
+      const t1=Math.min(hrs-1,19);
+      const t2=Math.max(0,Math.min(hrs-20,20));
+      const fullBlocks=Math.floor((hrs-1)/40);
+      return(
+        <div style={{fontSize:10,color:"#6b7a8d",marginBottom:6,padding:"4px 8px",
+          background:"#f8f9fb",borderRadius:5}}>
+          {fullBlocks>0&&<span>{fullBlocks+1}× base ${base60.toLocaleString()} · </span>}
+          {t1>0&&<span>{t1}h × $500 = ${(t1*500).toLocaleString()} · </span>}
+          {t2>0&&<span>{t2}h × $375 = ${(t2*375).toLocaleString()} · </span>}
+          <strong>Total: {money(autoTesting)}</strong>
+        </div>
+      );
+    })()}
     {s.level==="170dB"&&(
       <div style={{fontSize:11,color:C.warn,marginBottom:6}}>⚠ 170dB performed as best effort</div>
     )}
@@ -1527,6 +1579,34 @@ function BudgetSection({budget,setBudget,allLines,setupLines,fixtureFabLines}){
 import { supabase } from "./supabaseClient";
 
 // ── Supabase storage helpers ──────────────────────────────────────────────────
+// ── PDF Save-As helper ───────────────────────────────────────────────────────
+async function savePdfAs(doc, suggestedName) {
+  const blob = doc.output('blob');
+  // Try modern File System Access API (Chrome 86+) for native Save As dialog
+  if(window.showSaveFilePicker){
+    try{
+      const handle = await window.showSaveFilePicker({
+        suggestedName,
+        types:[{description:'PDF File',accept:{'application/pdf':['.pdf']}}],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    }catch(e){
+      if(e.name==='AbortError')return; // user cancelled
+      // Fall through to legacy method
+    }
+  }
+  // Legacy fallback — auto-download (same as before)
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = suggestedName;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
 async function saveQuoteToSupabase(quote, autoSpecs, autoNotes) {
   const row = {
     id: quote.id || undefined,
@@ -2994,41 +3074,31 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     if(blob.emis?.some(s=>s.on))tests.push("EMI/EMC");
     if(blob.pqs?.some(s=>s.on))tests.push("Power Quality");
     if(blob.hfvs?.some(s=>s.on))tests.push("High Frequency Vibration");
-    const testStr = tests.length>0 ? tests.join(", ") : "various tests";
     const itemName = blob.ti?.item || blob.qi?.item || "";
-    const prompt = `You are a professional sales assistant at NU Laboratories, an environmental testing lab specializing in vibration, shock, acoustic, and EMI testing.
-
-Write a brief, friendly follow-up email for a quote that was sent about 30 days ago. Keep it concise (3-4 short paragraphs max). Do NOT be pushy.
-
-Quote details:
-- Quote Number: ${fu.opportunity || q?.opportunity || ""}
-- Customer/Account: ${fu.customer || q?.customer || ""}
-- Item Being Tested: ${itemName}
-- Tests Quoted: ${testStr}
-- Sent by: Corinne Cebello, NU Laboratories Sales
-
-The email should:
-1. Reference the quote number and gently remind them it was sent about a month ago
-2. Offer to answer any questions or provide additional information
-3. Mention NU Labs is ready to schedule when they are
-4. End with a professional sign-off from Corinne
-
-Write only the email body (no subject line). Use a warm but professional tone.`;
-
     try {
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({
-          model:"claude-sonnet-4-20250514",
-          max_tokens:600,
-          messages:[{role:"user", content:prompt}]
-        })
-      });
+      // Call via Supabase Edge Function to avoid CORS + keep API key server-side
+      const resp = await fetch(
+        "https://swuuxzmgmldvvomsgmjf.supabase.co/functions/v1/generate-followup-email",
+        {
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json",
+            "Authorization":`Bearer sb_publishable_bmrPY65INpUkea8VUX1Wag_T7Vrz9ZZ`,
+          },
+          body: JSON.stringify({
+            opportunity: fu.opportunity || q?.opportunity || "",
+            customer:    fu.customer    || q?.customer    || "",
+            itemName,
+            tests,
+            sentBy: fu.sent_by || "NU Laboratories Sales",
+          })
+        }
+      );
       const json = await resp.json();
-      const text = json.content?.[0]?.text || "Could not generate email.";
-      setFuEmail({id:fu.id, text});
+      if(json.error) throw new Error(json.error);
+      setFuEmail({id:fu.id, text: json.text || "Could not generate email."});
     } catch(e) {
+      console.error("Email generation error:", e);
       setFuEmail({id:fu.id, text:"Error generating email — please try again."});
     }
     setFuEmailLoading(null);
@@ -5062,7 +5132,7 @@ const STANDARD_TERMS = [
     "All hardware provided by NU Laboratories is assumed to be SAE Grade 5. All fixturing provided by NU Laboratories is assumed to be A36 Steel. All other hardware and fixture requirements will be quoted separately if not detailed on this quote.",
   ];
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
     script.onload = () => {
@@ -5074,7 +5144,7 @@ const STANDARD_TERMS = [
     document.head.appendChild(script);
   };
 
-  const exportBudgetPDF = () => {
+  const exportBudgetPDF = async () => {
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
     script.onload = () => {
@@ -5086,7 +5156,7 @@ const STANDARD_TERMS = [
     document.head.appendChild(script);
   };
 
-  const exportDcMagPDF = () => {
+  const exportDcMagPDF = async () => {
     if(window.jspdf){buildDcMagPDF();return;}
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
@@ -5231,10 +5301,10 @@ const STANDARD_TERMS = [
 
     drawFooter();
     const fname = (qi.opp||'DC-Mag-Specs')+'.pdf';
-    doc.save(fname);
+    await savePdfAs(doc, fname);
   };
 
-  const exportPq300bPDF = () => {
+  const exportPq300bPDF = async () => {
     if(window.jspdf){buildPq300bPDF();return;}
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
@@ -5437,10 +5507,10 @@ const STANDARD_TERMS = [
     y+=4;
 
     const fname = (qi.opp||'PQ-300B-Specs')+'.pdf';
-    doc.save(fname);
+    await savePdfAs(doc, fname);
   };
 
-  const exportEmi461fPDF = () => {
+  const exportEmi461fPDF = async () => {
     if(window.jspdf){buildEmi461fPDF();return;}
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
@@ -5671,10 +5741,10 @@ const STANDARD_TERMS = [
     const tp=doc.internal.getNumberOfPages();
     for(let p=1;p<=tp;p++){doc.setPage(p);drawFooter();}
     const fname=(qi.opp||'EMI-461F-Specs')+'.pdf';
-    doc.save(fname);
+    await savePdfAs(doc, fname);
   };
 
-  const exportEmi461gPDF = () => {
+  const exportEmi461gPDF = async () => {
     if(window.jspdf){buildEmi461gPDF();return;}
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
@@ -5902,10 +5972,10 @@ const STANDARD_TERMS = [
     const tp=doc.internal.getNumberOfPages();
     for(let p=1;p<=tp;p++){doc.setPage(p);drawFooter();}
     const fname=(qi.opp||'EMI-461G-Specs')+'.pdf';
-    doc.save(fname);
+    await savePdfAs(doc, fname);
   };
 
-  const exportPq300Part1PDF = () => {
+  const exportPq300Part1PDF = async () => {
     if(window.jspdf){buildPq300Part1PDF();return;}
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
@@ -6106,7 +6176,7 @@ const STANDARD_TERMS = [
     y+=4;
 
     const fname = (qi.opp||'PQ-300-Part1-Specs')+'.pdf';
-    doc.save(fname);
+    await savePdfAs(doc, fname);
   };
 
   const buildPDF = (budgetOnly) => {
@@ -6246,8 +6316,8 @@ const STANDARD_TERMS = [
       y += 34;
 
       // ── SPECIFICATIONS & NOTES ───────────────────────────────────────────
-      const specsText = combineSpecs(ti.tiSpecs, autoSpecs).trim();
-      const notesText = combineSpecs(ti.tiNotes, autoNotes).trim();
+      const specsText = (ti.tiSpecs||"").trim();
+      const notesText = (ti.tiNotes||"").trim();
       if(specsText||notesText){
         sectionHdr('Specifications & Notes');
         y += 4;
@@ -6506,7 +6576,7 @@ const STANDARD_TERMS = [
     for(let p=1;p<=tp;p++){ doc.setPage(p); drawFooter(); }
 
     const fname=((qi.opp)||'Quote')+(budgetOnly?' Budget':'')+'.pdf';
-    doc.save(fname);
+    await savePdfAs(doc, fname);
   };
 
 
