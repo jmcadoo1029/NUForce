@@ -3229,11 +3229,17 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       customer: q.customer || q.data?.qi?.account || "—",
       total: q.total || 0,
       updatedAt: q.updated_at,
+      // Use the actual decision date from the blob, fall back to updated_at
+      decidedAt: q.won_approval_status==="won_approved"
+        ? (q.data?.wonApproval?.decidedAt || q.updated_at)
+        : (q.data?.approval?.decidedAt || q.updated_at),
       type: q.won_approval_status==="won_approved" ? "Closed Won" : "Quote",
       decidedBy: q.won_approval_status==="won_approved"
         ? (q.data?.wonApproval?.decidedBy||"")
         : (q.data?.approval?.decidedBy||""),
     }));
+    // Sort by actual decision date descending
+    rows.sort((a,b)=>new Date(b.decidedAt)-new Date(a.decidedAt));
     setRecentApproved(rows);
     setRecentApprovedLoading(false);
   };
@@ -3677,7 +3683,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                           {"$"+(q.total||0).toLocaleString()}
                         </div>
                         <div style={{fontSize:11,color:"#6b7a8d"}}>
-                          {new Date(q.updatedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"})}
+                          {new Date(q.decidedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
                           {q.decidedBy&&<div style={{fontSize:10,color:"#9aa5b1"}}>{q.decidedBy.split("@")[0]}</div>}
                         </div>
                       </div>
