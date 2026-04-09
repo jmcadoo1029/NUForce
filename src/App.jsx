@@ -261,12 +261,14 @@ function MultiSection({title,instances,onAdd,onRemove,onUpdate,tag,newInstance,F
   useEffect(()=>{if(anyOn)setOpen(true);},[anyOn]);
   const handleToggle=v=>{
     if(v&&instances.length===0){onAdd();setOpen(true);}
-    else if(!v){
-      // Unchecking: reset this instance to default (preserving id so keys stay stable)
-      const fresh=newInstance();
-      onUpdate(0,{...fresh,id:instances[0].id,on:false});
+    else if(v){onUpdate(0,{...instances[0],on:true});setOpen(true);}
+    else if(!v&&instances.length>0){
+      // Unchecking: reset ALL instances to defaults, keeping IDs stable
+      instances.forEach((_,i)=>{
+        const fresh=newInstance();
+        onUpdate(i,{...fresh,id:instances[i].id,on:false});
+      });
     }
-    else{onUpdate(0,{...instances[0],on:v});if(v)setOpen(true);}
   };
   return(
     <div style={{...card,padding:0,overflow:"hidden",
@@ -5018,7 +5020,21 @@ export default function App({onLogout,currentUser}){
     if(q.ti)setTi(q.ti);
     if(q.vibs)setVibs(q.vibs);
     if(q.shocks)setShocks(q.shocks);
-    if(q.noises)setNoises(q.noises);
+    if(q.noises){
+      // Recalculate noise testing prices on load in case compBudget was saved as "0"
+      // but the level requires a compressor (saved before compressor logic existed)
+      const COMP_COST_LOAD={"<=140dB":0,"145dB":0,"150dB":0,"155dB":1500,"160dB":1500,"165dB":2000,"170dB":3500};
+      const fixedNoises=q.noises.map(n=>{
+        if(!n.on)return n;
+        const ac=COMP_COST_LOAD[n.level]||0;
+        if(ac>0&&(n.compBudget==="0"||!n.compBudget)){
+          return {...n, compBudget:String(ac),
+            testing:String(noiseTestingPrice(n.durVal,n.durUnit,n.level,ac))};
+        }
+        return n;
+      });
+      setNoises(fixedNoises);
+    }
     if(q.envs)setEnvs(q.envs);
     if(q.hfvs)setHfvs(q.hfvs);
     if(q.shos)setShos(q.shos);
