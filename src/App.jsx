@@ -459,7 +459,7 @@ function ShockForm({s,set,vibSetup,setup,ti}){
 }
 
 function NoiseForm({s,set,setup,ti}){
-  const COMP_COST={"<=140dB":0,"145dB":0,"150dB":0,"155dB":1500,"160dB":1500,"165dB":2000,"170dB":3500};
+  const COMP_COST={"<=140dB":0,"145dB":750,"150dB":1500,"155dB":1500,"160dB":1500,"165dB":2000,"170dB":3500};
   const autoComp=COMP_COST[s.level]||0;
   const compNeedsSync=autoComp>0&&(s.compBudget==="0"||s.compBudget===undefined||s.compBudget==="");
   const compCost=compNeedsSync?autoComp:sf(s.compBudget,autoComp);
@@ -4322,7 +4322,7 @@ export default function App({onLogout,currentUser}){
 
   // ── Auto-add/update compressor budget rows when noise sections have a compressor ─
   useEffect(()=>{
-    const COMP_COST_B={"<=140dB":0,"145dB":0,"150dB":0,"155dB":1500,"160dB":1500,"165dB":2000,"170dB":3500};
+    const COMP_COST_B={"<=140dB":0,"145dB":750,"150dB":1500,"155dB":1500,"160dB":1500,"165dB":2000,"170dB":3500};
     const noiseWithComp=noises.filter(s=>s.on&&((COMP_COST_B[s.level]||0)>0||sf(s.compBudget,0)>0));
     if(noiseWithComp.length===0)return;
     setBudget(prev=>{
@@ -4441,7 +4441,7 @@ export default function App({onLogout,currentUser}){
 
   // ── Sync noise compBudget when level changes or quote loads ────────────────
   useEffect(()=>{
-    const COMP_COST_EFF={"<=140dB":0,"145dB":0,"150dB":0,"155dB":1500,"160dB":1500,"165dB":2000,"170dB":3500};
+    const COMP_COST_EFF={"<=140dB":0,"145dB":750,"150dB":1500,"155dB":1500,"160dB":1500,"165dB":2000,"170dB":3500};
     const anyNeedsSync=noises.some(n=>{
       if(!n.on)return false;
       const ac=COMP_COST_EFF[n.level]||0;
@@ -5081,7 +5081,7 @@ export default function App({onLogout,currentUser}){
     if(q.noises){
       // Recalculate noise testing prices on load in case compBudget was saved as "0"
       // but the level requires a compressor (saved before compressor logic existed)
-      const COMP_COST_LOAD={"<=140dB":0,"145dB":0,"150dB":0,"155dB":1500,"160dB":1500,"165dB":2000,"170dB":3500};
+      const COMP_COST_LOAD={"<=140dB":0,"145dB":750,"150dB":1500,"155dB":1500,"160dB":1500,"165dB":2000,"170dB":3500};
       const fixedNoises=q.noises.map(n=>{
         if(!n.on)return n;
         const ac=COMP_COST_LOAD[n.level]||0;
