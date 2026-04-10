@@ -3091,7 +3091,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
           method:"POST",
           headers:{
             "Content-Type":"application/json",
-            "Authorization":`Bearer sb_publishable_bmrPY65INpUkea8VUX1Wag_T7Vrz9ZZ`,
+            "Authorization":`Bearer ${supabase.supabaseKey}`,
           },
           body: JSON.stringify({
             opportunity: fu.opportunity || q?.opportunity || "",
