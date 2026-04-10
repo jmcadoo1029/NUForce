@@ -3091,7 +3091,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
           method:"POST",
           headers:{
             "Content-Type":"application/json",
-            "Authorization":`Bearer ${supabase.supabaseKey}`,
+            "Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3dXV4em1nbWxkdnZvbXNnbWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MjcyMzMsImV4cCI6MjA4ODQwMzIzM30.GinbXqvBHcvYRaACBhgpd_Si8-qIDDj7PlbTCINcSU8",
           },
           body: JSON.stringify({
             opportunity: fu.opportunity || q?.opportunity || "",
@@ -3102,12 +3102,15 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
           })
         }
       );
-      const json = await resp.json();
+      console.log("[FollowUp] response status:", resp.status);
+      const rawText = await resp.text();
+      console.log("[FollowUp] raw response:", rawText);
+      const json = JSON.parse(rawText);
       if(json.error) throw new Error(json.error);
       setFuEmail({id:fu.id, text: json.text || "Could not generate email."});
     } catch(e) {
-      console.error("Email generation error:", e);
-      setFuEmail({id:fu.id, text:"Error generating email — please try again."});
+      console.error("[FollowUp] Email generation error:", e);
+      setFuEmail({id:fu.id, text:"Error: "+e.message});
     }
     setFuEmailLoading(null);
   };
