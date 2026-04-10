@@ -3102,15 +3102,11 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
           })
         }
       );
-      console.log("[FollowUp] response status:", resp.status);
-      const rawText = await resp.text();
-      console.log("[FollowUp] raw response:", rawText);
-      const json = JSON.parse(rawText);
+      const json = await resp.json();
       if(json.error) throw new Error(json.error);
       setFuEmail({id:fu.id, text: json.text || "Could not generate email."});
     } catch(e) {
-      console.error("[FollowUp] Email generation error:", e);
-      setFuEmail({id:fu.id, text:"Error: "+e.message});
+      setFuEmail({id:fu.id, text:"Error generating email — please try again."});
     }
     setFuEmailLoading(null);
   };
