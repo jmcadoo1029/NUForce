@@ -4458,7 +4458,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App({onLogout,currentUser}){
   const [qi,setQi]=useState({opp:"",account:"",billTo:"",billToCity:"",contact:"",email:"",prepby:"",rev:"",revDate:"",date:new Date().toLocaleDateString("en-US"),rfq:"",stage:"Proposal/Price Quote",type:"New Business",relatedOpps:""});
-  const [ti,setTi]=useState({item:"",qty:"1",model:"",drawing:"",loads:"",dimL:"",dimW:"",dimH:"",wt:"",volt:"",pwrType:"AC",phase:"",hz:"",inrush:"",amps:"",mounting:"",pressureFlow:"",gsi:"Unknown",witness:"Unknown",docRestriction:"None",dpas:"",tiSpecs:"",tiNotes:""});
+  const [ti,setTi]=useState({item:"",qty:"1",model:"",drawing:"",loads:null,dimL:"",dimW:"",dimH:"",wt:"",volt:"",pwrType:"AC",phase:"",hz:"",inrush:"",amps:"",mounting:"",pressureFlow:"",gsi:"Unknown",witness:"Unknown",docRestriction:"None",dpas:"",tiSpecs:"",tiNotes:""});
 
   // Multi-instance section state — arrays of instance objects
   const [vibs,setVibs]=useState([newVib()]);
@@ -4992,7 +4992,7 @@ export default function App({onLogout,currentUser}){
       const create=window.confirm("No quote found for \""+row.opportunity+"\"\n\nWould you like to create a new quote with this opportunity number?");
       if(create){
         setQi({opp:row.opportunity,account:row.account||"",billTo:"",billToCity:"",contact:"",email:"",prepby:"",rev:"",revDate:"",date:new Date().toLocaleDateString("en-US"),rfq:"",stage:"Proposal/Price Quote",type:"New Business",relatedOpps:""});
-        setTi({item:"",qty:"1",model:"",drawing:"",loads:"",dimL:"",dimW:"",dimH:"",wt:"",volt:"",pwrType:"AC",phase:"",hz:"",inrush:"",amps:"",mounting:"",pressureFlow:"",gsi:"Unknown",witness:"Unknown",docRestriction:"None",dpas:"",tiSpecs:"",tiNotes:""});
+        setTi({item:"",qty:"1",model:"",drawing:"",loads:null,dimL:"",dimW:"",dimH:"",wt:"",volt:"",pwrType:"AC",phase:"",hz:"",inrush:"",amps:"",mounting:"",pressureFlow:"",gsi:"Unknown",witness:"Unknown",docRestriction:"None",dpas:"",tiSpecs:"",tiNotes:""});
         setVibs([newVib()]);setShocks([newShock()]);setNoises([newNoise()]);setEnvs([newEnv()]);
         setHfvs([newHfv()]);setShos([newSho()]);setDcms([newDcm()]);setPqs([newPq()]);
         setEmis([newEmi()]);setAbs([newAb()]);setSbs([newSb()]);
@@ -5187,7 +5187,7 @@ export default function App({onLogout,currentUser}){
     }
     // Reset all state to blank defaults
     setQi({opp:"",account:"",billTo:"",billToCity:"",contact:"",email:"",prepby:"",rev:"",revDate:"",date:new Date().toLocaleDateString("en-US"),rfq:"",stage:"Proposal/Price Quote",type:"New Business",relatedOpps:""});
-    setTi({item:"",qty:"1",model:"",drawing:"",loads:"",dimL:"",dimW:"",dimH:"",wt:"",volt:"",pwrType:"AC",phase:"",hz:"",inrush:"",amps:"",mounting:"",pressureFlow:"",gsi:"Unknown",witness:"Unknown",docRestriction:"None",dpas:"",tiSpecs:"",tiNotes:""});
+    setTi({item:"",qty:"1",model:"",drawing:"",loads:null,dimL:"",dimW:"",dimH:"",wt:"",volt:"",pwrType:"AC",phase:"",hz:"",inrush:"",amps:"",mounting:"",pressureFlow:"",gsi:"Unknown",witness:"Unknown",docRestriction:"None",dpas:"",tiSpecs:"",tiNotes:""});
     setVibs([newVib()]); setShocks([newShock()]); setNoises([newNoise()]); setEnvs([newEnv()]);
     setHfvs([newHfv()]); setShos([newSho()]); setDcms([newDcm()]); setPqs([newPq()]);
     setEmis([newEmi()]); setAbs([newAb()]); setSbs([newSb()]);
@@ -5284,7 +5284,7 @@ export default function App({onLogout,currentUser}){
     })();
     prevAutoNotes.current=loadedAutoNotes;
     if(q.qi)setQi(q.qi);
-    if(q.ti)setTi(q.ti);
+    if(q.ti)setTi({...q.ti, loads: q.ti.loads===''?null:q.ti.loads??null});
     if(q.vibs)setVibs(q.vibs);
     if(q.shocks)setShocks(q.shocks);
     if(q.noises){
@@ -6583,7 +6583,7 @@ const STANDARD_TERMS = [
         sizeStr&&['Size', sizeStr],
         ti.wt&&['Weight', ti.wt+' lbs'],
         pwrParts.length&&['Power', pwrParts.join(', ')],
-        (ti.loads||(qi.account&&'All electrical and/or resistive loads will be provided by '+qi.account+' unless otherwise discussed.'))&&['Loads', ti.loads||(qi.account?'All electrical and/or resistive loads will be provided by '+qi.account+' unless otherwise discussed.':'')],
+        (ti.loads!=null||(qi.account&&ti.loads==null))&&(ti.loads!==''||qi.account)&&['Loads', ti.loads!=null&&ti.loads!==''?ti.loads:(qi.account?'All electrical and/or resistive loads will be provided by '+qi.account+' unless otherwise discussed.':'')],
         ti.mounting&&['Mounting', ti.mounting],
         ti.pressureFlow&&['Pressure/Flow', ti.pressureFlow],
       ].filter(Boolean).filter(r=>r[1]).forEach(([l,v])=>kvRow(l,v));
@@ -7647,10 +7647,9 @@ const STANDARD_TERMS = [
                 <div style={{marginBottom:6}}>
                   <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Loads</div>
                   <input
-                    value={ti.loads!==""?ti.loads:(qi.account?"All electrical and/or resistive loads will be provided by "+qi.account+" unless otherwise discussed.":"")}
+                    value={ti.loads!=null?ti.loads:(qi.account?"All electrical and/or resistive loads will be provided by "+qi.account+" unless otherwise discussed.":"")}
                     onChange={e=>setTi({...ti,loads:e.target.value})}
-                    onFocus={e=>{if(!ti.loads&&qi.account)setTi({...ti,loads:"All electrical and/or resistive loads will be provided by "+qi.account+" unless otherwise discussed."});}}
-                    placeholder={qi.account?"Auto: will use Account name":"Enter load details"}
+                    placeholder={qi.account?"Auto: uses Account name — clear to override":"Enter load details"}
                     style={{...inp,width:"100%"}}/>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:6}}>
