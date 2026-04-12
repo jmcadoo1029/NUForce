@@ -613,7 +613,6 @@ function EnvForm({s,set}){
     {key:"insres",label:"Insulation Resistance & Dielectric Strength",setup:0,testing:500,td:0},
   ];
   return <div>
-    <Row label="Spec"><Inp value={s.spec||""} onChange={v=>set({...s,spec:v})} width={200}/></Row>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
       {ENV_ITEMS.map(({key,label,setup,testing,td})=>{
         const checked=s.items?.[key]?.on||false;
@@ -4281,7 +4280,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                         {/* Count label — always just above bar */}
                         <text x={xCenter(i)} y={PAD.t+chartH-barH(m.count)-5}
                           textAnchor="middle" fontSize="10"
-                          fontWeight={m.isCurrent?"700":"400"}
+                          fontWeight={m.isCurrent?"500":"400"}
                           fill={m.isCurrent?"#1a5276":"#6b7a8d"}>
                           {m.count}
                         </text>
@@ -4311,7 +4310,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     {months.map((m,i)=>(
                       <text key={m.label} x={xCenter(i)} y={H-6}
                         textAnchor="middle" fontSize="10"
-                        fontWeight={m.isCurrent?"700":"400"}
+                        fontWeight={m.isCurrent?"500":"400"}
                         fill={m.isCurrent?"#1a5276":"#9aa5b1"}>
                         {m.label}
                       </text>
