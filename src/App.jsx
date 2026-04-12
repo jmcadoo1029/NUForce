@@ -222,7 +222,7 @@ function TestInstance({inst,idx,total,Form,formProps,onUpdate,onRemove,newInstan
   useEffect(()=>setLocalId(inst.identifier||""),[inst.id]);
   const commitId=()=>onUpdate(idx,prev=>({...prev,identifier:localId}));
   return(
-    <div style={{
+    <div data-testinstance={idx} style={{
       border:idx>0?"1px solid "+C.border:"none",
       borderRadius:idx>0?8:0,padding:idx>0?10:0,marginBottom:idx>0?10:0,
       background:idx>0?C.panel:"transparent"}}>
@@ -294,7 +294,10 @@ function MultiSection({title,instances,onAdd,onRemove,onUpdate,tag,newInstance,F
               Form={Form} formProps={formProps}
               onUpdate={onUpdate} onRemove={onRemove} newInstance={newInstance}/>
           ))}
-          <button onClick={onAdd}
+          <button onClick={()=>{onAdd();setTimeout(()=>{
+              const els=document.querySelectorAll('[data-testinstance]');
+              if(els.length)els[els.length-1].scrollIntoView({behavior:'smooth',block:'center'});
+            },100);}}
             style={{width:"100%",marginTop:8,background:"none",border:"1px dashed "+C.border,
               borderRadius:7,color:C.accent,padding:"7px 0",cursor:"pointer",fontSize:11,fontWeight:600}}>
             + Add Additional Test
@@ -2344,8 +2347,9 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     currentUnit=idx;
     const pre=idx>0?" #"+(idx+1)+(s.identifier?" ("+s.identifier+")":""):"";
     const pm=s.pia||1;
-    add("HFV"+pre+" – Setup",sectionSetup(s,globalSetup)*pm,null,"52");
-    add("HFV"+pre+" – Testing",sf(s.testing)*pm,null,"52");
+    const hfvSetupVal = sectionSetup(s,globalSetup)*pm || sf(s.stdSetup||s.setup||500)*pm;
+    add("Vibration"+pre+" – Setup",hfvSetupVal,null,"52");
+    add("Vibration"+pre+" – Testing",sf(s.testing)*pm,null,"52");
   });
 
   // SHO instances
@@ -4556,6 +4560,29 @@ export default function App({onLogout,currentUser}){
   const [showCreateProjectAlert,setShowCreateProjectAlert]=useState(false);
   const [currentQuoteSource,setCurrentQuoteSource]=useState("vibrato");
   const [showDashboard,setShowDashboard]=useState(true);
+
+  // ── Browser back/forward button support ──────────────────────────────────
+  // Push a history entry whenever we switch between dashboard and quote form
+  const navigateTo = (toDash) => {
+    if(toDash){
+      window.history.pushState({page:'dashboard'},'','#dashboard');
+    } else {
+      window.history.pushState({page:'quote'},'','#quote');
+    }
+    setShowDashboard(toDash);
+  };
+  useEffect(()=>{
+    // Set initial history state
+    window.history.replaceState({page:showDashboard?'dashboard':'quote'},'',
+      showDashboard?'#dashboard':'#quote');
+    const handlePop = (e) => {
+      const page = e.state?.page;
+      if(page==='dashboard') setShowDashboard(true);
+      else if(page==='quote') setShowDashboard(false);
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  },[]);
   const recentSaveRef=useRef(0); // timestamp of last local save — suppresses self-triggered realtime toast
   const reloadOpenQuoteRef=useRef(null); // set after handleLoad is defined — used by realtime toast button
   const [toast,setToast]=useState(null); // {msg, type: 'success'|'error'|'info'}
@@ -4583,11 +4610,18 @@ export default function App({onLogout,currentUser}){
   const isFollowUpUser=currentUser==="ccebello@nulabs.com"||isApprover;
   const isSalesforce=currentQuoteSource==="salesforce";
 
-  // ── Browser tab title ──────────────────────────────────────────────────────
+  // ── Browser tab title + history state for back button ─────────────────────
   useEffect(()=>{
     const opp=qi.opp||"";
     const label=showDashboard?"Home":opp?opp:"Vibrato";
     document.title=label;
+    // Push a history state so the browser back button works within the app
+    const state={showDashboard, quoteId:currentQuoteId};
+    const currentState=window.history.state;
+    // Only push if the view actually changed (avoid duplicate entries)
+    if(!currentState||currentState.showDashboard!==showDashboard||currentState.quoteId!==currentQuoteId){
+      window.history.pushState(state,"",window.location.pathname);
+    }
     // Set favicon
     const existing=document.querySelector("link[rel='icon']");
     const link=existing||document.createElement("link");
@@ -4637,6 +4671,18 @@ export default function App({onLogout,currentUser}){
       setQuoteSentAt(null);
     }
   },[currentQuoteId]);
+
+  // ── Browser back/forward button handler ────────────────────────────────────
+  useEffect(()=>{
+    const onPop=(e)=>{
+      const state=e.state;
+      if(state&&typeof state.showDashboard==="boolean"){
+        setShowDashboard(state.showDashboard);
+      }
+    };
+    window.addEventListener("popstate",onPop);
+    return ()=>window.removeEventListener("popstate",onPop);
+  },[]);
 
   // ── Load saved quotes on startup + Supabase Realtime sync ──────────────────
   useEffect(()=>{
@@ -4986,7 +5032,7 @@ export default function App({onLogout,currentUser}){
         approval:{...(q.approval||{}),status:matchData.approval_status||q.approval?.status||"none"}};
       handleLoad(match);
       setOpenQuotesPanel(false);
-      setShowDashboard(false);
+      navigateTo(false);
     } else {
       const create=window.confirm("No quote found for \""+row.opportunity+"\"\n\nWould you like to create a new quote with this opportunity number?");
       if(create){
@@ -5006,7 +5052,7 @@ export default function App({onLogout,currentUser}){
         setChatterEntries([]);setChatterInput("");
         setLocked(false);setCurrentQuoteId(null);
         setOpenQuotesPanel(false);
-        setShowDashboard(false);
+        navigateTo(false);
         window.scrollTo({top:0,behavior:"smooth"});
       }
     }
@@ -5019,14 +5065,18 @@ export default function App({onLogout,currentUser}){
     const base=newFn();
     const firstOn=prev.find(i=>i.on);
     const inherit=firstOn?{
-      ...firstOn,
+      ...base,           // start from fresh defaults
+      // only copy pricing fields from firstOn, not UI/structural fields
+      stdSetup: firstOn.stdSetup||base.stdSetup,
+      testing:  firstOn.testing||base.testing,
+      addlCosts:firstOn.addlCosts||base.addlCosts,
       id:Date.now(),
       on:false,
       identifier:"",
       customRows:[],
       proc:false,
       report:false,
-    }:{...base,identifier:""};
+    }:{...base,id:Date.now(),identifier:""};
     return [...prev,inherit];
   });
   const mkRemover=(_arr,setArr)=>idx=>setArr(prev=>prev.filter((_,i)=>i!==idx));
@@ -6880,13 +6930,13 @@ const STANDARD_TERMS = [
                 </div>
           <div style={{fontWeight:700,fontSize:13,letterSpacing:1,color:"rgba(255,255,255,0.5)",marginLeft:4}}>VIBRATO</div>
           <div style={{flex:1}}/>
-          <button onClick={()=>setShowDashboard(true)}
+          <button onClick={()=>navigateTo(true)}
             title="Go to dashboard"
             style={{background:showDashboard?"rgba(255,255,255,0.2)":"none",border:"1px solid rgba(255,255,255,0.25)",
               borderRadius:6,padding:"5px 12px",color:"#fff",fontSize:11,cursor:"pointer",fontWeight:600}}>
             🏠 Home
           </button>
-          <QuoteSearch onLoad={q=>{handleLoad(q);setShowDashboard(false);}}/>
+          <QuoteSearch onLoad={q=>{handleLoad(q);navigateTo(false);}}/>
 
           {!showDashboard&&<button onClick={handleClone} title="Clone this quote"
             style={{background:"#2e6da4",border:"none",borderRadius:7,padding:"7px 14px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
@@ -7111,7 +7161,7 @@ const STANDARD_TERMS = [
       <div style={{flex:1,display:"flex",overflow:"hidden"}}>
 
         {showDashboard?(
-          <Dashboard onEnterQuote={()=>{handleNewQuote(true);setShowDashboard(false);}} onLoadQuote={q=>{handleLoad(q);setShowDashboard(false);}} onNewQuoteForAccount={name=>{handleNewQuote(true);setQi(q=>({...q,account:name}));setShowDashboard(false);}} currentUser={currentUser} isApprover={isApprover} isFollowUpUser={isFollowUpUser} pendingQuotes={pendingQuotes} onQueueDecision={handleQueueDecision} needsRefresh={dashboardNeedsRefresh} onRefreshComplete={()=>setDashboardNeedsRefresh(false)}/>
+          <Dashboard onEnterQuote={()=>{handleNewQuote(true);navigateTo(false);}} onLoadQuote={q=>{handleLoad(q);navigateTo(false);}} onNewQuoteForAccount={name=>{handleNewQuote(true);setQi(q=>({...q,account:name}));navigateTo(false);}} currentUser={currentUser} isApprover={isApprover} isFollowUpUser={isFollowUpUser} pendingQuotes={pendingQuotes} onQueueDecision={handleQueueDecision} needsRefresh={dashboardNeedsRefresh} onRefreshComplete={()=>setDashboardNeedsRefresh(false)}/>
         ):(
         <>{/* ── Left: scrollable form column ── */}
         <div style={{flex:1,overflowY:"auto",background:C.bg,padding:14}}>
