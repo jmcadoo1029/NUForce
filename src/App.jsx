@@ -1822,7 +1822,6 @@ function ClientContactPicker({qi, setQi, resetKey}){
         .order("name")
         .limit(30);
       if(error)console.error("Clients query error:",error);
-      else console.log("Clients results:",data,"term:",term);
       setClientResults(data||[]);
     },250);
     return()=>clearTimeout(clientTimer.current);
