@@ -2653,7 +2653,6 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   shiftLines.sort((a,b)=>(a.seq||0)-(b.seq||0));
 
   // Tear Down goes after all mechanical lines, before shift-based lines
-  console.log("[SUMMARY lines]", lines.map(l=>l.label+":"+l.val), "mainLines:", mainLines.map(l=>l.label));
   const sortedMain=[...mechLines,...(tdLine?[tdLine]:[]),...shiftLines];
   // Proc order: general procs (42) first, then EMI (44), then DCM (44), then PQ (44)
   // Fixture drawings and modal analysis use codes 42 and 67 — sort them between regular procs and EMI/PQ/DCM
@@ -7950,12 +7949,12 @@ const STANDARD_TERMS = [
                   </div>
                   {(()=>{
                     // Use snapshot lines when not dirty — immune to formula changes
-                    const displayLines=(!isDirty&&snapshot?.lines?.length>0)?snapshot.lines:summary.lines;
+                    const displayLines=summary.lines;
                     const order=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
                     return order.map((origIdx,dispIdx)=>{
                       const l=displayLines[origIdx];
                       if(!l)return null;
-                      const ov=(!isDirty&&snapshot?.lines)?{}:(lineOverrides[origIdx]||{});
+                      const ov=lineOverrides[origIdx]||{};
                       if(ov.deleted)return null;
                       const dispPrice=ov.price!==undefined?ov.price:String(l.val);
                       const dispDesc=ov.desc!==undefined?ov.desc:"";
