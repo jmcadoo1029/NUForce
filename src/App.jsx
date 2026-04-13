@@ -2357,10 +2357,12 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     currentUnit=idx;
     const pre=idx>0?" #"+(idx+1)+(s.identifier?" ("+s.identifier+")":""):"";
     const pm=s.pia||1;
-    const hfvS={...s, stdSetup:s.stdSetup||s.setup||"500"};
-    const hfvSetupVal = sectionSetup(hfvS,globalSetup)*pm;
-    console.log("[HFV]",{idx,stdSetup:hfvS.stdSetup,pm,hfvSetupVal,globalSetup});
-    add("HF Vibration"+pre+" – Setup",hfvSetupVal||500,null,"52");
+    const hfvStd = sf(s.stdSetup||s.setup||"500", 500);
+    const hfvDrill = sf(globalSetup?.holes,0)*0.5*sf(globalSetup?.techRate,175)*(globalSetup?.drillTap?1.5:1);
+    const hfvFab = sf(globalSetup?.fabHours,0)*sf(globalSetup?.techRate,175);
+    const hfvAddl = sf(s.addlCosts,0);
+    const hfvSetupVal = Math.round((hfvStd+hfvDrill+hfvFab+hfvAddl)*pm);
+    add("HF Vibration"+pre+" – Setup",hfvSetupVal,null,"52");
     add("HF Vibration"+pre+" – Testing",sf(s.testing)*pm,null,"52");
   });
 
