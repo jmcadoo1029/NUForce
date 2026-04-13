@@ -2357,9 +2357,9 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     currentUnit=idx;
     const pre=idx>0?" #"+(idx+1)+(s.identifier?" ("+s.identifier+")":""):"";
     const pm=s.pia||1;
-    // Ensure stdSetup has a value before calling sectionSetup
     const hfvS={...s, stdSetup:s.stdSetup||s.setup||"500"};
     const hfvSetupVal = sectionSetup(hfvS,globalSetup)*pm;
+    console.log("[HFV]",{idx,stdSetup:hfvS.stdSetup,pm,hfvSetupVal,globalSetup});
     add("HF Vibration"+pre+" – Setup",hfvSetupVal||500,null,"52");
     add("HF Vibration"+pre+" – Testing",sf(s.testing)*pm,null,"52");
   });
@@ -2644,13 +2644,9 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   const mechLines=mainNoTd.filter(l=>!SHIFT_CODES.has(l.code));
   const shiftLines=mainNoTd.filter(l=>SHIFT_CODES.has(l.code));
 
-  // Sort each group by unit then seq
-  const byUnitSeq=(a,b)=>{
-    const ud=(a.unit||0)-(b.unit||0);
-    return ud!==0?ud:(a.seq||0)-(b.seq||0);
-  };
-  mechLines.sort(byUnitSeq);
-  shiftLines.sort(byUnitSeq);
+  // Sort by seq — calcSummary inserts lines in correct display order
+  mechLines.sort((a,b)=>(a.seq||0)-(b.seq||0));
+  shiftLines.sort((a,b)=>(a.seq||0)-(b.seq||0));
 
   // Tear Down goes after all mechanical lines, before shift-based lines
   const sortedMain=[...mechLines,...(tdLine?[tdLine]:[]),...shiftLines];
