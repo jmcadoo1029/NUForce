@@ -33,6 +33,14 @@ function noiseTestingPrice(durVal, durUnit, level, compCost){
   return Math.round((base60*(fullBlocks+1))+blockAdder(remaining)+compUp);
 }
 const NOISE_FAC={"Speakerbox":1000,"64 Reverb Chamber":1500,"300 Reverb Chamber":2000,"Prog Wave Tube":2750};
+// HFV testing price: $1225 flat ≤1hr, +$750/hr for hrs 1-3, +$525/hr for hrs 3+
+function hfvTestingPrice(durMin){
+  const m=parseFloat(durMin)||30;
+  const hrs=m/60;
+  if(hrs<=1) return 1225;
+  if(hrs<=3) return Math.round((1225+750*(hrs-1))/25)*25;
+  return Math.round((1225+750*2+525*(hrs-3))/25)*25;
+}
 const ENV_TH_PRICES={"0 to 1 Day":1000,"3 Days":1350,"5 Days":1875,"7 Days":2275,"10 Days":2950};
 const PROC_BASE=1600, REPORT_BASE=950;
 const EMI_SR=1600, PQ_SR=1450, DCM_SR=1600;
@@ -1258,14 +1266,17 @@ function HfvForm({s,set,setup}){
   const std=sf(s.stdSetup||s.setup||500);
   const addl=sf(s.addlCosts,0);
   const setupTotal=std+fab+addl;
+  const autoTesting=hfvTestingPrice(s.dur||30);
   return <div>
     <Row label="Spec"><Inp value={s.spec||""} onChange={v=>set({...s,spec:v})} width={200}/></Row>
-    <Row label="Duration/Axis (min)"><Inp value={s.dur} onChange={v=>set({...s,dur:v})} width={60}/></Row>
+    <Row label="Duration/Axis (min)"><Inp value={s.dur} onChange={v=>set({...s,dur:v,testing:String(hfvTestingPrice(v))})} width={60}/>
+      <span style={{fontSize:10,color:C.dim,marginLeft:6}}>→ ${autoTesting.toLocaleString()}</span>
+    </Row>
     <Pia s={s} set={set}/>
     <HR/>
     <PRow label="Std Setup" val={s.stdSetup||s.setup||"500"} onChange={v=>set({...s,stdSetup:v})}/>
     <PRow label="Add'l Costs" val={s.addlCosts||"0"} onChange={v=>set({...s,addlCosts:v})}/>
-    <PRow label="Testing" val={s.testing} onChange={v=>set({...s,testing:v})}/>
+    <PRow label="Testing (auto)" val={s.testing} onChange={v=>set({...s,testing:v})}/>
     <div style={{fontSize:10,background:C.panel,borderRadius:5,padding:"5px 8px",marginBottom:6}}>
       <span style={{color:C.dim}}>Setup: </span>
       <span style={{color:C.text,fontWeight:600}}>{money(setupTotal)}</span>
@@ -2204,7 +2215,7 @@ const newEnv=()=>({id:Date.now(),on:false,spec:"",items:{},thDur:"0 to 1 Day",th
 const newEmi=()=>({id:Date.now(),on:false,spec:"",rate:"1600",addl:"0",setupShifts:"3.0",tdShifts:"1.0",dimL:"",dimW:"",dimH:"",weight:"",cables:"0",rs103amp:"",plats:{},locs:{},revs:{},pia:0,tests:{},proc:false,report:false});
 const newPq=()=>({id:Date.now(),on:false,rate:"1450",setupShifts:"1.5",tdShifts:"1.0",rows:{},pia:0,cw:false,proc:false,report:false});
 const newDcm=()=>({id:Date.now(),on:false,spec:"",rate:"1600",setupShifts:"1.5",testShifts:"3.0",pia:0,proc:false,report:false});
-const newHfv=()=>({id:Date.now(),on:false,spec:"",dur:"30",pia:0,testing:"1000",stdSetup:"500",addlCosts:"0",proc:false,report:false});
+const newHfv=()=>({id:Date.now(),on:false,spec:"",dur:"30",pia:0,testing:"1225",stdSetup:"500",addlCosts:"0",proc:false,report:false});
 const newSho=()=>({id:Date.now(),on:false,spec:"",shape:"Half Sine",pia:0,testing:"1250",stdSetup:"500",addlCosts:"0",proc:false,report:false});
 
 // ── Summary calculation helper ────────────────────────────────────────────────
@@ -2346,9 +2357,11 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     currentUnit=idx;
     const pre=idx>0?" #"+(idx+1)+(s.identifier?" ("+s.identifier+")":""):"";
     const pm=s.pia||1;
-    const hfvSetupVal = sectionSetup(s,globalSetup)*pm || sf(s.stdSetup||s.setup||500)*pm;
-    add("Vibration"+pre+" – Setup",hfvSetupVal,null,"52");
-    add("Vibration"+pre+" – Testing",sf(s.testing)*pm,null,"52");
+    // Ensure stdSetup has a value before calling sectionSetup
+    const hfvS={...s, stdSetup:s.stdSetup||s.setup||"500"};
+    const hfvSetupVal = sectionSetup(hfvS,globalSetup)*pm;
+    add("HF Vibration"+pre+" – Setup",hfvSetupVal||500,null,"52");
+    add("HF Vibration"+pre+" – Testing",sf(s.testing)*pm,null,"52");
   });
 
   // SHO instances
@@ -2553,7 +2566,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     ...shocks.filter(s=>s.on).map((s,i)=>({s,lbl:"Shock"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"shock",unit:i})),
     ...noises.filter(s=>s.on).map((s,i)=>({s,lbl:"Noise"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"noise",unit:i})),
     ...envs.filter(s=>s.on).map((s,i)=>({s,lbl:"Env"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"env",unit:i})),
-    ...hfvs.filter(s=>s.on).map((s,i)=>({s,lbl:"HFV"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"hfv",unit:i})),
+    ...hfvs.filter(s=>s.on).map((s,i)=>({s,lbl:"HF Vibration"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"hfv",unit:i})),
     ...shos.filter(s=>s.on).map((s,i)=>({s,lbl:"Shock (Other)"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"sho",unit:i})),
     ...dcms.filter(s=>s.on).map((s,i)=>({s,lbl:"DCM"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"dcm",unit:i})),
     ...pqs.filter(s=>s.on).map((s,i)=>({s,lbl:"PQ"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"pq",unit:i})),
@@ -4630,6 +4643,7 @@ export default function App({onLogout,currentUser}){
     if(!existing)document.head.appendChild(link);
   },[qi.opp,showDashboard]);
 
+
   // ── Sync noise compBudget when level changes or quote loads ────────────────
   useEffect(()=>{
     const COMP_COST_EFF={"<=140dB":0,"145dB":750,"150dB":1500,"155dB":1500,"160dB":1500,"165dB":2000,"170dB":3500};
@@ -5143,38 +5157,52 @@ export default function App({onLogout,currentUser}){
   },[vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,
      budget,globalPR,lineOverrides,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal]);
 
-  // Sync auto-generated specs into tiSpecs when tests change (append new lines only)
+  // Sync auto-generated specs into tiSpecs when tests change
+  // Stores what was actually inserted so it can always be removed cleanly
   const prevAutoSpecs=useRef("");
+  const insertedAutoSpecs=useRef(""); // tracks what we actually put into tiSpecs
   useEffect(()=>{
     const prev=prevAutoSpecs.current;
     prevAutoSpecs.current=autoSpecs;
     if(prev===autoSpecs)return;
     setTi(t=>{
       const cur=t.tiSpecs||"";
+      const inserted=insertedAutoSpecs.current;
       let manual=cur;
-      if(prev){
-        if(manual.includes("\n\n"+prev))manual=manual.replace("\n\n"+prev,"").trimEnd();
-        else if(manual===prev)manual="";
+      // Remove whatever we last inserted — try all possible positions
+      if(inserted){
+        if(manual.endsWith("\n\n"+inserted))manual=manual.slice(0,-(inserted.length+2)).trimEnd();
+        else if(manual===inserted)manual="";
+        else if(manual.includes("\n\n"+inserted))manual=manual.replace("\n\n"+inserted,"").trimEnd();
+        else if(manual.includes(inserted+"\n\n"))manual=manual.replace(inserted+"\n\n","").trimEnd();
+        else if(manual.includes(inserted))manual=manual.replace(inserted,"").trim();
       }
-      if(!autoSpecs)return {...t,tiSpecs:manual};
+      if(!autoSpecs){insertedAutoSpecs.current="";return {...t,tiSpecs:manual};}
+      insertedAutoSpecs.current=autoSpecs;
       if(!manual)return {...t,tiSpecs:autoSpecs};
       return {...t,tiSpecs:manual+"\n\n"+autoSpecs};
     });
   },[autoSpecs]);
 
   const prevAutoNotes=useRef("");
+  const insertedAutoNotes=useRef("");
   useEffect(()=>{
     const prev=prevAutoNotes.current;
     prevAutoNotes.current=autoNotes;
     if(prev===autoNotes)return;
     setTi(t=>{
       const cur=t.tiNotes||"";
+      const inserted=insertedAutoNotes.current;
       let manual=cur;
-      if(prev){
-        if(manual.includes("\n\n"+prev))manual=manual.replace("\n\n"+prev,"").trimEnd();
-        else if(manual===prev)manual="";
+      if(inserted){
+        if(manual.endsWith("\n\n"+inserted))manual=manual.slice(0,-(inserted.length+2)).trimEnd();
+        else if(manual===inserted)manual="";
+        else if(manual.includes("\n\n"+inserted))manual=manual.replace("\n\n"+inserted,"").trimEnd();
+        else if(manual.includes(inserted+"\n\n"))manual=manual.replace(inserted+"\n\n","").trimEnd();
+        else if(manual.includes(inserted))manual=manual.replace(inserted,"").trim();
       }
-      if(!autoNotes)return {...t,tiNotes:manual};
+      if(!autoNotes){insertedAutoNotes.current="";return {...t,tiNotes:manual};}
+      insertedAutoNotes.current=autoNotes;
       if(!manual)return {...t,tiNotes:autoNotes};
       return {...t,tiNotes:manual+"\n\n"+autoNotes};
     });
