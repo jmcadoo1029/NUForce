@@ -2684,6 +2684,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     if(target){target.val=3750;target.display="$3,750";}
   }
   const setupLineLabels=sorted.filter(l=>l.label.toLowerCase().includes("setup")).map(l=>l.label);
+  console.log("[FINAL sorted]", sorted.map(l=>l.label+":"+l.val));
   return{lines:sorted,total:sorted.reduce((s,l)=>s+l.val,0),setupLineLabels};
 }
 
@@ -5101,15 +5102,28 @@ export default function App({onLogout,currentUser}){
   // Reset line order and stale overrides when summary length changes
   useEffect(()=>{
     if(lineOrder&&lineOrder.length!==summary.lines.length)setLineOrder(null);
-    // Clear lineOverrides for indices that no longer exist in the new line set
+    // Clear lineOverrides for indices that no longer exist, AND clear stale deleted flags
     if(Object.keys(lineOverrides).length>0){
       const validIndices=new Set(summary.lines.map((_,i)=>String(i)));
-      const stale=Object.keys(lineOverrides).filter(k=>!validIndices.has(k));
-      if(stale.length>0){
-        const cleaned={...lineOverrides};
-        stale.forEach(k=>delete cleaned[k]);
-        setLineOverrides(cleaned);
-      }
+      const cleaned={...lineOverrides};
+      let changed=false;
+      Object.keys(cleaned).forEach(k=>{
+        if(!validIndices.has(k)){
+          // Index no longer exists — remove entirely
+          delete cleaned[k];
+          changed=true;
+        } else if(cleaned[k]?.deleted){
+          // Line exists again but is marked deleted — the user re-added this section
+          // Check if the label changed (section was replaced, not just reordered)
+          const idx=parseInt(k);
+          const currentLabel=summary.lines[idx]?.label||"";
+          // If it's a setup/testing line that was re-added, clear the deleted flag
+          delete cleaned[k].deleted;
+          if(Object.keys(cleaned[k]).length===0)delete cleaned[k];
+          changed=true;
+        }
+      });
+      if(changed)setLineOverrides(cleaned);
     }
   },[summary.lines.length]);
 
@@ -7947,8 +7961,8 @@ const STANDARD_TERMS = [
                     <span/>
                   </div>
                   {(()=>{
-                    // Use snapshot lines when not dirty — immune to formula changes
                     const displayLines=summary.lines;
+                    console.log("[SIDEBAR] lines:", displayLines.map(l=>l.label+":"+l.val), "lineOrder:", lineOrder);
                     const order=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
                     return order.map((origIdx,dispIdx)=>{
                       const l=displayLines[origIdx];
