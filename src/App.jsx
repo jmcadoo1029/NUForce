@@ -2361,8 +2361,10 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     const hfvDrill = sf(globalSetup?.holes,0)*0.5*sf(globalSetup?.techRate,175)*(globalSetup?.drillTap?1.5:1);
     const hfvFab = sf(globalSetup?.fabHours,0)*sf(globalSetup?.techRate,175);
     const hfvAddl = sf(s.addlCosts,0);
-    const hfvSetupVal = Math.round((hfvStd+hfvDrill+hfvFab+hfvAddl)*pm);
-    add("HF Vibration"+pre+" – Setup",hfvSetupVal,null,"52");
+    const hfvSetupRaw = Math.round((hfvStd+hfvDrill+hfvFab+hfvAddl)*pm);
+    const hfvSetupVal = isNaN(hfvSetupRaw)||hfvSetupRaw<=0 ? Math.round(hfvStd*pm)||500 : hfvSetupRaw;
+    // Force push setup line directly — bypasses add()'s v>0 guard in case of edge cases
+    lines.push({label:"HF Vibration"+pre+" – Setup",val:r25(hfvSetupVal),code:"52",unit:currentUnit,seq:seq++});
     add("HF Vibration"+pre+" – Testing",sf(s.testing)*pm,null,"52");
   });
 
