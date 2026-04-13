@@ -2653,6 +2653,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   shiftLines.sort((a,b)=>(a.seq||0)-(b.seq||0));
 
   // Tear Down goes after all mechanical lines, before shift-based lines
+  console.log("[SUMMARY lines]", lines.map(l=>l.label+":"+l.val), "mainLines:", mainLines.map(l=>l.label));
   const sortedMain=[...mechLines,...(tdLine?[tdLine]:[]),...shiftLines];
   // Proc order: general procs (42) first, then EMI (44), then DCM (44), then PQ (44)
   // Fixture drawings and modal analysis use codes 42 and 67 — sort them between regular procs and EMI/PQ/DCM
@@ -5153,7 +5154,7 @@ export default function App({onLogout,currentUser}){
   // Only test selection changes mark the quote dirty (not metadata like account name)
   // isDirty=true means live calcSummary should be used; false means use snapshot
   useEffect(()=>{
-    if(currentQuoteId)setIsDirty(true);
+    setIsDirty(true);
   },[vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,
      budget,globalPR,lineOverrides,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal]);
 
