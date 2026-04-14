@@ -2279,7 +2279,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     add("Vibration"+pre+" – Setup",sectionSetup(s,globalSetup)*pm,null,"94");
     // Vib instrumentation: between setup and testing
     if(inst.on){
-      if(inst.items?.vib?.on)add("Vib Instrumentation",700*sf(inst.items.vib.channels,1),null,"33");
+      if(inst.items?.vib?.on)add("Vib Instrumentation",325*sf(inst.items.vib.channels,1),null,"33");
       if(inst.items?.cmVib?.on)add("Contact Monitoring (Vibe)",750*sf(inst.items.cmVib.channels,1),null,"33");
     }
     add("Vibration"+pre+" – Testing",sf(s.testing)*pm,null,"94");
