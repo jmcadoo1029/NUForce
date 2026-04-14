@@ -7636,6 +7636,26 @@ const STANDARD_TERMS = [
             </div>
           )}
 
+          {/* ── Edit toggle — outside locked wrapper so always clickable ── */}
+          {currentQuoteId&&!locked&&(
+            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+              {isDirty
+                ? <button onClick={()=>setIsDirty(false)} title="Lock quote"
+                    style={{fontSize:13,background:"#b7791f",color:"#fff",border:"none",
+                      borderRadius:7,padding:"7px 18px",fontWeight:700,cursor:"pointer",
+                      display:"flex",alignItems:"center",gap:6,letterSpacing:.3}}>
+                    ✏️ EDITING — click to lock
+                  </button>
+                : <button onClick={()=>setIsDirty(true)} title="Edit this quote"
+                    style={{fontSize:13,background:"#276749",color:"#fff",border:"none",
+                      borderRadius:7,padding:"7px 18px",fontWeight:700,cursor:"pointer",
+                      display:"flex",alignItems:"center",gap:6,letterSpacing:.3}}>
+                    🔒 EDIT
+                  </button>
+              }
+            </div>
+          )}
+
           <div style={{
             pointerEvents:(locked||(currentQuoteId&&!isDirty))?"none":"auto",
             opacity:(locked||(currentQuoteId&&!isDirty))?0.65:1,
@@ -7646,26 +7666,7 @@ const STANDARD_TERMS = [
 
               {/* Quote Info */}
               <div style={{...card}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                  <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2}}>QUOTE INFORMATION</div>
-                  {currentQuoteId&&!locked&&(
-                    isDirty
-                      ? <button onClick={()=>setIsDirty(false)}
-                          title="Lock quote (stop editing)"
-                          style={{fontSize:9,background:"#b7791f",color:"#fff",border:"none",
-                            borderRadius:4,padding:"2px 8px",fontWeight:700,letterSpacing:.5,
-                            cursor:"pointer"}}>
-                          ✏️ EDITING
-                        </button>
-                      : <button onClick={()=>setIsDirty(true)}
-                          title="Click to edit this quote"
-                          style={{fontSize:9,background:"#276749",color:"#fff",border:"none",
-                            borderRadius:4,padding:"2px 8px",fontWeight:700,letterSpacing:.5,
-                            cursor:"pointer"}}>
-                          🔒 EDIT
-                        </button>
-                  )}
-                </div>
+                <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2,marginBottom:8}}>QUOTE INFORMATION</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 16px"}}>
                   <div>
                     <ClientContactPicker qi={qi} setQi={setQi} resetKey={currentQuoteId}/>
