@@ -5428,7 +5428,29 @@ export default function App({onLogout,currentUser}){
     // Load snapshot and clear dirty flag
     setSnapshot(q.snapshot||null);
     setIsDirty(false);
-    if(q.lineOverrides!==undefined)setLineOverrides(q.lineOverrides); else setLineOverrides({});
+    // Validate lineOverrides: only keep deleted flags where stored label matches
+    // the saved summary at that index. This prevents stale deletions from hiding wrong lines.
+    if(q.lineOverrides!==undefined){
+      const savedLines=q.summary?.lines||[];
+      const validated={};
+      Object.entries(q.lineOverrides).forEach(([k,ov])=>{
+        const idx=parseInt(k);
+        if(ov?.deleted){
+          const storedLabel=ov.label;
+          const currentLabel=savedLines[idx]?.label;
+          // Keep deletion only if label matches (same line) or no label stored (trust index)
+          if(!storedLabel||storedLabel===currentLabel){
+            validated[k]=ov;
+          }
+          // else: stale deletion — drop it silently
+        } else {
+          validated[k]=ov; // keep price/desc overrides as-is
+        }
+      });
+      setLineOverrides(validated);
+    } else {
+      setLineOverrides({});
+    }
     // Release loading lock after React has batched all state updates
     setTimeout(()=>{ isLoadingRef.current=false; }, 50);
     // ── Salesforce imported quotes: load line items into custom section ──
@@ -8012,10 +8034,6 @@ const STANDARD_TERMS = [
                   </div>
                   {(()=>{
                     const displayLines=summary.lines;
-                    // Debug: log any deleted overrides
-                    const deletedOvs=Object.entries(lineOverrides).filter(([,v])=>v?.deleted);
-                    if(deletedOvs.length>0)console.log("[OV deleted]",deletedOvs.map(([k,v])=>k+":"+v.label));
-                    console.log("[summary]",displayLines.map(l=>l.label));
                     const order=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
                     return order.map((origIdx,dispIdx)=>{
                       const l=displayLines[origIdx];
