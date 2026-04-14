@@ -5121,36 +5121,9 @@ export default function App({onLogout,currentUser}){
   const summary=useMemo(()=>calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal),
     [vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal]);
 
-  // Remap lineOverrides when summary lines change — match by stored label so
-  // deleted/price/desc flags survive index shifts (e.g. when a proc is added/removed)
+  // Reset lineOrder when summary length changes
   useEffect(()=>{
     if(lineOrder&&lineOrder.length!==summary.lines.length)setLineOrder(null);
-    if(Object.keys(lineOverrides).length===0)return;
-
-    // Build a map of label -> override from existing overrides
-    // Each override should have a stored .label from when it was created
-    const remapped={};
-    let changed=false;
-
-    summary.lines.forEach((line,newIdx)=>{
-      // Find an override whose stored label matches this line's label
-      const match=Object.entries(lineOverrides).find(([,ov])=>ov.label===line.label);
-      if(match){
-        const [oldKey,ov]=match;
-        remapped[newIdx]=ov;
-        if(parseInt(oldKey)!==newIdx)changed=true;
-      } else {
-        // Fallback for old overrides without stored labels — keep by index if label matches
-        const oldOv=lineOverrides[newIdx];
-        if(oldOv&&!oldOv.label){
-          remapped[newIdx]=oldOv; // keep as-is, will get label next time user edits
-        }
-      }
-    });
-
-    // Check if any overrides were dropped (no matching label in new lines)
-    const droppedCount=Object.keys(lineOverrides).length-Object.keys(remapped).length;
-    if(changed||droppedCount>0)setLineOverrides(remapped);
   },[summary.lines.length]);
 
   // Reset td override when no main tests are active
