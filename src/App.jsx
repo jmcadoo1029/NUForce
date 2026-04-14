@@ -5375,6 +5375,7 @@ export default function App({onLogout,currentUser}){
       q.abs||[newAb()], q.sbs||[newSb()]
     );
     prevAutoSpecs.current=loadedAutoSpecs;
+    insertedAutoSpecs.current=loadedAutoSpecs; // pre-seed so sync effect doesn't re-append
     // Pre-seed autoNotes the same way — compute from loaded tests so the
     // guard fires correctly and doesn't re-append on load
     const loadedAutoNotes=(()=>{
@@ -5396,6 +5397,7 @@ export default function App({onLogout,currentUser}){
       return lines.join("\n\n");
     })();
     prevAutoNotes.current=loadedAutoNotes;
+    insertedAutoNotes.current=loadedAutoNotes; // pre-seed so sync effect doesn't re-append
     if(q.qi)setQi(q.qi);
     if(q.ti)setTi({...q.ti, loads: q.ti.loads===''?null:q.ti.loads??null});
     if(q.vibs)setVibs(q.vibs);
