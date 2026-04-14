@@ -7638,7 +7638,7 @@ const STANDARD_TERMS = [
 
           {/* ── Edit toggle — outside locked wrapper so always clickable ── */}
           {currentQuoteId&&!locked&&(
-            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"flex-start",marginBottom:8}}>
               {isDirty
                 ? <button onClick={()=>setIsDirty(false)} title="Lock quote"
                     style={{fontSize:13,background:"#b7791f",color:"#fff",border:"none",
