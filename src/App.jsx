@@ -7085,6 +7085,25 @@ const STANDARD_TERMS = [
             )}
             <div style={{flex:1}}/>
             {!showDashboard&&currentQuoteId&&(
+              {currentQuoteId&&(()=>{
+                const firstName=(qi.contact||"").trim().split(/\s+/)[0]||"";
+                const hasSpecialTest=emis.some(s=>s.on)||pqs.some(s=>s.on)||dcms.some(s=>s.on);
+                const emailBody=
+                  "Dear "+(firstName||qi.contact||"[Contact]")+",\n\n"+
+                  "Please see the attached quotation "+(qi.opp||"[Quote #]")+
+                  " for testing the "+(ti.item||"[Item]")+
+                  ". Please let us know if you have any questions.\n\n"+
+                  (hasSpecialTest?"Please refer to additional attachments for further testing descriptions.\n\n":"")+
+                  "Also attached is our Terms and Conditions page for your signature and return with your purchase order.\n\n"+
+                  "Thank you,";
+                return(
+                  <button onClick={()=>{navigator.clipboard.writeText(emailBody);showToast("✉️ Email copied to clipboard","success",3000);}}
+                    style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",
+                      borderRadius:5,padding:"3px 10px",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer"}}>
+                    📋 Copy Email
+                  </button>
+                );
+              })()}
               <button onClick={()=>setShowChatter(c=>!c)}
                 style={{background:showChatter?"rgba(26,82,118,0.9)":"rgba(255,255,255,0.12)",
                   border:"1px solid rgba(255,255,255,0.2)",borderRadius:5,padding:"3px 10px",
