@@ -5121,18 +5121,36 @@ export default function App({onLogout,currentUser}){
   const summary=useMemo(()=>calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal),
     [vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal]);
 
-  // Clean up lineOverrides when summary lines change
+  // Remap lineOverrides when summary lines change — match by stored label so
+  // deleted/price/desc flags survive index shifts (e.g. when a proc is added/removed)
   useEffect(()=>{
     if(lineOrder&&lineOrder.length!==summary.lines.length)setLineOrder(null);
     if(Object.keys(lineOverrides).length===0)return;
-    // Only remove overrides for indices that no longer exist
-    const validIndices=new Set(summary.lines.map((_,i)=>String(i)));
-    const stale=Object.keys(lineOverrides).filter(k=>!validIndices.has(k));
-    if(stale.length>0){
-      const cleaned={...lineOverrides};
-      stale.forEach(k=>delete cleaned[k]);
-      setLineOverrides(cleaned);
-    }
+
+    // Build a map of label -> override from existing overrides
+    // Each override should have a stored .label from when it was created
+    const remapped={};
+    let changed=false;
+
+    summary.lines.forEach((line,newIdx)=>{
+      // Find an override whose stored label matches this line's label
+      const match=Object.entries(lineOverrides).find(([,ov])=>ov.label===line.label);
+      if(match){
+        const [oldKey,ov]=match;
+        remapped[newIdx]=ov;
+        if(parseInt(oldKey)!==newIdx)changed=true;
+      } else {
+        // Fallback for old overrides without stored labels — keep by index if label matches
+        const oldOv=lineOverrides[newIdx];
+        if(oldOv&&!oldOv.label){
+          remapped[newIdx]=oldOv; // keep as-is, will get label next time user edits
+        }
+      }
+    });
+
+    // Check if any overrides were dropped (no matching label in new lines)
+    const droppedCount=Object.keys(lineOverrides).length-Object.keys(remapped).length;
+    if(changed||droppedCount>0)setLineOverrides(remapped);
   },[summary.lines.length]);
 
   // Reset td override when no main tests are active
@@ -8021,16 +8039,9 @@ const STANDARD_TERMS = [
                     <span/>
                   </div>
                   {(()=>{
-                    // When locked: show snapshot lines but also include any new lines
-                    // added since last save (e.g. procedures, modal analysis added after snapshot)
-                    let displayLines;
-                    if(!isDirty&&snapshot?.lines?.length>0){
-                      const snapLabels=new Set(snapshot.lines.map(l=>l.label));
-                      const newLines=summary.lines.filter(l=>!snapLabels.has(l.label));
-                      displayLines=[...snapshot.lines,...newLines];
-                    } else {
-                      displayLines=summary.lines;
-                    }
+                    // Always show live summary.lines in sidebar
+                    // Snapshot only protects PDF output — sidebar should always reflect current state
+                    const displayLines=summary.lines;
                     const order=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
                     return order.map((origIdx,dispIdx)=>{
                       const l=displayLines[origIdx];
