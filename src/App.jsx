@@ -5114,14 +5114,24 @@ export default function App({onLogout,currentUser}){
           delete cleaned[k];
           changed=true;
         } else if(cleaned[k]?.deleted){
-          // Line exists again but is marked deleted — the user re-added this section
-          // Check if the label changed (section was replaced, not just reordered)
+          // Line is marked deleted but still exists in summary — keep the deletion
+          // ONLY clear the deleted flag if the line was genuinely replaced
+          // (i.e. the label at this index changed, meaning it's a different line now)
           const idx=parseInt(k);
           const currentLabel=summary.lines[idx]?.label||"";
-          // If it's a setup/testing line that was re-added, clear the deleted flag
-          delete cleaned[k].deleted;
-          if(Object.keys(cleaned[k]).length===0)delete cleaned[k];
-          changed=true;
+          const savedLabel=cleaned[k]?.label||"";
+          // If we stored the label at delete time and it matches current, keep deleted
+          // If we have no stored label (old saves), only clear if it looks like a section reset
+          if(savedLabel && savedLabel===currentLabel){
+            // Same line, same position — user explicitly deleted this, keep it deleted
+          } else if(!savedLabel){
+            // Old save without stored label — keep deleted to preserve user intent
+          } else {
+            // Label changed — genuinely a different line, clear the flag
+            delete cleaned[k].deleted;
+            if(Object.keys(cleaned[k]).length===0)delete cleaned[k];
+            changed=true;
+          }
         }
       });
       if(changed)setLineOverrides(cleaned);
@@ -8038,7 +8048,7 @@ const STANDARD_TERMS = [
                                 outline:"none",textAlign:"right",padding:"1px 2px"}}/>
                           </div>
                           {/* Delete */}
-                          <button onClick={()=>setLineOverrides({...lineOverrides,[origIdx]:{...ov,deleted:true}})}
+                          <button onClick={()=>setLineOverrides({...lineOverrides,[origIdx]:{...ov,deleted:true,label:l.label}})}
                             style={{background:"none",border:"none",color:C.dim,cursor:"pointer",
                               fontSize:12,padding:0,lineHeight:1,textAlign:"center"}}
                             title="Remove line">✕</button>
