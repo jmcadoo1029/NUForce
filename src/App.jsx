@@ -7636,7 +7636,10 @@ const STANDARD_TERMS = [
             </div>
           )}
 
-          <div style={{pointerEvents:locked?"none":"auto",opacity:locked?0.65:1,transition:"opacity 0.2s"}}>
+          <div style={{
+            pointerEvents:(locked||(currentQuoteId&&!isDirty))?"none":"auto",
+            opacity:(locked||(currentQuoteId&&!isDirty))?0.65:1,
+            transition:"opacity 0.2s"}}>
 
             {/* ── Row 1: Quote Info | Test Item Description ── */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
@@ -8170,9 +8173,7 @@ const STANDARD_TERMS = [
             </div>{/* end Row 4 */}
 
             {/* ── Row 5+: Test sections ── */}
-            <div style={{pointerEvents:currentQuoteId&&!isDirty&&!locked?"none":"auto",
-              opacity:currentQuoteId&&!isDirty&&!locked?0.6:1,
-              transition:"opacity 0.15s"}}>
+            <div>
             <MultiSection title="VIBRATION  (MIL-STD-167)" instances={vibs}
               onAdd={mkAdder(vibs,setVibs,newVib)}
               onRemove={mkRemover(vibs,setVibs)}
