@@ -7228,6 +7228,7 @@ const STANDARD_TERMS = [
         <div style={{flex:1,overflowY:"auto",background:C.bg,padding:14,position:"relative"}}>
 
 
+
           {/* ── Approval submission modal ── */}
           {showApprovalModal&&(
             <div style={{position:"fixed",inset:0,zIndex:2000,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}
@@ -7641,23 +7642,24 @@ const STANDARD_TERMS = [
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
 
               {/* Quote Info */}
-              <div style={{...card, opacity: (currentQuoteId&&!isDirty&&!locked) ? 0.75 : 1,
-                transition:"opacity 0.2s",
-                outline: (currentQuoteId&&!isDirty&&!locked) ? "1px dashed "+C.border : "none"}}>
+              <div style={{...card}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                   <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2}}>QUOTE INFORMATION</div>
                   {currentQuoteId&&!locked&&(
                     isDirty
-                      ? <span style={{fontSize:9,background:"#b7791f",color:"#fff",borderRadius:4,
-                          padding:"2px 8px",fontWeight:700,letterSpacing:.5,cursor:"default"}}>
+                      ? <button onClick={()=>setIsDirty(false)}
+                          title="Lock quote (stop editing)"
+                          style={{fontSize:9,background:"#b7791f",color:"#fff",border:"none",
+                            borderRadius:4,padding:"2px 8px",fontWeight:700,letterSpacing:.5,
+                            cursor:"pointer"}}>
                           ✏️ EDITING
-                        </span>
+                        </button>
                       : <button onClick={()=>setIsDirty(true)}
                           title="Click to edit this quote"
                           style={{fontSize:9,background:"#276749",color:"#fff",border:"none",
                             borderRadius:4,padding:"2px 8px",fontWeight:700,letterSpacing:.5,
                             cursor:"pointer"}}>
-                          ✎ EDIT
+                          🔒 EDIT
                         </button>
                   )}
                 </div>
@@ -8168,6 +8170,9 @@ const STANDARD_TERMS = [
             </div>{/* end Row 4 */}
 
             {/* ── Row 5+: Test sections ── */}
+            <div style={{pointerEvents:currentQuoteId&&!isDirty&&!locked?"none":"auto",
+              opacity:currentQuoteId&&!isDirty&&!locked?0.6:1,
+              transition:"opacity 0.15s"}}>
             <MultiSection title="VIBRATION  (MIL-STD-167)" instances={vibs}
               onAdd={mkAdder(vibs,setVibs,newVib)}
               onRemove={mkRemover(vibs,setVibs)}
@@ -8355,6 +8360,7 @@ const STANDARD_TERMS = [
             </Section>
 
           </div>{/* end pointer-events wrapper */}
+            </div>{/* end test sections lock wrapper */}
         </div>{/* end left scroll column */}
 
       </>)}{/* end dashboard/form conditional */}
