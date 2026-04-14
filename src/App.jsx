@@ -8278,6 +8278,14 @@ const STANDARD_TERMS = [
               <OtForm s={ot} set={setOt}/>
             </Section>
 
+
+            <Section title="CUSTOM LINE ITEMS" enabled={custom.on} onToggle={v=>setCustom(v?{...custom,on:true}:{on:false,rows:[]})}>
+              <CustomForm s={custom} set={setCustom}/>
+            </Section>
+
+          </div>{/* end pointer-events wrapper */}
+            </div>{/* end test sections lock wrapper */}
+
             {/* ── Global Procedures / Reports / CoC ── */}
             {(()=>{
               const pr=globalPR;
@@ -8375,12 +8383,6 @@ const STANDARD_TERMS = [
               );
             })()}
 
-            <Section title="CUSTOM LINE ITEMS" enabled={custom.on} onToggle={v=>setCustom(v?{...custom,on:true}:{on:false,rows:[]})}>
-              <CustomForm s={custom} set={setCustom}/>
-            </Section>
-
-          </div>{/* end pointer-events wrapper */}
-            </div>{/* end test sections lock wrapper */}
         </div>{/* end left scroll column */}
 
       </>)}{/* end dashboard/form conditional */}
