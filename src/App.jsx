@@ -5399,7 +5399,7 @@ export default function App({onLogout,currentUser}){
     prevAutoNotes.current=loadedAutoNotes;
     insertedAutoNotes.current=loadedAutoNotes; // pre-seed so sync effect doesn't re-append
     if(q.qi)setQi(q.qi);
-    if(q.ti)setTi({...q.ti, loads: q.ti.loads===''?null:q.ti.loads??null});
+    if(q.ti)setTi(q.ti);
     if(q.vibs)setVibs(q.vibs);
     if(q.shocks)setShocks(q.shocks);
     if(q.noises){
@@ -6724,7 +6724,7 @@ const STANDARD_TERMS = [
         sizeStr&&['Size', sizeStr],
         ti.wt&&['Weight', ti.wt+' lbs'],
         pwrParts.length&&['Power', pwrParts.join(', ')],
-        (ti.loads!=null||(qi.account&&ti.loads==null))&&(ti.loads!==''||qi.account)&&['Loads', ti.loads!=null&&ti.loads!==''?ti.loads:(qi.account?'All electrical and/or resistive loads will be provided by '+qi.account+' unless otherwise discussed.':'')],
+        (ti.loads!==''&&(ti.loads!=null||qi.account))&&['Loads', ti.loads!=null&&ti.loads!==''?ti.loads:(qi.account?'All electrical and/or resistive loads will be provided by '+qi.account+' unless otherwise discussed.':'')],
         ti.mounting&&['Mounting', ti.mounting],
         ti.pressureFlow&&['Pressure/Flow', ti.pressureFlow],
       ].filter(Boolean).filter(r=>r[1]).forEach(([l,v])=>kvRow(l,v));
