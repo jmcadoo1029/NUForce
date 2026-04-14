@@ -5428,40 +5428,7 @@ export default function App({onLogout,currentUser}){
     // Load snapshot and clear dirty flag
     setSnapshot(q.snapshot||null);
     setIsDirty(false);
-    // After load: remap lineOverrides by label so stale indices don't hide lines.
-    // Build a fresh summary from the loaded data to get correct indices.
-    if(q.lineOverrides&&Object.keys(q.lineOverrides).length>0){
-      const loadedSummary=calcSummary(
-        q.vibs||[newVib()],q.shocks||[newShock()],q.noises||[newNoise()],
-        q.envs||[newEnv()],q.hfvs||[newHfv()],q.shos||[newSho()],
-        q.emis||[newEmi()],q.pqs||[newPq()],q.dcms||[newDcm()],
-        q.abs||[newAb()],q.sbs||[newSb()],
-        q.inst||{on:false,items:{}},q.ot||{on:false,rows:[]},
-        q.custom||{on:false,rows:[]},
-        q.td||"500",q.coc||false,q.sub||false,
-        q.globalPR||{procs:[],reps:[],coc:false,cocPrice:"250"},
-        q.budget||{rows:[],markup:"0"},
-        q.setup||{techRate:"175",fabHours:"4",holes:"0",cables:"0",drillTap:false},
-        q.splitProcReport||false,q.modalAnalysis||{on:false,price:"6250"},
-        q.fixtureDrawing||{on:false,price:"2950"},q.inStockModal||{on:false,targetProc:""}
-      );
-      // Build label->index map for loaded summary
-      const labelToIdx={};
-      loadedSummary.lines.forEach((l,i)=>{ labelToIdx[l.label]=i; });
-      // Remap overrides: for each saved override, find its label and new index
-      const remapped={};
-      Object.entries(q.lineOverrides).forEach(([oldIdx,ov])=>{
-        // Get label: from stored ov.label, or from old summary if available
-        const label=ov.label||(q.summary?.lines?.[parseInt(oldIdx)]?.label);
-        if(label&&labelToIdx[label]!==undefined){
-          remapped[labelToIdx[label]]={...ov,label};
-        }
-        // Drop overrides whose label no longer exists in summary — they're stale
-      });
-      setLineOverrides(remapped);
-    } else {
-      setLineOverrides({});
-    }
+    if(q.lineOverrides!==undefined)setLineOverrides(q.lineOverrides); else setLineOverrides({});
     // Release loading lock after React has batched all state updates
     setTimeout(()=>{ isLoadingRef.current=false; }, 50);
     // ── Salesforce imported quotes: load line items into custom section ──
@@ -8045,6 +8012,10 @@ const STANDARD_TERMS = [
                   </div>
                   {(()=>{
                     const displayLines=summary.lines;
+                    // Debug: log any deleted overrides
+                    const deletedOvs=Object.entries(lineOverrides).filter(([,v])=>v?.deleted);
+                    if(deletedOvs.length>0)console.log("[OV deleted]",deletedOvs.map(([k,v])=>k+":"+v.label));
+                    console.log("[summary]",displayLines.map(l=>l.label));
                     const order=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
                     return order.map((origIdx,dispIdx)=>{
                       const l=displayLines[origIdx];
