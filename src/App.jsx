@@ -5121,40 +5121,17 @@ export default function App({onLogout,currentUser}){
   const summary=useMemo(()=>calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal),
     [vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal]);
 
-  // Remap lineOverrides by label when summary lines change
-  // This preserves deleted/price/desc overrides even when indices shift
+  // Clean up lineOverrides when summary lines change
   useEffect(()=>{
     if(lineOrder&&lineOrder.length!==summary.lines.length)setLineOrder(null);
     if(Object.keys(lineOverrides).length===0)return;
-
-    // Build label->override map from current overrides
-    const byLabel={};
-    Object.entries(lineOverrides).forEach(([k,ov])=>{
-      const label=ov.label||summary.lines[parseInt(k)]?.label;
-      if(label)byLabel[label]=ov;
-    });
-
-    // Remap to new indices by matching labels
-    const remapped={};
-    let changed=false;
-    summary.lines.forEach((l,i)=>{
-      const ov=byLabel[l.label];
-      if(ov){
-        remapped[i]=ov;
-        // If old index differs from new, mark changed
-        const oldKey=Object.entries(lineOverrides).find(([k,v])=>(v.label||summary.lines[parseInt(k)]?.label)===l.label)?.[0];
-        if(oldKey!==undefined&&parseInt(oldKey)!==i)changed=true;
-      }
-    });
-
-    // Check if anything was removed (indices that no longer map to a label)
-    Object.keys(lineOverrides).forEach(k=>{
-      const label=lineOverrides[k]?.label||summary.lines[parseInt(k)]?.label;
-      if(!label)changed=true; // orphaned entry
-    });
-
-    if(changed||Object.keys(remapped).length!==Object.keys(lineOverrides).length){
-      setLineOverrides(remapped);
+    // Only remove overrides for indices that no longer exist
+    const validIndices=new Set(summary.lines.map((_,i)=>String(i)));
+    const stale=Object.keys(lineOverrides).filter(k=>!validIndices.has(k));
+    if(stale.length>0){
+      const cleaned={...lineOverrides};
+      stale.forEach(k=>delete cleaned[k]);
+      setLineOverrides(cleaned);
     }
   },[summary.lines.length]);
 
