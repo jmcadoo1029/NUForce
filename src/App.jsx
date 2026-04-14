@@ -1321,7 +1321,7 @@ function InstForm({s,set}){
   const ITEMS=[
     {key:"shock",label:"Shock Instrumentation",price:525,ch:true},
     {key:"cmShock",label:"Contact Monitoring (Shock)",price:350,ch:true},
-    {key:"vib",label:"Vib Addl Channels",price:700,ch:true},
+    {key:"vib",label:"Vib Addl Channels",price:325,ch:true},
     {key:"cmVib",label:"Contact Monitoring (Vibe)",price:750,ch:true},
     {key:"hsv",label:"High Speed Video",price:1950,ch:false},
   ];
