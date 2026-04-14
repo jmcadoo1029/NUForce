@@ -7002,6 +7002,7 @@ const STANDARD_TERMS = [
             style={{background:"#2e6da4",border:"none",borderRadius:7,padding:"7px 14px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
             CLONE
           </button>}
+
           {!showDashboard&&<button onClick={handleSave}
             style={{background:C.red,border:"none",borderRadius:7,padding:"7px 16px",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:.5}}>
             SAVE
@@ -7224,7 +7225,8 @@ const STANDARD_TERMS = [
           <Dashboard onEnterQuote={()=>{handleNewQuote(true);navigateTo(false);}} onLoadQuote={q=>{handleLoad(q);navigateTo(false);}} onNewQuoteForAccount={name=>{handleNewQuote(true);setQi(q=>({...q,account:name}));navigateTo(false);}} currentUser={currentUser} isApprover={isApprover} isFollowUpUser={isFollowUpUser} pendingQuotes={pendingQuotes} onQueueDecision={handleQueueDecision} needsRefresh={dashboardNeedsRefresh} onRefreshComplete={()=>setDashboardNeedsRefresh(false)}/>
         ):(
         <>{/* ── Left: scrollable form column ── */}
-        <div style={{flex:1,overflowY:"auto",background:C.bg,padding:14}}>
+        <div style={{flex:1,overflowY:"auto",background:C.bg,padding:14,position:"relative"}}>
+
 
           {/* ── Approval submission modal ── */}
           {showApprovalModal&&(
@@ -7639,8 +7641,26 @@ const STANDARD_TERMS = [
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
 
               {/* Quote Info */}
-              <div style={{...card}}>
-                <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2,marginBottom:8}}>QUOTE INFORMATION</div>
+              <div style={{...card, opacity: (currentQuoteId&&!isDirty&&!locked) ? 0.75 : 1,
+                transition:"opacity 0.2s",
+                outline: (currentQuoteId&&!isDirty&&!locked) ? "1px dashed "+C.border : "none"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                  <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2}}>QUOTE INFORMATION</div>
+                  {currentQuoteId&&!locked&&(
+                    isDirty
+                      ? <span style={{fontSize:9,background:"#b7791f",color:"#fff",borderRadius:4,
+                          padding:"2px 8px",fontWeight:700,letterSpacing:.5,cursor:"default"}}>
+                          ✏️ EDITING
+                        </span>
+                      : <button onClick={()=>setIsDirty(true)}
+                          title="Click to edit this quote"
+                          style={{fontSize:9,background:"#276749",color:"#fff",border:"none",
+                            borderRadius:4,padding:"2px 8px",fontWeight:700,letterSpacing:.5,
+                            cursor:"pointer"}}>
+                          ✎ EDIT
+                        </button>
+                  )}
+                </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 16px"}}>
                   <div>
                     <ClientContactPicker qi={qi} setQi={setQi} resetKey={currentQuoteId}/>
@@ -7975,22 +7995,7 @@ const STANDARD_TERMS = [
               )}
               {qi.opp&&<div style={{fontSize:13,color:C.red,fontWeight:600,marginBottom:2,display:"flex",alignItems:"center",gap:6}}>
                 {qi.opp}
-                {currentQuoteId&&!locked&&(
-                  isDirty
-                    ? <span title="Unsaved changes — prices are live"
-                        style={{fontSize:9,background:"#b7791f",color:"#fff",borderRadius:4,
-                          padding:"2px 7px",fontWeight:700,letterSpacing:.5,cursor:"default"}}>
-                        ✏️ EDITING
-                      </span>
-                    : <button
-                        title="Click to edit this quote"
-                        onClick={()=>setIsDirty(true)}
-                        style={{fontSize:9,background:"#1e8449",color:"#fff",border:"none",
-                          borderRadius:4,padding:"2px 7px",fontWeight:700,letterSpacing:.5,
-                          cursor:"pointer"}}>
-                        ✎ Edit
-                      </button>
-                )}
+
               </div>}
               {(qi.billTo||qi.account)&&<div style={{fontSize:11,color:C.muted,marginBottom:4}}>{qi.billTo||qi.account}</div>}
               {qi.rfq&&<div style={{fontSize:10,color:C.dim,marginBottom:10}}>{"RFQ: "}{qi.rfq}</div>}
