@@ -2446,7 +2446,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     const hasActiveVib=vibs.some(s=>s.on);
     const hasActiveShock=shocks.some(s=>s.on);
     const INLINE=new Set(["shock","cmShock","vib","cmVib","hsv"]);
-    const PRICES={shock:525,cmShock:350,vib:700,cmVib:750,hsv:1950,addl:1200};
+    const PRICES={shock:525,cmShock:350,vib:325,cmVib:750,hsv:1950,addl:1200};
     const LABELS={shock:"Shock Instrumentation",cmShock:"Contact Monitoring (Shock)",
       vib:"Vib Instrumentation",cmVib:"Contact Monitoring (Vibe)",hsv:"High Speed Video"};
     const CODES={shock:"33",cmShock:"33",vib:"33",cmVib:"33",hsv:"32"};
