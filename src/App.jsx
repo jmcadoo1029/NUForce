@@ -1328,13 +1328,13 @@ function InstForm({s,set}){
   return <div>
     {ITEMS.map(item=>{
       const on=s.items?.[item.key]?.on||false;
-      const channels=s.items?.[item.key]?.channels||"1";
+      const channels=s.items?.[item.key]?.channels??"1";
       return(
         <div key={item.key} style={{background:on?"#fdf3f2":C.panel,
           border:"1px solid "+(on?C.red+"44":C.border),borderRadius:7,padding:"8px 10px",marginBottom:6}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <Toggle small checked={on}
-              onChange={v=>set({...s,items:{...s.items,[item.key]:{...s.items?.[item.key],on:v,channels}}})}
+              onChange={v=>set({...s,items:{...s.items,[item.key]:{...s.items?.[item.key],on:v,channels:s.items?.[item.key]?.channels||"1"}}})}
               label={item.label+" — "+money(item.price)+(item.ch?"/ch":"")}/>
             {on&&item.ch&&(
               <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:5}}>
@@ -7962,7 +7962,6 @@ const STANDARD_TERMS = [
                   </div>
                   {(()=>{
                     const displayLines=summary.lines;
-                    console.log("[SIDEBAR] lines:", displayLines.map(l=>l.label+":"+l.val), "lineOrder:", lineOrder);
                     const order=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
                     return order.map((origIdx,dispIdx)=>{
                       const l=displayLines[origIdx];
