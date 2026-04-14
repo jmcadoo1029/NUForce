@@ -7486,30 +7486,37 @@ const STANDARD_TERMS = [
                         cursor:wonLocked?"not-allowed":"text"}}/>
                   </div>
                 ))}
-                <div style={{display:"flex",gap:10,justifyContent:"space-between",alignItems:"center",marginTop:6}}>
-                  <button onClick={()=>setShowCreateProjectAlert(true)}
-                    style={{background:"#1a5276",border:"none",borderRadius:7,padding:"8px 18px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",gap:6}}>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6}}>
+                  <button onClick={()=>setShowCreateProjectAlert("new")}
+                    style={{background:"#1a5276",border:"none",borderRadius:7,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",gap:5,flex:1}}>
                     🏗️ Create Project
+                  </button>
+                  <button onClick={()=>setShowCreateProjectAlert("existing")}
+                    style={{background:"#6c3483",border:"none",borderRadius:7,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",gap:5,flex:1}}>
+                    ➕ Add to Existing
                   </button>
                   <button onClick={()=>{
                       setWonLocked(true);
                       setShowWonModal(false);
-                      // Submit to won approval queue if not already submitted
                       if(!wonApproval||wonApproval.status==="none"||!wonApproval.status){
                         handleSubmitWonApproval(qi.stage);
                       } else {
                         handleSave();
                       }
                     }}
-                    style={{background:"#1e8449",border:"none",borderRadius:7,padding:"8px 22px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff"}}>
+                    style={{background:"#1e8449",border:"none",borderRadius:7,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",flex:1}}>
                     Save &amp; Close
                   </button>
                 </div>
                 {showCreateProjectAlert&&(
-                  <div style={{marginTop:10,background:"#f0f9ff",border:"1px solid #0ea5e9",borderRadius:7,padding:"10px 14px",fontSize:12,color:"#0c4a6e",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-                    <span>🚧 Feature coming soon</span>
+                  <div style={{marginTop:10,background:showCreateProjectAlert==="new"?"#f0f9ff":"#faf5ff",
+                    border:"1px solid "+(showCreateProjectAlert==="new"?"#0ea5e9":"#7c3aed"),
+                    borderRadius:7,padding:"10px 14px",fontSize:12,
+                    color:showCreateProjectAlert==="new"?"#0c4a6e":"#4c1d95",
+                    display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                    <span>🚧 {showCreateProjectAlert==="new"?"Create New Project":"Add to Existing Project"} — feature coming soon</span>
                     <button onClick={()=>setShowCreateProjectAlert(false)}
-                      style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#0c4a6e",fontWeight:700}}>×</button>
+                      style={{background:"none",border:"none",cursor:"pointer",fontSize:14,fontWeight:700}}>×</button>
                   </div>
                 )}
               </div>
