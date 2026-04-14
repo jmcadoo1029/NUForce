@@ -272,10 +272,11 @@ function MultiSection({title,instances,onAdd,onRemove,onUpdate,tag,newInstance,F
     if(v&&instances.length===0){onAdd();setOpen(true);}
     else if(v){onUpdate(0,{...instances[0],on:true});setOpen(true);}
     else if(!v&&instances.length>0){
-      // Unchecking: set on:false for instance 0 (the master toggle)
-      // Reset to fresh defaults to clear the form
+      // Unchecking: reset ALL instances to fresh defaults, keep only first one
       const fresh={...newInstance(),id:instances[0].id,on:false};
       onUpdate(0,fresh);
+      // Remove any additional instances
+      for(let i=instances.length-1;i>0;i--)onRemove(i);
     }
   };
   return(
@@ -1334,7 +1335,7 @@ function InstForm({s,set}){
           border:"1px solid "+(on?C.red+"44":C.border),borderRadius:7,padding:"8px 10px",marginBottom:6}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <Toggle small checked={on}
-              onChange={v=>set({...s,items:{...s.items,[item.key]:{...s.items?.[item.key],on:v,channels:s.items?.[item.key]?.channels||"1"}}})}
+              onChange={v=>set({...s,items:{...s.items,[item.key]:v?{on:true,channels:"1"}:{on:false,channels:"1"}}})}
               label={item.label+" — "+money(item.price)+(item.ch?"/ch":"")}/>
             {on&&item.ch&&(
               <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:5}}>
@@ -8131,7 +8132,7 @@ const STANDARD_TERMS = [
               newInstance={newShock}
               Form={ShockForm} formProps={{vibSetup,ti,...setupProps}}/>
 
-            <Section title="INSTRUMENTATION" enabled={inst.on} onToggle={v=>setInst({...inst,on:v})}>
+            <Section title="INSTRUMENTATION" enabled={inst.on} onToggle={v=>setInst(v?{...inst,on:true}:{on:false,items:{}})}>
               <InstForm s={inst} set={setInst}/>
             </Section>
 
@@ -8198,7 +8199,7 @@ const STANDARD_TERMS = [
               newInstance={newSb}
               Form={SbForm} formProps={setupProps}/>
 
-            <Section title="OVERTIME" enabled={ot.on} onToggle={v=>setOt({...ot,on:v})}>
+            <Section title="OVERTIME" enabled={ot.on} onToggle={v=>setOt(v?{...ot,on:true}:{on:false,rows:[]})}>
               <OtForm s={ot} set={setOt}/>
             </Section>
 
@@ -8299,7 +8300,7 @@ const STANDARD_TERMS = [
               );
             })()}
 
-            <Section title="CUSTOM LINE ITEMS" enabled={custom.on} onToggle={v=>setCustom({...custom,on:v})}>
+            <Section title="CUSTOM LINE ITEMS" enabled={custom.on} onToggle={v=>setCustom(v?{...custom,on:true}:{on:false,rows:[]})}>
               <CustomForm s={custom} set={setCustom}/>
             </Section>
 
