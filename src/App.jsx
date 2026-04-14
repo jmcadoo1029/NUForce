@@ -4597,6 +4597,7 @@ export default function App({onLogout,currentUser}){
     return () => window.removeEventListener('popstate', handlePop);
   },[]);
   const recentSaveRef=useRef(0); // timestamp of last local save — suppresses self-triggered realtime toast
+  const isLoadingRef=useRef(false); // true during handleLoad — suppresses isDirty during load
   const reloadOpenQuoteRef=useRef(null); // set after handleLoad is defined — used by realtime toast button
   const [toast,setToast]=useState(null); // {msg, type: 'success'|'error'|'info'}
   const toastTimer=useRef(null);
@@ -5177,6 +5178,7 @@ export default function App({onLogout,currentUser}){
   // Only test selection changes mark the quote dirty (not metadata like account name)
   // isDirty=true means live calcSummary should be used; false means use snapshot
   useEffect(()=>{
+    if(isLoadingRef.current)return; // suppress during load
     setIsDirty(true);
   },[vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,
      budget,globalPR,lineOverrides,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal]);
@@ -5276,6 +5278,7 @@ export default function App({onLogout,currentUser}){
   };
 
   const handleNewQuote=(skipConfirm=false)=>{
+    isLoadingRef.current=true; // suppress isDirty during reset
     if(!skipConfirm){
       const result=window.confirm("Save the current quote before starting a new one?\n\nClick OK to save, or Cancel to discard and continue.");
       if(result){
@@ -5302,6 +5305,7 @@ export default function App({onLogout,currentUser}){
     setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("vibrato");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
     setChatterEntries([]);setChatterInput("");setQuoteSentAt(null);setShowFollowUpPopover(false);setFollowUpDate("");setSnapshot(null);setIsDirty(true); // new quote — no snapshot yet, all live
+    setTimeout(()=>{ isLoadingRef.current=false; }, 50);
     localStorage.removeItem("vibrato_last_quote_id");
     window.scrollTo({top:0,behavior:"smooth"});
   };
@@ -5353,6 +5357,7 @@ export default function App({onLogout,currentUser}){
 
   // Load quote from search
   const handleLoad=q=>{
+    isLoadingRef.current=true; // suppress isDirty during load
     // Pre-seed prevAutoSpecs/prevAutoNotes so the sync useEffect doesn't re-append
     // on load (the saved tiSpecs already contains the auto-generated text)
     const loadedAutoSpecs=buildSpecs(
@@ -5438,6 +5443,8 @@ export default function App({onLogout,currentUser}){
     // Load snapshot and clear dirty flag
     setSnapshot(q.snapshot||null);
     setIsDirty(false);
+    // Release loading lock after React has batched all state updates
+    setTimeout(()=>{ isLoadingRef.current=false; }, 50);
     // ── Salesforce imported quotes: load line items into custom section ──
     // Only populate from SF data if the user hasn't already saved custom rows
     if(q.source==="salesforce"&&!(q.custom?.rows?.length>0)){
@@ -7968,8 +7975,22 @@ const STANDARD_TERMS = [
               )}
               {qi.opp&&<div style={{fontSize:13,color:C.red,fontWeight:600,marginBottom:2,display:"flex",alignItems:"center",gap:6}}>
                 {qi.opp}
-                {isDirty&&snapshot&&currentQuoteId&&<span title="Unsaved changes — prices are live" style={{fontSize:9,background:"#b7791f",color:"#fff",borderRadius:4,padding:"1px 5px",fontWeight:700,letterSpacing:.5}}>LIVE</span>}
-                {!isDirty&&snapshot&&currentQuoteId&&<span title="Showing saved prices" style={{fontSize:9,background:"#1e8449",color:"#fff",borderRadius:4,padding:"1px 5px",fontWeight:700,letterSpacing:.5}}>SAVED</span>}
+                {snapshot&&currentQuoteId&&!locked&&(
+                  isDirty
+                    ? <span title="Unsaved changes — prices are live"
+                        style={{fontSize:9,background:"#b7791f",color:"#fff",borderRadius:4,
+                          padding:"2px 7px",fontWeight:700,letterSpacing:.5,cursor:"default"}}>
+                        ✏️ EDITING
+                      </span>
+                    : <button
+                        title="Click to edit this quote"
+                        onClick={()=>setIsDirty(true)}
+                        style={{fontSize:9,background:"#1e8449",color:"#fff",border:"none",
+                          borderRadius:4,padding:"2px 7px",fontWeight:700,letterSpacing:.5,
+                          cursor:"pointer"}}>
+                        ✎ Edit
+                      </button>
+                )}
               </div>}
               {(qi.billTo||qi.account)&&<div style={{fontSize:11,color:C.muted,marginBottom:4}}>{qi.billTo||qi.account}</div>}
               {qi.rfq&&<div style={{fontSize:10,color:C.dim,marginBottom:10}}>{"RFQ: "}{qi.rfq}</div>}
@@ -7990,12 +8011,17 @@ const STANDARD_TERMS = [
                     <span/>
                   </div>
                   {(()=>{
-                    const displayLines=summary.lines;
+                    // Show snapshot when locked (not editing), live summary when editing
+                    const displayLines=(!isDirty&&snapshot?.lines?.length>0)?snapshot.lines:summary.lines;
                     const order=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
                     return order.map((origIdx,dispIdx)=>{
                       const l=displayLines[origIdx];
                       if(!l)return null;
-                      const ov=lineOverrides[origIdx]||{};
+                      // When showing snapshot, use empty overrides for price display
+                      // but always use live lineOverrides for desc and deleted state
+                      const priceOv=(!isDirty&&snapshot?.lines)?{}:(lineOverrides[origIdx]||{});
+                      const ov={...priceOv,...(lineOverrides[origIdx]?.desc!==undefined?{desc:lineOverrides[origIdx].desc}:{}),
+                        ...(lineOverrides[origIdx]?.deleted?{deleted:true}:{})};
                       if(ov.deleted)return null;
                       const dispPrice=ov.price!==undefined?ov.price:String(l.val);
                       const dispDesc=ov.desc!==undefined?ov.desc:"";
