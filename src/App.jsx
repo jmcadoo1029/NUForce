@@ -2705,7 +2705,6 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     if(target){target.val=3750;target.display="$3,750";}
   }
   const setupLineLabels=sorted.filter(l=>l.label.toLowerCase().includes("setup")).map(l=>l.label);
-  console.log("[FINAL sorted]", sorted.map(l=>l.label+":"+l.val));
   return{lines:sorted,total:sorted.reduce((s,l)=>s+l.val,0),setupLineLabels};
 }
 
@@ -8012,18 +8011,23 @@ const STANDARD_TERMS = [
                     <span/>
                   </div>
                   {(()=>{
-                    // Always show live summary.lines in sidebar
-                    // Snapshot only protects PDF output — sidebar should always reflect current state
                     const displayLines=summary.lines;
+                    // Build label->override map so deleted/desc flags survive index shifts
+                    const ovByLabel={};
+                    const ovByIndex={};
+                    Object.entries(lineOverrides).forEach(([k,ov])=>{
+                      ovByIndex[k]=ov;
+                      if(ov.label)ovByLabel[ov.label]=ov;
+                    });
+                    const getOv=(idx,label)=>{
+                      // Prefer label match (survives index shifts), fall back to index
+                      return ovByLabel[label]||ovByIndex[idx]||{};
+                    };
                     const order=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
                     return order.map((origIdx,dispIdx)=>{
                       const l=displayLines[origIdx];
                       if(!l)return null;
-                      // When showing snapshot, use empty overrides for price display
-                      // but always use live lineOverrides for desc and deleted state
-                      const priceOv=(!isDirty&&snapshot?.lines)?{}:(lineOverrides[origIdx]||{});
-                      const ov={...priceOv,...(lineOverrides[origIdx]?.desc!==undefined?{desc:lineOverrides[origIdx].desc}:{}),
-                        ...(lineOverrides[origIdx]?.deleted?{deleted:true}:{})};
+                      const ov=getOv(String(origIdx),l.label);
                       if(ov.deleted)return null;
                       const dispPrice=ov.price!==undefined?ov.price:String(l.val);
                       const dispDesc=ov.desc!==undefined?ov.desc:"";
