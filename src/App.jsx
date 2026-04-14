@@ -7975,7 +7975,7 @@ const STANDARD_TERMS = [
               )}
               {qi.opp&&<div style={{fontSize:13,color:C.red,fontWeight:600,marginBottom:2,display:"flex",alignItems:"center",gap:6}}>
                 {qi.opp}
-                {snapshot&&currentQuoteId&&!locked&&(
+                {currentQuoteId&&!locked&&(
                   isDirty
                     ? <span title="Unsaved changes — prices are live"
                         style={{fontSize:9,background:"#b7791f",color:"#fff",borderRadius:4,
