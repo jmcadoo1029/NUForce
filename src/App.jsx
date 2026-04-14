@@ -7490,7 +7490,16 @@ const STANDARD_TERMS = [
                     style={{background:"#1a5276",border:"none",borderRadius:7,padding:"8px 18px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",gap:6}}>
                     🏗️ Create Project
                   </button>
-                  <button onClick={()=>{setWonLocked(true);setShowWonModal(false);handleSave();}}
+                  <button onClick={()=>{
+                      setWonLocked(true);
+                      setShowWonModal(false);
+                      // Submit to won approval queue if not already submitted
+                      if(!wonApproval||wonApproval.status==="none"||!wonApproval.status){
+                        handleSubmitWonApproval(qi.stage);
+                      } else {
+                        handleSave();
+                      }
+                    }}
                     style={{background:"#1e8449",border:"none",borderRadius:7,padding:"8px 22px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff"}}>
                     Save &amp; Close
                   </button>
