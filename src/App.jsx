@@ -5121,41 +5121,40 @@ export default function App({onLogout,currentUser}){
   const summary=useMemo(()=>calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal),
     [vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal]);
 
-  // Reset line order and stale overrides when summary length changes
+  // Remap lineOverrides by label when summary lines change
+  // This preserves deleted/price/desc overrides even when indices shift
   useEffect(()=>{
     if(lineOrder&&lineOrder.length!==summary.lines.length)setLineOrder(null);
-    // Clear lineOverrides for indices that no longer exist, AND clear stale deleted flags
-    if(Object.keys(lineOverrides).length>0){
-      const validIndices=new Set(summary.lines.map((_,i)=>String(i)));
-      const cleaned={...lineOverrides};
-      let changed=false;
-      Object.keys(cleaned).forEach(k=>{
-        if(!validIndices.has(k)){
-          // Index no longer exists — remove entirely
-          delete cleaned[k];
-          changed=true;
-        } else if(cleaned[k]?.deleted){
-          // Line is marked deleted but still exists in summary — keep the deletion
-          // ONLY clear the deleted flag if the line was genuinely replaced
-          // (i.e. the label at this index changed, meaning it's a different line now)
-          const idx=parseInt(k);
-          const currentLabel=summary.lines[idx]?.label||"";
-          const savedLabel=cleaned[k]?.label||"";
-          // If we stored the label at delete time and it matches current, keep deleted
-          // If we have no stored label (old saves), only clear if it looks like a section reset
-          if(savedLabel && savedLabel===currentLabel){
-            // Same line, same position — user explicitly deleted this, keep it deleted
-          } else if(!savedLabel){
-            // Old save without stored label — keep deleted to preserve user intent
-          } else {
-            // Label changed — genuinely a different line, clear the flag
-            delete cleaned[k].deleted;
-            if(Object.keys(cleaned[k]).length===0)delete cleaned[k];
-            changed=true;
-          }
-        }
-      });
-      if(changed)setLineOverrides(cleaned);
+    if(Object.keys(lineOverrides).length===0)return;
+
+    // Build label->override map from current overrides
+    const byLabel={};
+    Object.entries(lineOverrides).forEach(([k,ov])=>{
+      const label=ov.label||summary.lines[parseInt(k)]?.label;
+      if(label)byLabel[label]=ov;
+    });
+
+    // Remap to new indices by matching labels
+    const remapped={};
+    let changed=false;
+    summary.lines.forEach((l,i)=>{
+      const ov=byLabel[l.label];
+      if(ov){
+        remapped[i]=ov;
+        // If old index differs from new, mark changed
+        const oldKey=Object.entries(lineOverrides).find(([k,v])=>(v.label||summary.lines[parseInt(k)]?.label)===l.label)?.[0];
+        if(oldKey!==undefined&&parseInt(oldKey)!==i)changed=true;
+      }
+    });
+
+    // Check if anything was removed (indices that no longer map to a label)
+    Object.keys(lineOverrides).forEach(k=>{
+      const label=lineOverrides[k]?.label||summary.lines[parseInt(k)]?.label;
+      if(!label)changed=true; // orphaned entry
+    });
+
+    if(changed||Object.keys(remapped).length!==Object.keys(lineOverrides).length){
+      setLineOverrides(remapped);
     }
   },[summary.lines.length]);
 
@@ -8045,8 +8044,16 @@ const STANDARD_TERMS = [
                     <span/>
                   </div>
                   {(()=>{
-                    // Show snapshot when locked (not editing), live summary when editing
-                    const displayLines=(!isDirty&&snapshot?.lines?.length>0)?snapshot.lines:summary.lines;
+                    // When locked: show snapshot lines but also include any new lines
+                    // added since last save (e.g. procedures, modal analysis added after snapshot)
+                    let displayLines;
+                    if(!isDirty&&snapshot?.lines?.length>0){
+                      const snapLabels=new Set(snapshot.lines.map(l=>l.label));
+                      const newLines=summary.lines.filter(l=>!snapLabels.has(l.label));
+                      displayLines=[...snapshot.lines,...newLines];
+                    } else {
+                      displayLines=summary.lines;
+                    }
                     const order=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
                     return order.map((origIdx,dispIdx)=>{
                       const l=displayLines[origIdx];
@@ -8089,7 +8096,7 @@ const STANDARD_TERMS = [
                             <div style={{fontSize:11,color:C.text,fontWeight:500,lineHeight:1.3}}>{l.label}</div>
                             <input
                               value={dispDesc}
-                              onChange={e=>setLineOverrides({...lineOverrides,[origIdx]:{...ov,desc:e.target.value||undefined}})}
+                              onChange={e=>setLineOverrides({...lineOverrides,[origIdx]:{...ov,desc:e.target.value||undefined,label:l.label}})}
                               placeholder="+ line item description (optional)"
                               style={{width:"100%",fontSize:9,color:C.muted,background:"transparent",
                                 border:"none",outline:"none",padding:"1px 0",marginTop:1,
@@ -8102,7 +8109,7 @@ const STANDARD_TERMS = [
                             <span style={{fontSize:10,color:C.muted}}>$</span>
                             <input
                               value={dispPrice}
-                              onChange={e=>setLineOverrides({...lineOverrides,[origIdx]:{...ov,price:e.target.value}})}
+                              onChange={e=>setLineOverrides({...lineOverrides,[origIdx]:{...ov,price:e.target.value,label:l.label}})}
                               style={{width:68,fontSize:12,fontWeight:700,color:C.text,fontFamily:"monospace",
                                 background:"transparent",border:"none",borderBottom:"1px solid "+C.border,
                                 outline:"none",textAlign:"right",padding:"1px 2px"}}/>
