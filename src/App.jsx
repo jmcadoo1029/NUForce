@@ -8279,14 +8279,8 @@ const STANDARD_TERMS = [
             </Section>
 
 
-            <Section title="CUSTOM LINE ITEMS" enabled={custom.on} onToggle={v=>setCustom(v?{...custom,on:true}:{on:false,rows:[]})}>
-              <CustomForm s={custom} set={setCustom}/>
-            </Section>
-
-          </div>{/* end pointer-events wrapper */}
-            </div>{/* end test sections lock wrapper */}
-
-            {/* ── Global Procedures / Reports / CoC ── */}
+            {/* ── Global Procedures / Reports / CoC — always interactive ── */}
+            <div style={{pointerEvents:"auto",opacity:1}}>
             {(()=>{
               const pr=globalPR;
               const anyPR=pr.procs.length>0||pr.reps.length>0||pr.coc;
@@ -8382,6 +8376,15 @@ const STANDARD_TERMS = [
                 </div>
               );
             })()}
+            </div>{/* end always-interactive PR block */}
+
+            <Section title="CUSTOM LINE ITEMS" enabled={custom.on} onToggle={v=>setCustom(v?{...custom,on:true}:{on:false,rows:[]})}>
+              <CustomForm s={custom} set={setCustom}/>
+            </Section>
+
+          </div>{/* end pointer-events wrapper */}
+            </div>{/* end test sections lock wrapper */}
+
 
         </div>{/* end left scroll column */}
 
