@@ -5131,18 +5131,18 @@ export default function App({onLogout,currentUser}){
     summary.lines.forEach((l,i)=>{labelToNewIdx[l.label]=i;});
     let changed=false;
     const next={...lineOverrides};
-    // First pass: collect all labeled deletions
-    const labeledDeletions=[];
+    // Remove ALL deleted entries first (labeled and unlabeled)
     Object.entries(next).forEach(([k,ov])=>{
-      if(ov?.deleted&&ov?.label)labeledDeletions.push({oldKey:k,label:ov.label,ov});
+      if(ov?.deleted){ delete next[k]; changed=true; }
     });
-    // Remove old positions
-    labeledDeletions.forEach(({oldKey})=>{ delete next[oldKey]; changed=true; });
-    // Re-insert at new positions
-    labeledDeletions.forEach(({label,ov})=>{
-      const newIdx=labelToNewIdx[label];
-      if(newIdx!==undefined){next[newIdx]=ov; changed=true;}
-      // else line no longer exists — drop the deletion silently
+    // Re-insert labeled deletions at correct new positions
+    Object.entries(lineOverrides).forEach(([,ov])=>{
+      if(ov?.deleted&&ov?.label){
+        const newIdx=labelToNewIdx[ov.label];
+        if(newIdx!==undefined){next[newIdx]=ov; changed=true;}
+        // else line no longer exists — drop silently
+      }
+      // Unlabeled deletions are dropped permanently
     });
     if(changed)setLineOverrides(next);
   },[summary.lines.length]);
@@ -5459,12 +5459,14 @@ export default function App({onLogout,currentUser}){
         const idx=parseInt(k);
         if(ov?.deleted){
           const storedLabel=ov.label;
+          // Drop deletions with no stored label — they're stale (no way to verify)
+          if(!storedLabel) return;
           const currentLabel=savedLines[idx]?.label;
-          // Keep deletion only if label matches (same line) or no label stored (trust index)
-          if(!storedLabel||storedLabel===currentLabel){
+          // Keep deletion only if stored label matches the line at that index
+          if(storedLabel===currentLabel){
             validated[k]=ov;
           }
-          // else: stale deletion — drop it silently
+          // else: stale deletion (index shifted) — drop it
         } else {
           validated[k]=ov; // keep price/desc overrides as-is
         }
