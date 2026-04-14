@@ -6767,10 +6767,12 @@ const STANDARD_TERMS = [
       order.forEach((origIdx, dispIdx) => {
         const l = pdfLines[origIdx];
         if(!l)return;
-        const ov = (!isDirty&&snapshot?.lines) ? {} : (lineOverrides[origIdx]||{});
-        if(ov.deleted) return;
-        const price = ov.price!==undefined ? sf2(ov.price) : l.val;
-        const desc = ov.desc&&ov.desc.trim() ? ov.desc.trim() : null;
+        const snapOv = (!isDirty&&snapshot?.lines) ? {} : (lineOverrides[origIdx]||{});
+        const liveOv = lineOverrides[origIdx]||{};
+        if(snapOv.deleted||liveOv.deleted) return;
+        // Price comes from snapshot when not dirty; desc always from live lineOverrides
+        const price = snapOv.price!==undefined ? sf2(snapOv.price) : l.val;
+        const desc = liveOv.desc&&liveOv.desc.trim() ? liveOv.desc.trim() : null;
         const rowH = desc ? 26 : 14;
         if(y + rowH + 2 > PH-52){ drawFooter(); doc.addPage(); pageNum++; y=54; drawTblHdr(); }
         const bg = dispIdx%2===0 ? [255,255,255] : [247,248,250];
