@@ -5120,9 +5120,31 @@ export default function App({onLogout,currentUser}){
   const summary=useMemo(()=>calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal),
     [vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,td,coc,sub,globalPR,budget,setup,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal]);
 
-  // Reset lineOrder when summary length changes
+  // When summary length changes: reset lineOrder and remap deleted overrides by label
   useEffect(()=>{
     if(lineOrder&&lineOrder.length!==summary.lines.length)setLineOrder(null);
+    // Remap only deleted flags — use stored label to find correct new index
+    // Price/desc overrides are left alone (harmless if slightly off)
+    const hasDeleted=Object.values(lineOverrides).some(ov=>ov?.deleted&&ov?.label);
+    if(!hasDeleted)return;
+    const labelToNewIdx={};
+    summary.lines.forEach((l,i)=>{labelToNewIdx[l.label]=i;});
+    let changed=false;
+    const next={...lineOverrides};
+    // First pass: collect all labeled deletions
+    const labeledDeletions=[];
+    Object.entries(next).forEach(([k,ov])=>{
+      if(ov?.deleted&&ov?.label)labeledDeletions.push({oldKey:k,label:ov.label,ov});
+    });
+    // Remove old positions
+    labeledDeletions.forEach(({oldKey})=>{ delete next[oldKey]; changed=true; });
+    // Re-insert at new positions
+    labeledDeletions.forEach(({label,ov})=>{
+      const newIdx=labelToNewIdx[label];
+      if(newIdx!==undefined){next[newIdx]=ov; changed=true;}
+      // else line no longer exists — drop the deletion silently
+    });
+    if(changed)setLineOverrides(next);
   },[summary.lines.length]);
 
   // Reset td override when no main tests are active
