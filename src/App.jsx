@@ -3084,8 +3084,84 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   });
   const [followUps, setFollowUps]   = useState([]);
   const [fuLoading, setFuLoading]   = useState(false);
+  const [aiInput,setAiInput]=useState("");
+  const [aiLoading,setAiLoading]=useState(false);
+  const [aiMessages,setAiMessages]=useState([]);
   const [fuEmail, setFuEmail]       = useState(null);   // {quoteId, text} — generated email
   const [fuEmailLoading, setFuEmailLoading] = useState(null); // quoteId generating for
+
+  const askAI = async (question) => {
+    if(!question.trim()||aiLoading) return;
+    const userMsg = {role:'user', content: question};
+    setAiMessages(prev=>[...prev, userMsg]);
+    setAiInput("");
+    setAiLoading(true);
+    try {
+      // Fetch quotes — rich data for Claude to reason about
+      const {data:quotes} = await supabase
+        .from('quotes')
+        .select('opportunity,customer,total,created_at,won_date,data')
+        .order('created_at',{ascending:false})
+        .limit(1000);
+
+      const {data:followUpsData} = await supabase
+        .from('follow_ups')
+        .select('opportunity,customer,sent_at,followed_up,followup_again_at')
+        .eq('followed_up',false)
+        .limit(500);
+
+      // Build rich summary with all fields Claude might need for specific questions
+      const quoteSummary = (quotes||[]).map(q=>({
+        opp: q.opportunity,
+        customer: q.customer,
+        total: q.total,
+        stage: q.data?.qi?.stage||'',
+        date: q.created_at?.slice(0,10),
+        won: q.won_date||null,
+        contact: q.data?.qi?.contact||'',
+        email: q.data?.qi?.email||'',
+        rfq: q.data?.qi?.rfq||'',
+        item: q.data?.ti?.item||'',
+        tests: [
+          ...(q.data?.vibs?.some(s=>s.on)?['Vibration']:[]),
+          ...(q.data?.shocks?.some(s=>s.on)?['Shock']:[]),
+          ...(q.data?.noises?.some(s=>s.on)?['Noise']:[]),
+          ...(q.data?.envs?.some(s=>s.on)?['Environmental']:[]),
+          ...(q.data?.hfvs?.some(s=>s.on)?['HF Vibration']:[]),
+          ...(q.data?.emis?.some(s=>s.on)?['EMI']:[]),
+          ...(q.data?.pqs?.some(s=>s.on)?['Power Quality']:[]),
+          ...(q.data?.dcms?.some(s=>s.on)?['DC Magnetics']:[]),
+        ],
+        notes: q.data?.ti?.tiNotes||'',
+      }));
+
+      const today = new Date().toISOString().slice(0,10);
+      const systemPrompt = `You are a sales analytics assistant for NU Laboratories, a military/naval testing lab. You have access to quote data and follow-up data. Answer the user's question concisely and helpfully. Format lists as simple bullet points. Today is ${today}.
+
+QUOTE DATA (${quoteSummary.length} most recent quotes):
+${JSON.stringify(quoteSummary)}
+
+PENDING FOLLOW-UPS (${(followUpsData||[]).length} entries):
+${JSON.stringify((followUpsData||[]).map(f=>({opp:f.opportunity,customer:f.customer,sent:f.sent_at?.slice(0,10),followup_date:f.followup_again_at})))}`;
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          system: systemPrompt,
+          messages: [...aiMessages, userMsg].map(m=>({role:m.role,content:m.content})),
+        })
+      });
+      const data = await response.json();
+      const answer = data.content?.[0]?.text || 'Sorry, I could not get a response.';
+      setAiMessages(prev=>[...prev, {role:'assistant', content:answer}]);
+    } catch(e) {
+      setAiMessages(prev=>[...prev, {role:'assistant', content:'Error: '+e.message}]);
+    }
+    setAiLoading(false);
+  };
 
   const loadFollowUps = async () => {
     if(!isFollowUpUser)return;
@@ -4135,6 +4211,91 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                         </div>
                       );
                     })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── AI Quote Assistant ── */}
+            {isFollowUpUser&&(
+              <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
+                border:"1px solid #e8ecf0",overflow:"hidden",marginBottom:20}}>                <div style={{padding:"14px 24px",borderBottom:"1px solid #e8ecf0",
+                  display:"flex",alignItems:"center",justifyContent:"space-between"}}>                  <div>                    <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>🤖 QUOTE ASSISTANT</div>
+                    <div style={{fontSize:11,color:"#9aa5b1",marginTop:2}}>Ask anything about your quotes or follow-ups</div>
+                  </div>
+                  {aiMessages.length>0&&(
+                    <button onClick={()=>setAiMessages([])}
+                      style={{background:"none",border:"1px solid #d0d7de",borderRadius:6,
+                        padding:"4px 12px",fontSize:11,cursor:"pointer",color:"#6b7a8d"}}>
+                      Clear
+                    </button>
+                  )}
+                </div>
+                {aiMessages.length>0&&(
+                  <div style={{maxHeight:320,overflowY:"auto",padding:"12px 24px",
+                    display:"flex",flexDirection:"column",gap:10}}>
+                    {aiMessages.map((msg,i)=>(
+                      <div key={i} style={{
+                        alignSelf:msg.role==="user"?"flex-end":"flex-start",
+                        maxWidth:"85%",
+                        background:msg.role==="user"?"#1a2332":"#f4f6f9",
+                        color:msg.role==="user"?"#fff":"#1a2332",
+                        borderRadius:msg.role==="user"?"12px 12px 2px 12px":"12px 12px 12px 2px",
+                        padding:"8px 12px",fontSize:12,lineHeight:1.6,
+                        whiteSpace:"pre-wrap",wordBreak:"break-word",
+                      }}>
+                        {msg.content}
+                      </div>
+                    ))}
+                    {aiLoading&&(
+                      <div style={{alignSelf:"flex-start",background:"#f4f6f9",
+                        borderRadius:"12px 12px 12px 2px",padding:"8px 14px",
+                        fontSize:12,color:"#9aa5b1"}}>
+                        ●●● thinking...
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div style={{padding:"12px 24px",borderTop:aiMessages.length>0?"1px solid #e8ecf0":"none",
+                  display:"flex",gap:8}}>
+                  <input
+                    value={aiInput}
+                    onChange={e=>setAiInput(e.target.value)}
+                    onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askAI(aiInput);}}}
+                    placeholder="Ask about quotes, follow-ups, accounts..."
+                    style={{flex:1,fontSize:12,borderRadius:8,border:"1px solid #d0d7de",
+                      padding:"8px 12px",outline:"none",fontFamily:"inherit",
+                      background:"#f8f9fb",color:"#1a2332"}}
+                    disabled={aiLoading}
+                  />
+                  <button
+                    onClick={()=>askAI(aiInput)}
+                    disabled={aiLoading||!aiInput.trim()}
+                    style={{background:aiLoading||!aiInput.trim()?"#e8ecf0":"#1a2332",
+                      border:"none",borderRadius:8,padding:"8px 16px",
+                      color:aiLoading||!aiInput.trim()?"#9aa5b1":"#fff",
+                      fontSize:12,fontWeight:700,cursor:aiLoading||!aiInput.trim()?"default":"pointer",
+                      transition:"all 0.15s"}}>
+                    {aiLoading?"...":"Ask"}
+                  </button>
+                </div>
+                {aiMessages.length===0&&(
+                  <div style={{padding:"0 24px 14px",display:"flex",flexWrap:"wrap",gap:6}}>
+                    {[
+                      "Quotes not followed up in 60 days",
+                      "Open proposals over $50k",
+                      "What does Lockheed have outstanding?",
+                      "Who has the most pending quotes?",
+                    ].map(q=>(
+                      <button key={q} onClick={()=>askAI(q)}
+                        style={{background:"#f4f6f9",border:"1px solid #e8ecf0",borderRadius:20,
+                          padding:"4px 10px",fontSize:11,cursor:"pointer",color:"#4a5568",
+                          transition:"background 0.1s"}}
+                        onMouseEnter={e=>e.target.style.background="#e8ecf0"}
+                        onMouseLeave={e=>e.target.style.background="#f4f6f9"}>
+                        {q}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
