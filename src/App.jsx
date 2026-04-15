@@ -3110,39 +3110,29 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
         .eq('followed_up',false)
         .limit(500);
 
-      // Build rich summary with all fields Claude might need for specific questions
-      const quoteSummary = (quotes||[]).map(q=>({
-        opp: q.opportunity,
-        customer: q.customer,
-        total: q.total,
-        stage: q.data?.qi?.stage||'',
-        date: q.created_at?.slice(0,10),
-        won: q.won_date||null,
-        contact: q.data?.qi?.contact||'',
-        email: q.data?.qi?.email||'',
-        rfq: q.data?.qi?.rfq||'',
-        item: q.data?.ti?.item||'',
-        tests: [
-          ...(q.data?.vibs?.some(s=>s.on)?['Vibration']:[]),
-          ...(q.data?.shocks?.some(s=>s.on)?['Shock']:[]),
-          ...(q.data?.noises?.some(s=>s.on)?['Noise']:[]),
-          ...(q.data?.envs?.some(s=>s.on)?['Environmental']:[]),
-          ...(q.data?.hfvs?.some(s=>s.on)?['HF Vibration']:[]),
-          ...(q.data?.emis?.some(s=>s.on)?['EMI']:[]),
-          ...(q.data?.pqs?.some(s=>s.on)?['Power Quality']:[]),
-          ...(q.data?.dcms?.some(s=>s.on)?['DC Magnetics']:[]),
-        ],
-        notes: q.data?.ti?.tiNotes||'',
-      }));
+      // Build compact but rich summary — enough for Claude to answer specific questions
+      const quoteSummary = (quotes||[]).map(q=>{
+        const d=q.data||{};
+        const tests=[];
+        if(d.vibs?.some(s=>s.on))tests.push('Vib');
+        if(d.shocks?.some(s=>s.on))tests.push('Shock');
+        if(d.noises?.some(s=>s.on))tests.push('Noise');
+        if(d.envs?.some(s=>s.on))tests.push('Env');
+        if(d.hfvs?.some(s=>s.on))tests.push('HFV');
+        if(d.emis?.some(s=>s.on))tests.push('EMI');
+        if(d.pqs?.some(s=>s.on))tests.push('PQ');
+        if(d.dcms?.some(s=>s.on))tests.push('DCM');
+        return {
+          o:q.opportunity, c:q.customer, t:q.total,
+          s:d.qi?.stage||'', dt:q.created_at?.slice(0,10),
+          i:d.ti?.item||'', ct:d.qi?.contact||'',
+          ts:tests.join(','),
+        };
+      });
 
       const today = new Date().toISOString().slice(0,10);
-      const systemPrompt = `You are a sales analytics assistant for NU Laboratories, a military/naval testing lab. You have access to quote data and follow-up data. Answer the user's question concisely and helpfully. Format lists as simple bullet points. Today is ${today}.
-
-QUOTE DATA (${quoteSummary.length} most recent quotes):
-${JSON.stringify(quoteSummary)}
-
-PENDING FOLLOW-UPS (${(followUpsData||[]).length} entries):
-${JSON.stringify((followUpsData||[]).map(f=>({opp:f.opportunity,customer:f.customer,sent:f.sent_at?.slice(0,10),followup_date:f.followup_again_at})))}`;
+      // Abbreviated keys to save tokens: o=opp,c=customer,t=total,s=stage,dt=date,i=item,ct=contact,ts=tests
+      const systemPrompt = `NU Labs sales assistant. Today:${today}. Answer concisely, bullet points for lists.\nQUOTES(${quoteSummary.length})[o=opp,c=customer,t=$total,s=stage,dt=date,i=item,ct=contact,ts=tests]:${JSON.stringify(quoteSummary)}\nFOLLOWUPS(${(followUpsData||[]).length})[o=opp,c=customer,s=sent,d=due]:${JSON.stringify((followUpsData||[]).map(f=>({o:f.opportunity,c:f.customer,s:f.sent_at?.slice(0,10),d:f.followup_again_at})))}`;
 
       const response = await fetch(
         'https://swuuxzmgmldvvomsgmjf.supabase.co/functions/v1/ai-analysis',
