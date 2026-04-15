@@ -4096,205 +4096,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
               );
             })()}
 
-            {/* ── Follow-ups widget ── */}
-            {isFollowUpUser&&(
-              <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
-                border:"1px solid #e8ecf0",overflow:"hidden",marginBottom:20}}>
-                <div style={{padding:"14px 24px",borderBottom:"1px solid #e8ecf0",
-                  display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <div>
-                    <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
-                      ✉️ FOLLOW-UPS DUE
-                    </div>
-                    <div style={{fontSize:11,color:"#9aa5b1",marginTop:2}}>
-                      Quotes sent 30+ days ago with no follow-up
-                    </div>
-                  </div>
-                  <button onClick={loadFollowUps}
-                    style={{background:"none",border:"1px solid #d0d7de",borderRadius:6,
-                      padding:"4px 12px",fontSize:11,cursor:"pointer",color:"#6b7a8d"}}>
-                    ↻ Refresh
-                  </button>
-                </div>
-                {fuLoading?(
-                  <div style={{padding:24,textAlign:"center",color:"#9aa5b1",fontSize:12}}>Loading…</div>
-                ):followUps.length===0?(
-                  <div style={{padding:24,textAlign:"center",color:"#9aa5b1",fontSize:12}}>
-                    🎉 No follow-ups due right now.
-                  </div>
-                ):(
-                  <div>
-                    {followUps.map(fu=>{
-                      const daysSinceSent=Math.floor((Date.now()-new Date(fu.sent_at).getTime())/(1000*60*60*24));
-                      const isGenerating=fuEmailLoading===fu.id;
-                      const emailShown=fuEmail?.id===fu.id;
-                      return(
-                        <div key={fu.id} style={{borderTop:"1px solid #f0f2f5",padding:"14px 24px"}}>
-                          {/* Quote info row */}
-                          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
-                            <div>
-                              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                                <span style={{fontWeight:700,fontSize:13,color:"#1a5276"}}>
-                                  {fu.opportunity||"—"}
-                                </span>
-                                <span style={{fontSize:12,color:"#6b7a8d"}}>{fu.customer||"—"}</span>
-                                {fu.quotes?.data?.ti?.item&&(
-                                  <span style={{fontSize:11,color:"#9aa5b1",fontStyle:"italic"}}>
-                                    {fu.quotes.data.ti.item}
-                                  </span>
-                                )}
-                              </div>
-                              <div style={{fontSize:11,color:"#9aa5b1",marginTop:3}}>
-                                Sent {daysSinceSent} day{daysSinceSent!==1?"s":""} ago by {fu.sent_by}
-                                {fu.followup_again_at&&(
-                                  <span style={{marginLeft:8,color:"#b7791f"}}>· 90-day reminder</span>
-                                )}
-                              </div>
-                            </div>
-                            {/* Action buttons */}
-                            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                              <button
-                                disabled={isGenerating}
-                                onClick={()=>emailShown?setFuEmail(null):generateFollowUpEmail(fu)}
-                                style={{background:emailShown?"#eaf2ff":"#1a5276",border:"none",
-                                  borderRadius:6,padding:"6px 14px",color:emailShown?"#1a5276":"#fff",
-                                  fontWeight:600,fontSize:11,cursor:"pointer",
-                                  border:emailShown?"1px solid #1a5276":"none"}}>
-                                {isGenerating?"✨ Generating…":emailShown?"✕ Hide Email":"✨ Generate Email"}
-                              </button>
-                              <button
-                                onClick={()=>markFollowedUp(fu.id,false)}
-                                style={{background:"#1e8449",border:"none",borderRadius:6,
-                                  padding:"6px 14px",color:"#fff",fontWeight:600,fontSize:11,cursor:"pointer"}}>
-                                ✓ Done
-                              </button>
-                              <button
-                                onClick={()=>markFollowedUp(fu.id,true)}
-                                style={{background:"none",border:"1px solid #b7791f",borderRadius:6,
-                                  padding:"6px 14px",color:"#b7791f",fontWeight:600,fontSize:11,cursor:"pointer"}}>
-                                ↻ Follow up in 90 days
-                              </button>
-                            </div>
-                          </div>
-                          {/* Generated email */}
-                          {emailShown&&fuEmail&&(
-                            <div style={{marginTop:12,background:"#f8f9fb",borderRadius:8,
-                              border:"1px solid #e8ecf0",padding:"14px 16px"}}>
-                              <div style={{display:"flex",justifyContent:"space-between",
-                                alignItems:"center",marginBottom:10}}>
-                                <div style={{fontSize:11,fontWeight:700,color:"#9aa5b1",letterSpacing:.8}}>
-                                  GENERATED FOLLOW-UP EMAIL
-                                </div>
-                                <button
-                                  onClick={()=>{
-                                    navigator.clipboard.writeText(fuEmail.text);
-                                  }}
-                                  style={{background:"#1a5276",border:"none",borderRadius:5,
-                                    padding:"4px 12px",color:"#fff",fontSize:11,fontWeight:600,
-                                    cursor:"pointer"}}>
-                                  📋 Copy
-                                </button>
-                              </div>
-                              <pre style={{fontSize:12,color:"#1a2332",lineHeight:1.7,
-                                whiteSpace:"pre-wrap",fontFamily:"Segoe UI,system-ui,sans-serif",
-                                margin:0}}>
-                                {fuEmail.text}
-                              </pre>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── AI Quote Assistant ── */}
-            {isFollowUpUser&&(
-              <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
-                border:"1px solid #e8ecf0",overflow:"hidden",marginBottom:20}}>                <div style={{padding:"14px 24px",borderBottom:"1px solid #e8ecf0",
-                  display:"flex",alignItems:"center",justifyContent:"space-between"}}>                  <div>                    <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>🤖 QUOTE ASSISTANT</div>
-                    <div style={{fontSize:11,color:"#9aa5b1",marginTop:2}}>Ask anything about your quotes or follow-ups</div>
-                  </div>
-                  {aiMessages.length>0&&(
-                    <button onClick={()=>setAiMessages([])}
-                      style={{background:"none",border:"1px solid #d0d7de",borderRadius:6,
-                        padding:"4px 12px",fontSize:11,cursor:"pointer",color:"#6b7a8d"}}>
-                      Clear
-                    </button>
-                  )}
-                </div>
-                {aiMessages.length>0&&(
-                  <div style={{maxHeight:320,overflowY:"auto",padding:"12px 24px",
-                    display:"flex",flexDirection:"column",gap:10}}>
-                    {aiMessages.map((msg,i)=>(
-                      <div key={i} style={{
-                        alignSelf:msg.role==="user"?"flex-end":"flex-start",
-                        maxWidth:"85%",
-                        background:msg.role==="user"?"#1a2332":"#f4f6f9",
-                        color:msg.role==="user"?"#fff":"#1a2332",
-                        borderRadius:msg.role==="user"?"12px 12px 2px 12px":"12px 12px 12px 2px",
-                        padding:"8px 12px",fontSize:12,lineHeight:1.6,
-                        whiteSpace:"pre-wrap",wordBreak:"break-word",
-                      }}>
-                        {msg.content}
-                      </div>
-                    ))}
-                    {aiLoading&&(
-                      <div style={{alignSelf:"flex-start",background:"#f4f6f9",
-                        borderRadius:"12px 12px 12px 2px",padding:"8px 14px",
-                        fontSize:12,color:"#9aa5b1"}}>
-                        ●●● thinking...
-                      </div>
-                    )}
-                  </div>
-                )}
-                <div style={{padding:"12px 24px",borderTop:aiMessages.length>0?"1px solid #e8ecf0":"none",
-                  display:"flex",gap:8}}>
-                  <input
-                    value={aiInput}
-                    onChange={e=>setAiInput(e.target.value)}
-                    onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askAI(aiInput);}}}
-                    placeholder="Ask about quotes, follow-ups, accounts..."
-                    style={{flex:1,fontSize:12,borderRadius:8,border:"1px solid #d0d7de",
-                      padding:"8px 12px",outline:"none",fontFamily:"inherit",
-                      background:"#f8f9fb",color:"#1a2332"}}
-                    disabled={aiLoading}
-                  />
-                  <button
-                    onClick={()=>askAI(aiInput)}
-                    disabled={aiLoading||!aiInput.trim()}
-                    style={{background:aiLoading||!aiInput.trim()?"#e8ecf0":"#1a2332",
-                      border:"none",borderRadius:8,padding:"8px 16px",
-                      color:aiLoading||!aiInput.trim()?"#9aa5b1":"#fff",
-                      fontSize:12,fontWeight:700,cursor:aiLoading||!aiInput.trim()?"default":"pointer",
-                      transition:"all 0.15s"}}>
-                    {aiLoading?"...":"Ask"}
-                  </button>
-                </div>
-                {aiMessages.length===0&&(
-                  <div style={{padding:"0 24px 14px",display:"flex",flexWrap:"wrap",gap:6}}>
-                    {[
-                      "Quotes not followed up in 60 days",
-                      "Open proposals over $50k",
-                      "What does Lockheed have outstanding?",
-                      "Who has the most pending quotes?",
-                    ].map(q=>(
-                      <button key={q} onClick={()=>askAI(q)}
-                        style={{background:"#f4f6f9",border:"1px solid #e8ecf0",borderRadius:20,
-                          padding:"4px 10px",fontSize:11,cursor:"pointer",color:"#4a5568",
-                          transition:"background 0.1s"}}
-                        onMouseEnter={e=>e.target.style.background="#e8ecf0"}
-                        onMouseLeave={e=>e.target.style.background="#f4f6f9"}>
-                        {q}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* ── Approval Queue widget (approvers only) ── */}
             {isApprover&&(
               <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
@@ -4435,6 +4236,205 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                   boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0",marginBottom:20}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
                     <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
+            {/* ── AI Quote Assistant ── */}
+            {isFollowUpUser&&(
+              <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
+                border:"1px solid #e8ecf0",overflow:"hidden",marginBottom:20}}>                <div style={{padding:"14px 24px",borderBottom:"1px solid #e8ecf0",
+                  display:"flex",alignItems:"center",justifyContent:"space-between"}}>                  <div>                    <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>🤖 QUOTE ASSISTANT</div>
+                    <div style={{fontSize:11,color:"#9aa5b1",marginTop:2}}>Ask anything about your quotes or follow-ups</div>
+                  </div>
+                  {aiMessages.length>0&&(
+                    <button onClick={()=>setAiMessages([])}
+                      style={{background:"none",border:"1px solid #d0d7de",borderRadius:6,
+                        padding:"4px 12px",fontSize:11,cursor:"pointer",color:"#6b7a8d"}}>
+                      Clear
+                    </button>
+                  )}
+                </div>
+                {aiMessages.length>0&&(
+                  <div style={{maxHeight:320,overflowY:"auto",padding:"12px 24px",
+                    display:"flex",flexDirection:"column",gap:10}}>
+                    {aiMessages.map((msg,i)=>(
+                      <div key={i} style={{
+                        alignSelf:msg.role==="user"?"flex-end":"flex-start",
+                        maxWidth:"85%",
+                        background:msg.role==="user"?"#1a2332":"#f4f6f9",
+                        color:msg.role==="user"?"#fff":"#1a2332",
+                        borderRadius:msg.role==="user"?"12px 12px 2px 12px":"12px 12px 12px 2px",
+                        padding:"8px 12px",fontSize:12,lineHeight:1.6,
+                        whiteSpace:"pre-wrap",wordBreak:"break-word",
+                      }}>
+                        {msg.content}
+                      </div>
+                    ))}
+                    {aiLoading&&(
+                      <div style={{alignSelf:"flex-start",background:"#f4f6f9",
+                        borderRadius:"12px 12px 12px 2px",padding:"8px 14px",
+                        fontSize:12,color:"#9aa5b1"}}>
+                        ●●● thinking...
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div style={{padding:"12px 24px",borderTop:aiMessages.length>0?"1px solid #e8ecf0":"none",
+                  display:"flex",gap:8}}>
+                  <input
+                    value={aiInput}
+                    onChange={e=>setAiInput(e.target.value)}
+                    onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askAI(aiInput);}}}
+                    placeholder="Ask about quotes, follow-ups, accounts..."
+                    style={{flex:1,fontSize:12,borderRadius:8,border:"1px solid #d0d7de",
+                      padding:"8px 12px",outline:"none",fontFamily:"inherit",
+                      background:"#f8f9fb",color:"#1a2332"}}
+                    disabled={aiLoading}
+                  />
+                  <button
+                    onClick={()=>askAI(aiInput)}
+                    disabled={aiLoading||!aiInput.trim()}
+                    style={{background:aiLoading||!aiInput.trim()?"#e8ecf0":"#1a2332",
+                      border:"none",borderRadius:8,padding:"8px 16px",
+                      color:aiLoading||!aiInput.trim()?"#9aa5b1":"#fff",
+                      fontSize:12,fontWeight:700,cursor:aiLoading||!aiInput.trim()?"default":"pointer",
+                      transition:"all 0.15s"}}>
+                    {aiLoading?"...":"Ask"}
+                  </button>
+                </div>
+                {aiMessages.length===0&&(
+                  <div style={{padding:"0 24px 14px",display:"flex",flexWrap:"wrap",gap:6}}>
+                    {[
+                      "Quotes not followed up in 60 days",
+                      "Open proposals over $50k",
+                      "What does Lockheed have outstanding?",
+                      "Who has the most pending quotes?",
+                    ].map(q=>(
+                      <button key={q} onClick={()=>askAI(q)}
+                        style={{background:"#f4f6f9",border:"1px solid #e8ecf0",borderRadius:20,
+                          padding:"4px 10px",fontSize:11,cursor:"pointer",color:"#4a5568",
+                          transition:"background 0.1s"}}
+                        onMouseEnter={e=>e.target.style.background="#e8ecf0"}
+                        onMouseLeave={e=>e.target.style.background="#f4f6f9"}>
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Follow-ups widget ── */}
+            {isFollowUpUser&&(
+              <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
+                border:"1px solid #e8ecf0",overflow:"hidden",marginBottom:20}}>
+                <div style={{padding:"14px 24px",borderBottom:"1px solid #e8ecf0",
+                  display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
+                      ✉️ FOLLOW-UPS DUE
+                    </div>
+                    <div style={{fontSize:11,color:"#9aa5b1",marginTop:2}}>
+                      Quotes sent 30+ days ago with no follow-up
+                    </div>
+                  </div>
+                  <button onClick={loadFollowUps}
+                    style={{background:"none",border:"1px solid #d0d7de",borderRadius:6,
+                      padding:"4px 12px",fontSize:11,cursor:"pointer",color:"#6b7a8d"}}>
+                    ↻ Refresh
+                  </button>
+                </div>
+                {fuLoading?(
+                  <div style={{padding:24,textAlign:"center",color:"#9aa5b1",fontSize:12}}>Loading…</div>
+                ):followUps.length===0?(
+                  <div style={{padding:24,textAlign:"center",color:"#9aa5b1",fontSize:12}}>
+                    🎉 No follow-ups due right now.
+                  </div>
+                ):(
+                  <div>
+                    {followUps.map(fu=>{
+                      const daysSinceSent=Math.floor((Date.now()-new Date(fu.sent_at).getTime())/(1000*60*60*24));
+                      const isGenerating=fuEmailLoading===fu.id;
+                      const emailShown=fuEmail?.id===fu.id;
+                      return(
+                        <div key={fu.id} style={{borderTop:"1px solid #f0f2f5",padding:"14px 24px"}}>
+                          {/* Quote info row */}
+                          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+                            <div>
+                              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                                <span style={{fontWeight:700,fontSize:13,color:"#1a5276"}}>
+                                  {fu.opportunity||"—"}
+                                </span>
+                                <span style={{fontSize:12,color:"#6b7a8d"}}>{fu.customer||"—"}</span>
+                                {fu.quotes?.data?.ti?.item&&(
+                                  <span style={{fontSize:11,color:"#9aa5b1",fontStyle:"italic"}}>
+                                    {fu.quotes.data.ti.item}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{fontSize:11,color:"#9aa5b1",marginTop:3}}>
+                                Sent {daysSinceSent} day{daysSinceSent!==1?"s":""} ago by {fu.sent_by}
+                                {fu.followup_again_at&&(
+                                  <span style={{marginLeft:8,color:"#b7791f"}}>· 90-day reminder</span>
+                                )}
+                              </div>
+                            </div>
+                            {/* Action buttons */}
+                            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                              <button
+                                disabled={isGenerating}
+                                onClick={()=>emailShown?setFuEmail(null):generateFollowUpEmail(fu)}
+                                style={{background:emailShown?"#eaf2ff":"#1a5276",border:"none",
+                                  borderRadius:6,padding:"6px 14px",color:emailShown?"#1a5276":"#fff",
+                                  fontWeight:600,fontSize:11,cursor:"pointer",
+                                  border:emailShown?"1px solid #1a5276":"none"}}>
+                                {isGenerating?"✨ Generating…":emailShown?"✕ Hide Email":"✨ Generate Email"}
+                              </button>
+                              <button
+                                onClick={()=>markFollowedUp(fu.id,false)}
+                                style={{background:"#1e8449",border:"none",borderRadius:6,
+                                  padding:"6px 14px",color:"#fff",fontWeight:600,fontSize:11,cursor:"pointer"}}>
+                                ✓ Done
+                              </button>
+                              <button
+                                onClick={()=>markFollowedUp(fu.id,true)}
+                                style={{background:"none",border:"1px solid #b7791f",borderRadius:6,
+                                  padding:"6px 14px",color:"#b7791f",fontWeight:600,fontSize:11,cursor:"pointer"}}>
+                                ↻ Follow up in 90 days
+                              </button>
+                            </div>
+                          </div>
+                          {/* Generated email */}
+                          {emailShown&&fuEmail&&(
+                            <div style={{marginTop:12,background:"#f8f9fb",borderRadius:8,
+                              border:"1px solid #e8ecf0",padding:"14px 16px"}}>
+                              <div style={{display:"flex",justifyContent:"space-between",
+                                alignItems:"center",marginBottom:10}}>
+                                <div style={{fontSize:11,fontWeight:700,color:"#9aa5b1",letterSpacing:.8}}>
+                                  GENERATED FOLLOW-UP EMAIL
+                                </div>
+                                <button
+                                  onClick={()=>{
+                                    navigator.clipboard.writeText(fuEmail.text);
+                                  }}
+                                  style={{background:"#1a5276",border:"none",borderRadius:5,
+                                    padding:"4px 12px",color:"#fff",fontSize:11,fontWeight:600,
+                                    cursor:"pointer"}}>
+                                  📋 Copy
+                                </button>
+                              </div>
+                              <pre style={{fontSize:12,color:"#1a2332",lineHeight:1.7,
+                                whiteSpace:"pre-wrap",fontFamily:"Segoe UI,system-ui,sans-serif",
+                                margin:0}}>
+                                {fuEmail.text}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
                       QUOTES — LAST 4 MONTHS
                     </div>
                     <div style={{display:"flex",gap:16,fontSize:10,color:"#6b7a8d"}}>
@@ -4857,8 +4857,9 @@ export default function App({onLogout,currentUser}){
       localStorage.setItem("vibrato_last_quote_id",String(currentQuoteId));
       // Load sent status for this quote
       supabase.from("follow_ups")
-        .select("sent_at")
+        .select("sent_at,sent_by")
         .eq("quote_id",currentQuoteId)
+        .neq("sent_by","salesforce_import")
         .order("sent_at",{ascending:false})
         .limit(1)
         .maybeSingle()
@@ -5023,6 +5024,7 @@ export default function App({onLogout,currentUser}){
     const evtA={event:"approved",by:currentUser,at:new Date().toISOString(),comments:approvalComments};
     const newApproval={...approval,status:"approved",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:approvalComments,history:[...(approval.history||[]),evtA]};
     setApproval(newApproval);
+    setLocked(true);
     setApprovalComments("");
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides};
@@ -5134,6 +5136,7 @@ export default function App({onLogout,currentUser}){
           const evtQL={event:decision,by:currentUser,at:now,comments:queueComments};
           const newApprovalL={...approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(approval.history||[]),evtQL]};
           setApproval(newApprovalL);
+          if(decision==="approved")setLocked(true);
           if(decision==="rejected")setLocked(false);
         }
       }
