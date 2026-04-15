@@ -3233,12 +3233,17 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     if(scheduleAgain){
       const d = new Date();
       d.setDate(d.getDate()+90);
-      update.followed_up = false; // keep on list but with new date
+      update.followed_up = false;
       update.followed_up_at = null;
       update.followup_again_at = d.toISOString().slice(0,10);
     }
     await supabase.from("follow_ups").update(update).eq("id",fuId);
-    loadFollowUps();
+    // Update state optimistically — no reload, no scroll jump
+    if(scheduleAgain){
+      setFollowUps(prev=>prev.map(fu=>fu.id===fuId?{...fu,...update}:fu));
+    } else {
+      setFollowUps(prev=>prev.filter(fu=>fu.id!==fuId));
+    }
     if(fuEmail?.id===fuId)setFuEmail(null);
   };
 
@@ -4218,24 +4223,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
               </div>
             )}
 
-            {/* ── Month over month combo chart ── */}
-            {(()=>{
-              const months = data.monthCounts;
-              const maxCount = Math.max(...months.map(m=>m.count), 1);
-              const maxTotal = Math.max(...months.map(m=>m.total), 1);
-              const W=560, H=160, PAD={t:24,r:60,b:32,l:44};
-              const chartW=W-PAD.l-PAD.r, chartH=H-PAD.t-PAD.b;
-              const barW=chartW/months.length*0.45;
-              const xCenter=i=>PAD.l+(i+0.5)*(chartW/months.length);
-              const barX=i=>xCenter(i)-barW/2;
-              const barH=v=>Math.max(2,Math.round((v/maxCount)*chartH));
-              const lineY=v=>PAD.t+chartH-Math.round((v/maxTotal)*chartH);
-              const points=months.map((m,i)=>xCenter(i)+","+lineY(m.total)).join(" ");
-              return(
-                <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
-                  boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0",marginBottom:20}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-                    <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
             {/* ── AI Quote Assistant ── */}
             {isFollowUpUser&&(
               <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
@@ -4321,6 +4308,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
               </div>
             )}
 
+
             {/* ── Follow-ups widget ── */}
             {isFollowUpUser&&(
               <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
@@ -4388,13 +4376,13 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                                 {isGenerating?"✨ Generating…":emailShown?"✕ Hide Email":"✨ Generate Email"}
                               </button>
                               <button
-                                onClick={()=>markFollowedUp(fu.id,false)}
+                                onClick={e=>{e.preventDefault();markFollowedUp(fu.id,false);}}
                                 style={{background:"#1e8449",border:"none",borderRadius:6,
                                   padding:"6px 14px",color:"#fff",fontWeight:600,fontSize:11,cursor:"pointer"}}>
                                 ✓ Done
                               </button>
                               <button
-                                onClick={()=>markFollowedUp(fu.id,true)}
+                                onClick={e=>{e.preventDefault();markFollowedUp(fu.id,true);}}
                                 style={{background:"none",border:"1px solid #b7791f",borderRadius:6,
                                   padding:"6px 14px",color:"#b7791f",fontWeight:600,fontSize:11,cursor:"pointer"}}>
                                 ↻ Follow up in 90 days
@@ -4435,6 +4423,25 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
               </div>
             )}
 
+
+            {/* ── Month over month combo chart ── */}
+            {(()=>{
+              const months = data.monthCounts;
+              const maxCount = Math.max(...months.map(m=>m.count), 1);
+              const maxTotal = Math.max(...months.map(m=>m.total), 1);
+              const W=560, H=160, PAD={t:24,r:60,b:32,l:44};
+              const chartW=W-PAD.l-PAD.r, chartH=H-PAD.t-PAD.b;
+              const barW=chartW/months.length*0.45;
+              const xCenter=i=>PAD.l+(i+0.5)*(chartW/months.length);
+              const barX=i=>xCenter(i)-barW/2;
+              const barH=v=>Math.max(2,Math.round((v/maxCount)*chartH));
+              const lineY=v=>PAD.t+chartH-Math.round((v/maxTotal)*chartH);
+              const points=months.map((m,i)=>xCenter(i)+","+lineY(m.total)).join(" ");
+              return(
+                <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
+                  boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0",marginBottom:20}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
                       QUOTES — LAST 4 MONTHS
                     </div>
                     <div style={{display:"flex",gap:16,fontSize:10,color:"#6b7a8d"}}>
@@ -4512,6 +4519,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     ))}
                   </svg>
                 </div>
+              </div>
               );
             })()}
 
