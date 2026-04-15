@@ -3100,7 +3100,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       .from("follow_ups")
       .select("*, quotes(opportunity, customer, data)")
       .eq("followed_up", false)
-      .or(`sent_at.lte.${thirtyDaysAgo},followup_again_at.lte.${today}`)
+      .or(`sent_at.lte.${thirtyDaysAgo},followup_again_at.not.is.null`)
       .order("sent_at", {ascending: true});
     if(!error) setFollowUps(data||[]);
     setFuLoading(false);
