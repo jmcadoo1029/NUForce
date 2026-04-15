@@ -6977,22 +6977,27 @@ const STANDARD_TERMS = [
       // Use snapshot lines when not dirty — prices frozen at last save
       const pdfLines = (!isDirty && snapshot?.lines?.length>0) ? snapshot.lines : summary.lines;
       const order = lineOrder&&lineOrder.length===pdfLines.length ? lineOrder : pdfLines.map((_,i)=>i);
-      // Build label->override map for desc/deleted lookup so PDF matches sidebar
-      const ovByLabel={};
-      const ovByIndex={};
+      // Build DUAL lookup: by stored label (for labeled overrides) AND
+      // by summary.lines label at that index (for unlabeled overrides like descs)
+      // This handles the case where snapshot indices differ from summary indices
+      const pdfOvByLabel={};
       Object.entries(lineOverrides).forEach(([k,ov])=>{
-        ovByIndex[k]=ov;
-        if(ov.label)ovByLabel[ov.label]=ov;
+        // Map by stored label if available
+        if(ov.label) pdfOvByLabel[ov.label]=ov;
+      });
+      // Also map unlabeled overrides (descs/prices) by their summary.lines label
+      summary.lines.forEach((l,i)=>{
+        const ov=lineOverrides[i];
+        if(ov&&!ov.label) pdfOvByLabel[l.label]={...ov,label:l.label};
       });
       order.forEach((origIdx, dispIdx) => {
         const l = pdfLines[origIdx];
         if(!l)return;
-        // Look up overrides by label first (survives index shifts), fallback to index
-        const ov = ovByLabel[l.label] || ovByIndex[origIdx] || {};
-        const snapOv = (!isDirty&&snapshot?.lines) ? {} : ov;
-        if(snapOv.deleted||ov.deleted) return;
-        // Price comes from snapshot when not dirty; desc always from live lineOverrides
-        const price = snapOv.price!==undefined ? sf2(snapOv.price) : l.val;
+        // Always look up by label — works even when snapshot/summary indices differ
+        const ov = pdfOvByLabel[l.label] || {};
+        if(ov.deleted) return;
+        // Price always from snapshot val (frozen); desc from label-matched override
+        const price = l.val;
         const desc = ov.desc&&ov.desc.trim() ? ov.desc.trim() : null;
         const rowH = desc ? 26 : 14;
         if(y + rowH + 2 > PH-52){ drawFooter(); doc.addPage(); pageNum++; y=54; drawTblHdr(); }
