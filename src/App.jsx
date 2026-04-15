@@ -3102,7 +3102,14 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       .eq("followed_up", false)
       .or(`sent_at.lte.${thirtyDaysAgo},followup_again_at.lte.${today}`)
       .order("sent_at", {ascending: true});
-    if(!error) setFollowUps(data||[]);
+    if(!error){
+      // Filter out closed won/lost quotes
+      const filtered=(data||[]).filter(fu=>{
+        const stage=fu.quotes?.data?.qi?.stage||"" ;
+        return stage!=="Closed Won"&&stage!=="Closed Lost";
+      });
+      setFollowUps(filtered);
+    }
     setFuLoading(false);
   };
 
