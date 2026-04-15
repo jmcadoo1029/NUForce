@@ -4519,7 +4519,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     ))}
                   </svg>
                 </div>
-              </div>
               );
             })()}
 
