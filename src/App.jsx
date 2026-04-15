@@ -4177,7 +4177,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                             <div style={{fontSize:11,color:"#6b7a8d",display:"flex",gap:12,flexWrap:"wrap"}}>
                               {(q.qi?.customer||q.customer)&&<span>{q.qi?.customer||q.customer}</span>}
                               {subAt&&<span>Submitted: {subAt}</span>}
-                              {q.approval?.submittedBy&&<span>By: {q.approval.submittedBy}</span>}
+                              {(isWon?q.wonApproval?.submittedBy:q.approval?.submittedBy)&&<span>By: {isWon?q.wonApproval.submittedBy:q.approval.submittedBy}</span>}
                             </div>
                           </div>
                           <div style={{fontWeight:700,fontSize:13,color:"#1e8449",flexShrink:0}}>
