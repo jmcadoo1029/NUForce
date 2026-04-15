@@ -6977,15 +6977,23 @@ const STANDARD_TERMS = [
       // Use snapshot lines when not dirty — prices frozen at last save
       const pdfLines = (!isDirty && snapshot?.lines?.length>0) ? snapshot.lines : summary.lines;
       const order = lineOrder&&lineOrder.length===pdfLines.length ? lineOrder : pdfLines.map((_,i)=>i);
+      // Build label->override map for desc/deleted lookup so PDF matches sidebar
+      const ovByLabel={};
+      const ovByIndex={};
+      Object.entries(lineOverrides).forEach(([k,ov])=>{
+        ovByIndex[k]=ov;
+        if(ov.label)ovByLabel[ov.label]=ov;
+      });
       order.forEach((origIdx, dispIdx) => {
         const l = pdfLines[origIdx];
         if(!l)return;
-        const snapOv = (!isDirty&&snapshot?.lines) ? {} : (lineOverrides[origIdx]||{});
-        const liveOv = lineOverrides[origIdx]||{};
-        if(snapOv.deleted||liveOv.deleted) return;
+        // Look up overrides by label first (survives index shifts), fallback to index
+        const ov = ovByLabel[l.label] || ovByIndex[origIdx] || {};
+        const snapOv = (!isDirty&&snapshot?.lines) ? {} : ov;
+        if(snapOv.deleted||ov.deleted) return;
         // Price comes from snapshot when not dirty; desc always from live lineOverrides
         const price = snapOv.price!==undefined ? sf2(snapOv.price) : l.val;
-        const desc = liveOv.desc&&liveOv.desc.trim() ? liveOv.desc.trim() : null;
+        const desc = ov.desc&&ov.desc.trim() ? ov.desc.trim() : null;
         const rowH = desc ? 26 : 14;
         if(y + rowH + 2 > PH-52){ drawFooter(); doc.addPage(); pageNum++; y=54; drawTblHdr(); }
         const bg = dispIdx%2===0 ? [255,255,255] : [247,248,250];
@@ -8223,10 +8231,17 @@ const STANDARD_TERMS = [
                   {(()=>{
                     const displayLines=summary.lines;
                     const order=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
+                    // Build label->override map for accurate deleted/desc lookup
+                    const sidebarOvByLabel={};
+                    const sidebarOvByIndex={};
+                    Object.entries(lineOverrides).forEach(([k,ov])=>{
+                      sidebarOvByIndex[k]=ov;
+                      if(ov.label)sidebarOvByLabel[ov.label]=ov;
+                    });
                     return order.map((origIdx,dispIdx)=>{
                       const l=displayLines[origIdx];
                       if(!l)return null;
-                      const ov=lineOverrides[origIdx]||{};
+                      const ov=sidebarOvByLabel[l.label]||sidebarOvByIndex[origIdx]||{};
                       if(ov.deleted)return null;
                       const dispPrice=ov.price!==undefined?ov.price:String(l.val);
                       const dispDesc=ov.desc!==undefined?ov.desc:"";
