@@ -5294,6 +5294,7 @@ export default function App({onLogout,currentUser}){
 
   // When summary length changes: reset lineOrder and remap deleted overrides by label
   useEffect(()=>{
+    if(!isDirty)return; // never remap when not in edit mode — protects locked/submitted quotes
     if(lineOrder&&lineOrder.length!==summary.lines.length)setLineOrder(null);
     // Remap only deleted flags — use stored label to find correct new index
     // Price/desc overrides are left alone (harmless if slightly off)
@@ -5321,6 +5322,7 @@ export default function App({onLogout,currentUser}){
 
   // Reset td override when no main tests are active
   useEffect(()=>{
+    if(!isDirty)return; // don't reset td when not in edit mode
     const anyActive=vibs.some(s=>s.on)||shocks.some(s=>s.on)||noises.some(s=>s.on)||
       envs.some(s=>s.on)||hfvs.some(s=>s.on)||shos.some(s=>s.on)||
       abs.some(s=>s.on)||sbs.some(s=>s.on);
@@ -5359,6 +5361,7 @@ export default function App({onLogout,currentUser}){
   // isDirty=true means live calcSummary should be used; false means use snapshot
   useEffect(()=>{
     if(isLoadingRef.current)return; // suppress during load
+    if(locked)return; // never mark dirty when quote is locked
     setIsDirty(true);
   },[vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,inst,ot,custom,
      budget,globalPR,lineOverrides,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal]);
@@ -5371,6 +5374,7 @@ export default function App({onLogout,currentUser}){
     const prev=prevAutoSpecs.current;
     prevAutoSpecs.current=autoSpecs;
     if(prev===autoSpecs)return;
+    if(!isDirty)return; // never overwrite specs when not in edit mode
     setTi(t=>{
       const cur=t.tiSpecs||"";
       const inserted=insertedAutoSpecs.current;
@@ -5396,6 +5400,7 @@ export default function App({onLogout,currentUser}){
     const prev=prevAutoNotes.current;
     prevAutoNotes.current=autoNotes;
     if(prev===autoNotes)return;
+    if(!isDirty)return; // never overwrite notes when not in edit mode
     setTi(t=>{
       const cur=t.tiNotes||"";
       const inserted=insertedAutoNotes.current;
@@ -8485,8 +8490,9 @@ const STANDARD_TERMS = [
             </Section>
 
 
-            {/* ── Global Procedures / Reports / CoC — always interactive ── */}
-            <div style={{pointerEvents:"auto",opacity:1}}>
+            {/* ── Global Procedures / Reports / CoC — interactive when editing ── */}
+            <div style={{pointerEvents:(locked||(currentQuoteId&&!isDirty))?"none":"auto",
+              opacity:(locked||(currentQuoteId&&!isDirty))?0.65:1}}>
             {(()=>{
               const pr=globalPR;
               const anyPR=pr.procs.length>0||pr.reps.length>0||pr.coc;
