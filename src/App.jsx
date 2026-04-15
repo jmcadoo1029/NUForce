@@ -6975,17 +6975,19 @@ const STANDARD_TERMS = [
       };
 
       // Use snapshot lines when not dirty — prices frozen at last save
-      const pdfLines = (!isDirty && snapshot?.lines?.length>0) ? snapshot.lines : summary.lines;
+      // Use summary.lines for ORDER (matches sidebar/lineOrder)
+      // Use snapshot prices by label for data integrity
+      const snapPriceByLabel={};
+      if(!isDirty&&snapshot?.lines?.length>0){
+        snapshot.lines.forEach(l=>{ snapPriceByLabel[l.label]=l.val; });
+      }
+      const pdfLines = summary.lines;
       const order = lineOrder&&lineOrder.length===pdfLines.length ? lineOrder : pdfLines.map((_,i)=>i);
-      // Build DUAL lookup: by stored label (for labeled overrides) AND
-      // by summary.lines label at that index (for unlabeled overrides like descs)
-      // This handles the case where snapshot indices differ from summary indices
+      // Label-based override lookup
       const pdfOvByLabel={};
       Object.entries(lineOverrides).forEach(([k,ov])=>{
-        // Map by stored label if available
         if(ov.label) pdfOvByLabel[ov.label]=ov;
       });
-      // Also map unlabeled overrides (descs/prices) by their summary.lines label
       summary.lines.forEach((l,i)=>{
         const ov=lineOverrides[i];
         if(ov&&!ov.label) pdfOvByLabel[l.label]={...ov,label:l.label};
@@ -6993,11 +6995,9 @@ const STANDARD_TERMS = [
       order.forEach((origIdx, dispIdx) => {
         const l = pdfLines[origIdx];
         if(!l)return;
-        // Always look up by label — works even when snapshot/summary indices differ
         const ov = pdfOvByLabel[l.label] || {};
         if(ov.deleted) return;
-        // Price always from snapshot val (frozen); desc from label-matched override
-        const price = l.val;
+        const price = snapPriceByLabel[l.label]!==undefined ? snapPriceByLabel[l.label] : l.val;
         const desc = ov.desc&&ov.desc.trim() ? ov.desc.trim() : null;
         const rowH = desc ? 26 : 14;
         if(y + rowH + 2 > PH-52){ drawFooter(); doc.addPage(); pageNum++; y=54; drawTblHdr(); }
