@@ -3144,18 +3144,22 @@ ${JSON.stringify(quoteSummary)}
 PENDING FOLLOW-UPS (${(followUpsData||[]).length} entries):
 ${JSON.stringify((followUpsData||[]).map(f=>({opp:f.opportunity,customer:f.customer,sent:f.sent_at?.slice(0,10),followup_date:f.followup_again_at})))}`;
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: systemPrompt,
-          messages: [...aiMessages, userMsg].map(m=>({role:m.role,content:m.content})),
-        })
-      });
+      const response = await fetch(
+        'https://swuuxzmgmldvvomsgmjf.supabase.co/functions/v1/ai-analysis',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3dXV4em1nbWxkdnZvbXNnbWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MjcyMzMsImV4cCI6MjA4ODQwMzIzM30.GinbXqvBHcvYRaACBhgpd_Si8-qIDDj7PlbTCINcSU8',
+          },
+          body: JSON.stringify({
+            system: systemPrompt,
+            messages: [...aiMessages, userMsg].map(m=>({role:m.role,content:m.content})),
+          })
+        }
+      );
       const data = await response.json();
-      const answer = data.content?.[0]?.text || 'Sorry, I could not get a response.';
+      const answer = data.content?.[0]?.text || data.text || data.error || 'Sorry, I could not get a response.';
       setAiMessages(prev=>[...prev, {role:'assistant', content:answer}]);
     } catch(e) {
       setAiMessages(prev=>[...prev, {role:'assistant', content:'Error: '+e.message}]);
