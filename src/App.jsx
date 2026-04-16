@@ -3084,6 +3084,8 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   });
   const [followUps, setFollowUps]   = useState([]);
   const [fuLoading, setFuLoading]   = useState(false);
+  const [flaggedQuotes,setFlaggedQuotes]=useState([]);
+  const [flagsLoading,setFlagsLoading]=useState(false);
   const [aiInput,setAiInput]=useState("");
   const [aiLoading,setAiLoading]=useState(false);
   const [aiMessages,setAiMessages]=useState([]);
@@ -3155,6 +3157,17 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       setAiMessages(prev=>[...prev, {role:'assistant', content:'Error: '+e.message}]);
     }
     setAiLoading(false);
+  };
+
+  const loadFlags = async () => {
+    setFlagsLoading(true);
+    const {data}=await supabase
+      .from("quote_flags")
+      .select("id,quote_id,opportunity,customer,flagged_by,flagged_at,note")
+      .eq("resolved",false)
+      .order("flagged_at",{ascending:false});
+    setFlaggedQuotes(data||[]);
+    setFlagsLoading(false);
   };
 
   const loadFollowUps = async () => {
@@ -3245,6 +3258,31 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       setFollowUps(prev=>prev.filter(fu=>fu.id!==fuId));
     }
     if(fuEmail?.id===fuId)setFuEmail(null);
+  };
+
+  const handleFlag = async () => {
+    if(!currentQuoteId||flagLoading)return;
+    setFlagLoading(true);
+    if(quoteFlag){
+      // Unflag
+      await supabase.from("quote_flags").update({resolved:true,resolved_by:currentUser,resolved_at:new Date().toISOString()}).eq("id",quoteFlag.id);
+      setQuoteFlag(null);
+      setFlagNote("");
+      showToast("🚩 Flag removed","info");
+    } else {
+      // Flag
+      const {data,error}=await supabase.from("quote_flags").insert({
+        quote_id:currentQuoteId,
+        opportunity:qi.opp,
+        customer:qi.account,
+        flagged_by:currentUser,
+        note:flagNote.trim()||null,
+      }).select().single();
+      if(!error&&data){setQuoteFlag(data);showToast("🚩 Quote flagged","success");setDashboardNeedsRefresh(true);}
+      else showToast("Flag failed","error");
+    }
+    setShowFlagPopover(false);
+    setFlagLoading(false);
   };
 
   const loadPrevMonth = async (mon, yr) => {
@@ -3496,7 +3534,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     setLoading(false);
   };
 
-  useEffect(()=>{ load(); loadFollowUps(); },[]);
+  useEffect(()=>{ load(); loadFollowUps(); loadFlags(); },[]);
 
   const TARGET = 175000;
   const money  = n => "$"+(isNaN(n)||n==null?0:Math.round(n)).toLocaleString();
@@ -3550,7 +3588,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                 </div>
               )}
             </div>
-            <button onClick={()=>{load();if(onRefreshComplete)onRefreshComplete();}}              style={{background:needsRefresh?"#1a5276":"#fff",border:"1px solid "+(needsRefresh?"#1a5276":"#d0d7de"),borderRadius:8,padding:"8px 18px",
+            <button onClick={()=>{load();loadFollowUps();loadFlags();if(onRefreshComplete)onRefreshComplete();}}              style={{background:needsRefresh?"#1a5276":"#fff",border:"1px solid "+(needsRefresh?"#1a5276":"#d0d7de"),borderRadius:8,padding:"8px 18px",
                 fontWeight:600,fontSize:12,cursor:"pointer",color:needsRefresh?"#fff":"#1a2332",display:"flex",alignItems:"center",gap:6}}>
               {needsRefresh?"↻ Updates available":"↻ Refresh"}
             </button>
@@ -4100,6 +4138,58 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                 </div>
               );
             })()}
+
+            {/* ── Flagged Quotes widget ── */}
+            {flaggedQuotes.length>0&&(
+              <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
+                border:"1px solid #fca5a5",overflow:"hidden",marginBottom:20}}>
+                <div style={{padding:"14px 24px",borderBottom:"1px solid #fca5a5",
+                  display:"flex",alignItems:"center",justifyContent:"space-between",
+                  background:"#fff5f5"}}>
+                  <div>
+                    <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#b91c1c"}}>
+                      🚩 FLAGGED QUOTES
+                    </div>
+                    <div style={{fontSize:11,color:"#9aa5b1",marginTop:2}}>
+                      {flaggedQuotes.length} quote{flaggedQuotes.length!==1?"s":""} need attention
+                    </div>
+                  </div>
+                  <button onClick={loadFlags}
+                    style={{background:"none",border:"1px solid #fca5a5",borderRadius:6,
+                      padding:"4px 12px",fontSize:11,cursor:"pointer",color:"#b91c1c"}}>
+                    ↻ Refresh
+                  </button>
+                </div>
+                <div>
+                  {flaggedQuotes.map(f=>(
+                    <div key={f.id}
+                      onClick={()=>onLoadQuote&&supabase.from("quotes").select("*").eq("id",f.quote_id).single().then(({data})=>{if(data)onLoadQuote(data);})}
+                      style={{padding:"12px 24px",borderBottom:"1px solid #fee2e2",
+                        cursor:"pointer",display:"flex",alignItems:"flex-start",
+                        justifyContent:"space-between",gap:12,
+                        transition:"background 0.1s"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#fff5f5"}
+                      onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                          <span style={{fontWeight:700,fontSize:13,color:"#b91c1c"}}>{f.opportunity}</span>
+                          <span style={{fontSize:12,color:"#4a5568"}}>{f.customer}</span>
+                        </div>
+                        {f.note&&(
+                          <div style={{fontSize:11,color:"#6b7a8d",fontStyle:"italic",marginBottom:2}}>
+                            "{f.note}"
+                          </div>
+                        )}
+                        <div style={{fontSize:10,color:"#9aa5b1"}}>
+                          Flagged by {f.flagged_by} · {new Date(f.flagged_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})}
+                        </div>
+                      </div>
+                      <span style={{fontSize:11,color:"#b91c1c",flexShrink:0}}>→</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* ── Approval Queue widget (approvers only) ── */}
             {isApprover&&(
@@ -4745,6 +4835,10 @@ export default function App({onLogout,currentUser}){
   const [showChatter,setShowChatter]=useState(false);
   const [quoteSentAt,setQuoteSentAt]=useState(null); // date string if this quote has been marked sent
   const [showFollowUpPopover,setShowFollowUpPopover]=useState(false);
+  const [quoteFlag,setQuoteFlag]=useState(null); // {id,note,flagged_by,flagged_at} or null
+  const [showFlagPopover,setShowFlagPopover]=useState(false);
+  const [flagNote,setFlagNote]=useState("");
+  const [flagLoading,setFlagLoading]=useState(false);
   const [isDirty,setIsDirty]=useState(false); // true when test selections changed since last save
   const [snapshot,setSnapshot]=useState(null); // frozen prices/specs/notes from last save
   const [followUpDate,setFollowUpDate]=useState("");
@@ -4871,8 +4965,17 @@ export default function App({onLogout,currentUser}){
         .limit(1)
         .maybeSingle()
         .then(({data})=>setQuoteSentAt(data?.sent_at||null));
+      // Load flag
+      supabase.from("quote_flags")
+        .select("id,note,flagged_by,flagged_at")
+        .eq("quote_id",currentQuoteId)
+        .eq("resolved",false)
+        .maybeSingle()
+        .then(({data})=>{ setQuoteFlag(data||null); setFlagNote(data?.note||""); });
     } else {
       setQuoteSentAt(null);
+      setQuoteFlag(null);
+      setFlagNote("");
     }
   },[currentQuoteId]);
 
@@ -7347,6 +7450,58 @@ const STANDARD_TERMS = [
                     cursor:"pointer"}}>
                   ✉️ Mark as Sent
                 </button>
+              </div>
+            )}
+
+            {/* ── Flag button ── */}
+            {!showDashboard&&currentQuoteId&&(
+              <div style={{position:"relative"}}>
+                <button onClick={()=>{setShowFlagPopover(v=>!v);}}
+                  style={{background:quoteFlag?"rgba(185,28,28,0.85)":"rgba(255,255,255,0.12)",
+                    border:"1px solid rgba(255,255,255,0.2)",borderRadius:5,padding:"3px 10px",
+                    color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer"}}>
+                  🚩 {quoteFlag?"FLAGGED":"Flag"}
+                </button>
+                {showFlagPopover&&(
+                  <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,zIndex:500,
+                    background:"#fff",borderRadius:10,boxShadow:"0 4px 20px rgba(0,0,0,0.15)",
+                    border:"1px solid #e8ecf0",padding:"14px 16px",minWidth:260}}>
+                    <div onClick={()=>setShowFlagPopover(false)} style={{position:"fixed",inset:0,zIndex:-1}}/>
+                    <div style={{fontSize:11,fontWeight:700,color:"#9aa5b1",letterSpacing:.8,marginBottom:8}}>
+                      {quoteFlag?"REMOVE FLAG":"FLAG THIS QUOTE"}
+                    </div>
+                    {quoteFlag?(
+                      <div>
+                        <div style={{fontSize:11,color:"#4a5568",marginBottom:4}}>
+                          Flagged by {quoteFlag.flagged_by} on {new Date(quoteFlag.flagged_at).toLocaleDateString()}
+                        </div>
+                        {quoteFlag.note&&<div style={{fontSize:11,color:"#6b7a8d",fontStyle:"italic",marginBottom:10}}>"{quoteFlag.note}"</div>}
+                        <button onClick={handleFlag} disabled={flagLoading}
+                          style={{width:"100%",background:"#b91c1c",border:"none",borderRadius:6,
+                            padding:"7px 0",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer"}}>
+                          {flagLoading?"Removing…":"✕ Remove Flag"}
+                        </button>
+                      </div>
+                    ):(
+                      <div>
+                        <textarea
+                          value={flagNote}
+                          onChange={e=>setFlagNote(e.target.value)}
+                          placeholder="Add a note (optional)..."
+                          rows={2}
+                          style={{width:"100%",fontSize:11,borderRadius:6,border:"1px solid #d0d7de",
+                            padding:"6px 8px",resize:"none",fontFamily:"inherit",marginBottom:8,
+                            boxSizing:"border-box"}}
+                        />
+                        <button onClick={handleFlag} disabled={flagLoading}
+                          style={{width:"100%",background:"#b91c1c",border:"none",borderRadius:6,
+                            padding:"7px 0",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer"}}>
+                          {flagLoading?"Flagging…":"🚩 Flag This Quote"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
