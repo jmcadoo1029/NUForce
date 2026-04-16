@@ -3084,6 +3084,8 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   });
   const [followUps, setFollowUps]   = useState([]);
   const [fuLoading, setFuLoading]   = useState(false);
+  const [flaggedQuotes,setFlaggedQuotes]=useState([]);
+  const [flagsLoading,setFlagsLoading]=useState(false);
   const [aiInput,setAiInput]=useState("");
   const [aiLoading,setAiLoading]=useState(false);
   const [aiMessages,setAiMessages]=useState([]);
