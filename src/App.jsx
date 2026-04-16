@@ -5540,17 +5540,35 @@ export default function App({onLogout,currentUser}){
 
   // Clone quote — optionally save original first, then open modal for new opp #
   const handleFlag = async () => {
-    if(!currentQuoteId||flagLoading)return;
+    if(flagLoading)return;
     setFlagLoading(true);
     try {
+      // Ensure quote is saved to Supabase before flagging
+      // This handles SF-imported quotes that may not have a valid row yet
+      let qid = currentQuoteId;
+      if(!qid){
+        const q={id:undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
+          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,
+          budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,
+          inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
+        const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+        if(!newId){showToast("Save failed before flagging","error");setFlagLoading(false);return;}
+        setCurrentQuoteId(newId);
+        qid=newId;
+      }
       if(quoteFlag){
         await supabase.from("quote_flags").update({resolved:true,resolved_by:currentUser,resolved_at:new Date().toISOString()}).eq("id",quoteFlag.id);
         setQuoteFlag(null);
         setFlagNote("");
         showToast("🚩 Flag removed","info");
       } else {
+        // Verify currentQuoteId is the right quote before inserting
+        // Re-fetch to confirm it matches qi.opp
+        const {data:check}=await supabase.from("quotes").select("id,opportunity").eq("id",qid).single();
+        const confirmedId=check?.opportunity===qi.opp ? qid : null;
+        if(!confirmedId){showToast("Flag error: quote ID mismatch, try again","error");setFlagLoading(false);setShowFlagPopover(false);return;}
         const {data,error}=await supabase.from("quote_flags").insert({
-          quote_id:currentQuoteId,
+          quote_id:confirmedId,
           opportunity:qi.opp,
           customer:qi.account,
           flagged_by:currentUser,
