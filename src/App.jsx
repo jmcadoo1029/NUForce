@@ -4816,10 +4816,6 @@ export default function App({onLogout,currentUser}){
   const [showFlagPopover,setShowFlagPopover]=useState(false);
   const [flagNote,setFlagNote]=useState("");
   const [flagLoading,setFlagLoading]=useState(false);
-  const [quoteFlag,setQuoteFlag]=useState(null); // {id,note,flagged_by,flagged_at} or null
-  const [showFlagPopover,setShowFlagPopover]=useState(false);
-  const [flagNote,setFlagNote]=useState("");
-  const [flagLoading,setFlagLoading]=useState(false);
   const [isDirty,setIsDirty]=useState(false); // true when test selections changed since last save
   const [snapshot,setSnapshot]=useState(null); // frozen prices/specs/notes from last save
   const [followUpDate,setFollowUpDate]=useState("");
