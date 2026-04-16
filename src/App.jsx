@@ -4144,7 +4144,23 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                 <div>
                   {flaggedQuotes.map(f=>(
                     <div key={f.id}
-                      onClick={()=>onLoadQuote&&supabase.from("quotes").select("*").eq("id",f.quote_id).single().then(({data})=>{if(data)onLoadQuote(data);})}
+                      onClick={()=>{
+                        if(!onLoadQuote)return;
+                        supabase.from("quotes")
+                          .select("id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source")
+                          .eq("id",f.quote_id)
+                          .single()
+                          .then(({data:row})=>{
+                            if(!row)return;
+                            const q=row.data||{};
+                            const match={...q,id:row.id,opp:row.opportunity||q.opp,
+                              customer:row.customer||q.customer,rfq:row.rfq||q.rfq,
+                              total:row.total??q.total,savedAt:row.updated_at,
+                              source:"vibrato",
+                              approval:{...(q.approval||{}),status:row.approval_status||q.approval?.status||"none"}};
+                            onLoadQuote(match);
+                          });
+                      }}
                       style={{padding:"12px 24px",borderBottom:"1px solid #fee2e2",
                         cursor:"pointer",display:"flex",alignItems:"flex-start",
                         justifyContent:"space-between",gap:12,
@@ -5316,10 +5332,12 @@ export default function App({onLogout,currentUser}){
       .single();
     if(matchData){
       const q=matchData.data||{};
+      // When loading from Reminders, treat as a Vibrato quote regardless of source
+      // The user intentionally chose to work on this quote
       const match={...q,id:matchData.id,opp:matchData.opportunity||q.opp,
         customer:matchData.customer||q.customer,rfq:matchData.rfq||q.rfq,
         total:matchData.total??q.total,savedAt:matchData.updated_at,
-        source:matchData.source||"vibrato",
+        source:"vibrato",
         approval:{...(q.approval||{}),status:matchData.approval_status||q.approval?.status||"none"}};
       handleLoad(match);
       setOpenQuotesPanel(false);
@@ -5341,7 +5359,7 @@ export default function App({onLogout,currentUser}){
         setWonInfo({wonDate:"",jobNum:"",poNum:""});setWonLocked(false);
         setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
         setChatterEntries([]);setChatterInput("");
-        setLocked(false);setCurrentQuoteId(null);
+        setLocked(false);setCurrentQuoteId(null);setCurrentQuoteSource("vibrato");
         setOpenQuotesPanel(false);
         navigateTo(false);
         window.scrollTo({top:0,behavior:"smooth"});
