@@ -3161,12 +3161,14 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
 
   const loadFlags = async () => {
     setFlagsLoading(true);
-    const {data}=await supabase
-      .from("quote_flags")
-      .select("id,quote_id,opportunity,customer,flagged_by,flagged_at,note")
-      .eq("resolved",false)
-      .order("flagged_at",{ascending:false});
-    setFlaggedQuotes(data||[]);
+    try {
+      const {data,error}=await supabase
+        .from("quote_flags")
+        .select("id,quote_id,opportunity,customer,flagged_by,flagged_at,note")
+        .eq("resolved",false)
+        .order("flagged_at",{ascending:false});
+      if(!error)setFlaggedQuotes(data||[]);
+    } catch(e){ console.warn("quote_flags not yet available",e); }
     setFlagsLoading(false);
   };
 
@@ -3263,6 +3265,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   const handleFlag = async () => {
     if(!currentQuoteId||flagLoading)return;
     setFlagLoading(true);
+    try {
     if(quoteFlag){
       // Unflag
       await supabase.from("quote_flags").update({resolved:true,resolved_by:currentUser,resolved_at:new Date().toISOString()}).eq("id",quoteFlag.id);
@@ -3281,6 +3284,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       if(!error&&data){setQuoteFlag(data);showToast("🚩 Quote flagged","success");setDashboardNeedsRefresh(true);}
       else showToast("Flag failed","error");
     }
+    } catch(e){ showToast("Flag error: "+e.message,"error"); }
     setShowFlagPopover(false);
     setFlagLoading(false);
   };
@@ -4971,7 +4975,8 @@ export default function App({onLogout,currentUser}){
         .eq("quote_id",currentQuoteId)
         .eq("resolved",false)
         .maybeSingle()
-        .then(({data})=>{ setQuoteFlag(data||null); setFlagNote(data?.note||""); });
+        .then(({data,error})=>{ if(!error){setQuoteFlag(data||null);setFlagNote(data?.note||"");} })
+        .catch(()=>{});
     } else {
       setQuoteSentAt(null);
       setQuoteFlag(null);
