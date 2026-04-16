@@ -2283,6 +2283,8 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   let currentUnit=0;
   let seq=0;
   const add=(label,val,_bucket,code)=>{const v=r25(sf(val));if(v>0)lines.push({label,val:v,code:code||pcode(label),unit:currentUnit,seq:seq++});};
+  // addUser: like add but allows $0 (for user-defined custom items)
+  const addUser=(label,val,_bucket,code)=>{const v=r25(sf(val));lines.push({label,val:v,code:code||pcode(label),unit:currentUnit,seq:seq++,userDefined:true});};
 
   // Vibration instances
   vibs.filter(s=>s.on).forEach((s,idx)=>{
@@ -2577,7 +2579,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     const total=b+sf(r.techs,1)*sf(r.hours,0)*h;
     if(total>0)add(r.label||"Overtime",total,null,r.pcode||"94");
   });
-  if(custom.on)custom.rows.forEach(r=>{if(sf(r.price)>0)add(r.label||"Custom Item",r.price,null,r.pcode||"94");});
+  if(custom.on)custom.rows.forEach(r=>{if(r.label||String(r.price).trim())addUser(r.label||"Custom Item",r.price,null,r.pcode||"94");});
 
   // Combined proc/report across all instances of all sections
   // Section proc/report prices — keyed by section type
@@ -2698,7 +2700,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     };
     return order(a)-order(b);
   });
-  const sorted=[...sortedProcs,...sortedMain,...sortedReps].filter(l=>l.val>0);
+  const sorted=[...sortedProcs,...sortedMain,...sortedReps].filter(l=>l.val>0||l.userDefined);
   // Apply in-stock modal analysis price override to the targeted procedure line
   if(inStockModal?.on&&inStockModal.targetProc){
     const target=sorted.find(l=>l.label===inStockModal.targetProc);
