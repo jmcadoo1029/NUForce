@@ -8861,7 +8861,7 @@ const STANDARD_TERMS = [
         </div>
       )}
 
-      {/* ── Open Quotes slide-out panel ── */}
+      {/* ── Reminders slide-out panel ── */}
       {openQuotesPanel&&(
         <div onClick={()=>setOpenQuotesPanel(false)}
           style={{position:"fixed",inset:0,zIndex:1100,background:"rgba(0,0,0,0.25)"}}/>
@@ -8870,12 +8870,12 @@ const STANDARD_TERMS = [
         onClick={()=>{if(!openQuotesPanel){setOpenQuotesPanel(true);loadOpenQuotes();}else setOpenQuotesPanel(false);}}
         style={{position:"fixed",left:openQuotesPanel?380:0,top:"50%",transform:"translateY(-50%)",zIndex:1200,background:"#1a5276",color:"#fff",borderRadius:"0 6px 6px 0",padding:"8px 5px",cursor:"pointer",transition:"left 0.3s ease",writingMode:"vertical-rl",textOrientation:"mixed",fontSize:9,fontWeight:700,letterSpacing:1,boxShadow:"2px 0 8px rgba(0,0,0,0.2)",userSelect:"none",display:"flex",alignItems:"center",gap:4}}>
         <span style={{fontSize:11}}>📂</span>
-        <span>OPEN QUOTES</span>
+        <span>REMINDERS</span>
       </div>
       <div style={{position:"fixed",left:openQuotesPanel?0:-400,top:0,bottom:0,width:380,background:"#ffffff",zIndex:1150,boxShadow:"4px 0 24px rgba(0,0,0,0.18)",transition:"left 0.3s ease",display:"flex",flexDirection:"column",fontFamily:"Segoe UI,system-ui,sans-serif"}}>
         <div style={{background:"#1a5276",padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
           <div>
-            <div style={{fontWeight:700,fontSize:14,color:"#fff",letterSpacing:.5}}>📂 Open Quotes</div>
+            <div style={{fontWeight:700,fontSize:14,color:"#fff",letterSpacing:.5}}>📌 Reminders</div>
             <div style={{fontSize:10,color:"rgba(255,255,255,0.6)",marginTop:2}}>Click an opportunity number to load</div>
           </div>
           <button onClick={()=>setOpenQuotesPanel(false)} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:6,color:"#fff",fontSize:16,cursor:"pointer",padding:"4px 10px",fontWeight:700}}>✕</button>
@@ -8888,7 +8888,7 @@ const STANDARD_TERMS = [
         <div style={{flex:1,overflowY:"auto",padding:"8px 12px"}}>
           {openQuotesLoading&&<div style={{textAlign:"center",color:"#9aa5b1",fontSize:12,padding:20}}>Loading…</div>}
           {!openQuotesLoading&&openQuotesList.length===0&&(
-            <div style={{textAlign:"center",color:"#9aa5b1",fontSize:12,padding:30,lineHeight:1.8}}>No open quotes yet.<br/>Click + Add Row to get started.</div>
+            <div style={{textAlign:"center",color:"#9aa5b1",fontSize:12,padding:30,lineHeight:1.8}}>No reminders yet.<br/>Click + Add Row to get started.</div>
           )}
           {openQuotesList.map(row=>(
             <div key={row.id}
