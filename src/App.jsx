@@ -4144,26 +4144,25 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                 <div>
                   {flaggedQuotes.map(f=>(
                     <div key={f.id}
-                      onClick={(()=>{
-                        const qid=f.quote_id; // capture immediately, don't rely on closure
-                        return ()=>{
-                          if(!onLoadQuote)return;
-                          supabase.from("quotes")
-                            .select("id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source")
-                            .eq("id",qid)
-                            .single()
-                            .then(({data:row})=>{
-                              if(!row)return;
-                              const q=row.data||{};
-                              const match={...q,id:row.id,opp:row.opportunity||q.opp,
-                                customer:row.customer||q.customer,rfq:row.rfq||q.rfq,
-                                total:row.total??q.total,savedAt:row.updated_at,
-                                source:"vibrato",
-                                approval:{...(q.approval||{}),status:row.approval_status||q.approval?.status||"none"}};
-                              onLoadQuote(match);
-                            });
-                        };
-                      })()}
+                      data-quoteid={String(f.quote_id)}
+                      onClick={e=>{
+                        if(!onLoadQuote)return;
+                        const qid=Number(e.currentTarget.getAttribute('data-quoteid'));
+                        supabase.from("quotes")
+                          .select("id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source")
+                          .eq("id",qid)
+                          .single()
+                          .then(({data:row})=>{
+                            if(!row)return;
+                            const q=row.data||{};
+                            const match={...q,id:row.id,opp:row.opportunity||q.opp,
+                              customer:row.customer||q.customer,rfq:row.rfq||q.rfq,
+                              total:row.total??q.total,savedAt:row.updated_at,
+                              source:"vibrato",
+                              approval:{...(q.approval||{}),status:row.approval_status||q.approval?.status||"none"}};
+                            onLoadQuote(match);
+                          });
+                      }}
                       style={{padding:"12px 24px",borderBottom:"1px solid #fee2e2",
                         cursor:"pointer",display:"flex",alignItems:"flex-start",
                         justifyContent:"space-between",gap:12,
