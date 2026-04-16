@@ -3084,8 +3084,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   });
   const [followUps, setFollowUps]   = useState([]);
   const [fuLoading, setFuLoading]   = useState(false);
-  const [flaggedQuotes,setFlaggedQuotes]=useState([]);
-  const [flagsLoading,setFlagsLoading]=useState(false);
   const [aiInput,setAiInput]=useState("");
   const [aiLoading,setAiLoading]=useState(false);
   const [aiMessages,setAiMessages]=useState([]);
@@ -3262,32 +3260,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     if(fuEmail?.id===fuId)setFuEmail(null);
   };
 
-  const handleFlag = async () => {
-    if(!currentQuoteId||flagLoading)return;
-    setFlagLoading(true);
-    try {
-    if(quoteFlag){
-      // Unflag
-      await supabase.from("quote_flags").update({resolved:true,resolved_by:currentUser,resolved_at:new Date().toISOString()}).eq("id",quoteFlag.id);
-      setQuoteFlag(null);
-      setFlagNote("");
-      showToast("🚩 Flag removed","info");
-    } else {
-      // Flag
-      const {data,error}=await supabase.from("quote_flags").insert({
-        quote_id:currentQuoteId,
-        opportunity:qi.opp,
-        customer:qi.account,
-        flagged_by:currentUser,
-        note:flagNote.trim()||null,
-      }).select().single();
-      if(!error&&data){setQuoteFlag(data);showToast("🚩 Quote flagged","success");setDashboardNeedsRefresh(true);}
-      else showToast("Flag failed","error");
-    }
-    } catch(e){ showToast("Flag error: "+e.message,"error"); }
-    setShowFlagPopover(false);
-    setFlagLoading(false);
-  };
+
 
   const loadPrevMonth = async (mon, yr) => {
     setPrevMonthLoading(true);
@@ -4839,6 +4812,10 @@ export default function App({onLogout,currentUser}){
   const [showChatter,setShowChatter]=useState(false);
   const [quoteSentAt,setQuoteSentAt]=useState(null); // date string if this quote has been marked sent
   const [showFollowUpPopover,setShowFollowUpPopover]=useState(false);
+  const [quoteFlag,setQuoteFlag]=useState(null);
+  const [showFlagPopover,setShowFlagPopover]=useState(false);
+  const [flagNote,setFlagNote]=useState("");
+  const [flagLoading,setFlagLoading]=useState(false);
   const [quoteFlag,setQuoteFlag]=useState(null); // {id,note,flagged_by,flagged_at} or null
   const [showFlagPopover,setShowFlagPopover]=useState(false);
   const [flagNote,setFlagNote]=useState("");
@@ -5542,6 +5519,31 @@ export default function App({onLogout,currentUser}){
   const displayTotal=(!isDirty&&snapshot!=null) ? (snapshot.total??liveTotal) : liveTotal;
 
   // Clone quote — optionally save original first, then open modal for new opp #
+  const handleFlag = async () => {
+    if(!currentQuoteId||flagLoading)return;
+    setFlagLoading(true);
+    try {
+      if(quoteFlag){
+        await supabase.from("quote_flags").update({resolved:true,resolved_by:currentUser,resolved_at:new Date().toISOString()}).eq("id",quoteFlag.id);
+        setQuoteFlag(null);
+        setFlagNote("");
+        showToast("🚩 Flag removed","info");
+      } else {
+        const {data,error}=await supabase.from("quote_flags").insert({
+          quote_id:currentQuoteId,
+          opportunity:qi.opp,
+          customer:qi.account,
+          flagged_by:currentUser,
+          note:flagNote.trim()||null,
+        }).select().single();
+        if(!error&&data){setQuoteFlag(data);showToast("🚩 Quote flagged","success");setDashboardNeedsRefresh(true);}
+        else showToast("Flag failed","error");
+      }
+    } catch(e){ showToast("Flag error: "+e.message,"error"); }
+    setShowFlagPopover(false);
+    setFlagLoading(false);
+  };
+
   const handleClone=()=>{
     const result=window.confirm("Save the current quote before cloning?\n\nClick OK to save first, or Cancel to clone without saving.");
     if(result){
