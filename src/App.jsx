@@ -7277,19 +7277,24 @@ const STANDARD_TERMS = [
       }
       const pdfLines = summary.lines;
       const order = lineOrder&&lineOrder.length===pdfLines.length ? lineOrder : pdfLines.map((_,i)=>i);
-      // Label-based override lookup
+      // Override lookup: index first, label fallback only for unique labels
+      // Prevents cross-contamination between same-label lines (e.g. two Altitude tests)
+      const pdfLabelCount={};
+      summary.lines.forEach(l=>{ pdfLabelCount[l.label]=(pdfLabelCount[l.label]||0)+1; });
       const pdfOvByLabel={};
       Object.entries(lineOverrides).forEach(([k,ov])=>{
-        if(ov.label) pdfOvByLabel[ov.label]=ov;
+        if(ov.label&&pdfLabelCount[ov.label]===1) pdfOvByLabel[ov.label]=ov;
       });
       summary.lines.forEach((l,i)=>{
         const ov=lineOverrides[i];
-        if(ov&&!ov.label) pdfOvByLabel[l.label]={...ov,label:l.label};
+        if(ov&&!ov.label&&pdfLabelCount[l.label]===1) pdfOvByLabel[l.label]={...ov,label:l.label};
       });
+      const pdfOvByIndex={};
+      Object.entries(lineOverrides).forEach(([k,ov])=>{ pdfOvByIndex[k]=ov; });
       order.forEach((origIdx, dispIdx) => {
         const l = pdfLines[origIdx];
         if(!l)return;
-        const ov = pdfOvByLabel[l.label] || {};
+        const ov = pdfOvByIndex[origIdx] || pdfOvByLabel[l.label] || {};
         if(ov.deleted) return;
         const price = snapPriceByLabel[l.label]!==undefined ? snapPriceByLabel[l.label] : l.val;
         const desc = ov.desc&&ov.desc.trim() ? ov.desc.trim() : null;
