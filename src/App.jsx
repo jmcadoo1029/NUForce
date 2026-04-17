@@ -665,7 +665,12 @@ function EnvForm({s,set}){
             </div>}
             <div>
               <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Testing ($)</div>
-              <Inp value={item.testing||"0"} onChange={v=>upd({testing:v})} width={80}/>
+              {key==="th"
+                ? <span style={{fontSize:12,fontWeight:600,color:C.text,padding:"3px 6px",background:C.bg,borderRadius:5,border:"1px solid "+C.border,display:"inline-block",minWidth:80}}>
+                    {(ENV_TH_PRICES[s.thDur]||1000).toLocaleString()}
+                  </span>
+                : <Inp value={item.testing||"0"} onChange={v=>upd({testing:v})} width={80}/>
+              }
             </div>
           </div>
           {key==="th"&&<>
@@ -2358,7 +2363,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   // ENV instances
   envs.filter(s=>s.on).forEach((s,idx)=>{
     currentUnit=idx;
-    const pre=idx>0?" #"+(idx+1)+(s.identifier?" ("+s.identifier+")":""):"";
+    const pre=s.identifier?" ("+s.identifier+")":"";
     // Use T&H type in label
     const thTypeLabel={"Temperature & Humidity":"Temp & Humidity","Temperature Only":"Temperature","Humidity Only":"Humidity"};
     const LBL={th:thTypeLabel[s.thType]||"T&H",sf:"Salt Fog",alt:"Altitude",ess:"ESS",acc:"Acceleration",incl:"Inclination",rd:"Rapid Decomp.",ed:"Explosive Decomp.",drip:"Drip Test",sub:"Submergence",spray:"Spray Test",insres:"Insulation Resistance & Dielectric Strength"};
@@ -2591,7 +2596,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     ...vibs.filter(s=>s.on).map((s,i)=>({s,lbl:"Vibration"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"vib",unit:i})),
     ...shocks.filter(s=>s.on).map((s,i)=>({s,lbl:"Shock"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"shock",unit:i})),
     ...noises.filter(s=>s.on).map((s,i)=>({s,lbl:"Noise"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"noise",unit:i})),
-    ...envs.filter(s=>s.on).map((s,i)=>({s,lbl:"Env"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"env",unit:i})),
+    ...envs.filter(s=>s.on).map((s,i)=>({s,lbl:"Env"+(s.identifier?" ("+s.identifier+")":""),type:"env",unit:i})),
     ...hfvs.filter(s=>s.on).map((s,i)=>({s,lbl:"HF Vibration"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"hfv",unit:i})),
     ...shos.filter(s=>s.on).map((s,i)=>({s,lbl:"Shock (Other)"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"sho",unit:i})),
     ...dcms.filter(s=>s.on).map((s,i)=>({s,lbl:"DCM"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):""),type:"dcm",unit:i})),
@@ -2753,7 +2758,7 @@ function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
     lines.push("Noise Susceptibility"+pre+sc(s.spec)+oasp+dur+".");
   });
   envs.filter(s=>s.on).forEach((s,i)=>{
-    const pre=i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):"";
+    const pre=s.identifier?" ("+s.identifier+")":"";
     const thMap={"Temperature & Humidity":"Temperature & Humidity","Temperature Only":"Temperature","Humidity Only":"Humidity"};
     const it=s.items||{};
     if(it.th?.on){const t=thMap[s.thType]||s.thType;const customDur=s.thDurVal?(s.thDurVal+" "+(s.thDurUnit||"hours")):s.thDur?s.thDur:"";const dur=customDur?", "+customDur:"";lines.push(t+" testing"+pre+sc(it.th.spec||s.spec)+dur+".");}
