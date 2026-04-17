@@ -347,6 +347,12 @@ function VibForm({s,set,setup}){
     </div>
     <HR/>
     <PRow label="Std Setup" val={s.stdSetup||s.setup||"900"} onChange={v=>set({...s,stdSetup:v})}/>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+      <input type="checkbox" checked={s.showSetup!==false}
+        onChange={e=>set({...s,showSetup:e.target.checked})}
+        style={{cursor:"pointer"}}/>
+      <label style={{fontSize:11,color:C.dim,cursor:"pointer"}}>Include Setup Line</label>
+    </div>
     <PRow label="Add'l Costs" val={s.addlCosts||"0"} onChange={v=>set({...s,addlCosts:v})}/>
     <PRow label={"Testing"+(pm>1?" (x"+pm+")":"")} val={s.testing} onChange={v=>set({...s,testing:v})}/>
     {(s.hydroPre||s.hydroPost)&&<PRow label="Hydrostatic" val={s.hydroPrice||"500"} onChange={v=>set({...s,hydroPrice:v})}/>}
@@ -430,6 +436,12 @@ function ShockForm({s,set,vibSetup,setup,ti}){
     </div>
     <HR/>
     {!(s.fromVib&&vibSetup>0)&&<PRow label="Std Setup" val={s.stdSetup||s.setup||"1500"} onChange={v=>set({...s,stdSetup:v})}/>}
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+      <input type="checkbox" checked={s.showSetup!==false}
+        onChange={e=>set({...s,showSetup:e.target.checked})}
+        style={{cursor:"pointer"}}/>
+      <label style={{fontSize:11,color:C.dim,cursor:"pointer"}}>Include Setup Line</label>
+    </div>
     {!(s.fromVib&&vibSetup>0)&&<PRow label="Add'l Costs" val={s.addlCosts||"0"} onChange={v=>set({...s,addlCosts:v})}/>}
     <PRow label={"Testing"+(pm>1?" (x"+pm+")":"")+(s.cat==="Medium Weight"?" (auto: $"+mwTesting(sf(s.weight||ti?.wt||0)).toLocaleString()+")":"")} val={s.testing} onChange={v=>set({...s,testing:v})}/>
     {s.cat==="Medium Weight"&&<div style={{fontSize:10,color:C.dim,marginBottom:4}}>Weight-based: ≤2,500lb $4,575 · 2,501–3,500lb $5,575 · &gt;3,500lb $6,250<br/>Set weight in Unit Details above to auto-suggest.</div>}
@@ -622,6 +634,12 @@ function EnvForm({s,set}){
     {key:"insres",label:"Insulation Resistance & Dielectric Strength",setup:0,testing:500,td:0},
   ];
   return <div>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+      <input type="checkbox" checked={s.showSetup!==false}
+        onChange={e=>set({...s,showSetup:e.target.checked})}
+        style={{cursor:"pointer"}}/>
+      <label style={{fontSize:11,color:C.dim,cursor:"pointer"}}>Include Setup Lines</label>
+    </div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
       {ENV_ITEMS.map(({key,label,setup,testing,td})=>{
         const checked=s.items?.[key]?.on||false;
@@ -1281,6 +1299,12 @@ function HfvForm({s,set,setup}){
     <Pia s={s} set={set}/>
     <HR/>
     <PRow label="Std Setup" val={s.stdSetup||s.setup||"500"} onChange={v=>set({...s,stdSetup:v})}/>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+      <input type="checkbox" checked={s.showSetup!==false}
+        onChange={e=>set({...s,showSetup:e.target.checked})}
+        style={{cursor:"pointer"}}/>
+      <label style={{fontSize:11,color:C.dim,cursor:"pointer"}}>Include Setup Line</label>
+    </div>
     <PRow label="Add'l Costs" val={s.addlCosts||"0"} onChange={v=>set({...s,addlCosts:v})}/>
     <PRow label="Testing (auto)" val={s.testing} onChange={v=>set({...s,testing:v})}/>
     <div style={{fontSize:10,background:C.panel,borderRadius:5,padding:"5px 8px",marginBottom:6}}>
@@ -1331,6 +1355,12 @@ function ShoForm({s,set,setup}){
     <Pia s={s} set={set}/>
     <HR/>
     <PRow label="Std Setup" val={s.stdSetup||s.setup||"500"} onChange={v=>set({...s,stdSetup:v})}/>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+      <input type="checkbox" checked={s.showSetup!==false}
+        onChange={e=>set({...s,showSetup:e.target.checked})}
+        style={{cursor:"pointer"}}/>
+      <label style={{fontSize:11,color:C.dim,cursor:"pointer"}}>Include Setup Line</label>
+    </div>
     <PRow label="Add'l Costs" val={s.addlCosts||"0"} onChange={v=>set({...s,addlCosts:v})}/>
     <PRow label="Testing" val={s.testing} onChange={v=>set({...s,testing:v})}/>
     <div style={{fontSize:10,background:C.panel,borderRadius:5,padding:"5px 8px",marginBottom:6}}>
@@ -1515,6 +1545,18 @@ function AbForm({s,set,setup}){
     <Row label="Spec"><Inp value={s.spec||""} onChange={v=>set({...s,spec:v})} width={200}/></Row>
     <HR/>
     <PRow label="Std Setup" val={s.stdSetup||s.setup||"1000"} onChange={v=>set({...s,stdSetup:v})}/>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+      <input type="checkbox" checked={s.showSetup!==false}
+        onChange={e=>set({...s,showSetup:e.target.checked})}
+        style={{cursor:"pointer"}}/>
+      <label style={{fontSize:11,color:C.dim,cursor:"pointer"}}>Include Setup Line</label>
+    </div>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+      <input type="checkbox" checked={s.showSetup!==false}
+        onChange={e=>set({...s,showSetup:e.target.checked})}
+        style={{cursor:"pointer"}}/>
+      <label style={{fontSize:11,color:C.dim,cursor:"pointer"}}>Include Setup Line</label>
+    </div>
     <PRow label="Add'l Costs" val={s.addlCosts||"0"} onChange={v=>set({...s,addlCosts:v})}/>
     <PRow label="Testing" val={s.testing} onChange={v=>set({...s,testing:v})}/>
     <div style={{fontSize:10,background:C.panel,borderRadius:5,padding:"5px 8px",marginBottom:6}}>
@@ -1536,6 +1578,12 @@ function SbForm({s,set,setup}){
     <Row label="Spec"><Inp value={s.spec||""} onChange={v=>set({...s,spec:v})} width={200}/></Row>
     <HR/>
     <PRow label="Std Setup" val={s.stdSetup||s.setup||"850"} onChange={v=>set({...s,stdSetup:v})}/>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+      <input type="checkbox" checked={s.showSetup!==false}
+        onChange={e=>set({...s,showSetup:e.target.checked})}
+        style={{cursor:"pointer"}}/>
+      <label style={{fontSize:11,color:C.dim,cursor:"pointer"}}>Include Setup Line</label>
+    </div>
     <PRow label="Add'l Costs" val={s.addlCosts||"0"} onChange={v=>set({...s,addlCosts:v})}/>
     <PRow label="Testing" val={s.testing} onChange={v=>set({...s,testing:v})}/>
     <div style={{fontSize:10,background:C.panel,borderRadius:5,padding:"5px 8px",marginBottom:6}}>
@@ -2231,17 +2279,17 @@ function QuoteSearch({onLoad}){
 }
 
 // ── Initial state factories ───────────────────────────────────────────────────
-const newAb=()=>({id:Date.now(),on:false,spec:"",rev:"1474",testing:"2850",stdSetup:"1000",addlCosts:"0",proc:false,report:false});
-const newSb=()=>({id:Date.now(),on:false,spec:"",rev:"167 Type II",testing:"2650",stdSetup:"850",addlCosts:"0",proc:false,report:false});
-const newVib=()=>({id:Date.now(),on:false,cat:"LAB Vibration (MIL-STD-167)",spec:"",freqRange:"",circ:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"3250",stdSetup:"900",addlCosts:"0",proc:false,report:false,fixtureFab:{on:false,hours:"0",techRate:"175"}});
-const newShock=()=>({id:Date.now(),on:false,cat:"Medium Weight",spec:"",grade:"A",class_:"I",type_:"A",location:"Hull",submarine:false,orientation:"Unrestricted",blows:"",fromVib:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"4575",stdSetup:"1500",addlCosts:"0",proc:false,report:false,fixtureFab:{on:false,hours:"0",techRate:"175"}});
-const newNoise=()=>({id:Date.now(),on:false,spec:"",level:"<=140dB",oaspl:"",chamber:"Speakerbox",durVal:"30",durUnit:"minutes",compBudget:"0",pia:0,testing:"3950",stdSetup:"1000",addlCosts:"0",proc:false,report:false});
-const newEnv=()=>({id:Date.now(),on:false,spec:"",items:{},thDur:"0 to 1 Day",thType:"Temperature & Humidity",proc:false,report:false});
+const newAb=()=>({id:Date.now(),on:false,showSetup:true,spec:"",rev:"1474",testing:"2850",stdSetup:"1000",addlCosts:"0",proc:false,report:false});
+const newSb=()=>({id:Date.now(),on:false,showSetup:true,spec:"",rev:"167 Type II",testing:"2650",stdSetup:"850",addlCosts:"0",proc:false,report:false});
+const newVib=()=>({id:Date.now(),on:false,showSetup:true,cat:"LAB Vibration (MIL-STD-167)",spec:"",freqRange:"",circ:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"3250",stdSetup:"900",addlCosts:"0",proc:false,report:false,fixtureFab:{on:false,hours:"0",techRate:"175"}});
+const newShock=()=>({id:Date.now(),on:false,showSetup:true,cat:"Medium Weight",spec:"",grade:"A",class_:"I",type_:"A",location:"Hull",submarine:false,orientation:"Unrestricted",blows:"",fromVib:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"4575",stdSetup:"1500",addlCosts:"0",proc:false,report:false,fixtureFab:{on:false,hours:"0",techRate:"175"}});
+const newNoise=()=>({id:Date.now(),on:false,showSetup:true,spec:"",level:"<=140dB",oaspl:"",chamber:"Speakerbox",durVal:"30",durUnit:"minutes",compBudget:"0",pia:0,testing:"3950",stdSetup:"1000",addlCosts:"0",proc:false,report:false});
+const newEnv=()=>({id:Date.now(),on:false,showSetup:true,spec:"",items:{},thDur:"0 to 1 Day",thType:"Temperature & Humidity",proc:false,report:false});
 const newEmi=()=>({id:Date.now(),on:false,spec:"",rate:"1600",addl:"0",setupShifts:"3.0",tdShifts:"1.0",dimL:"",dimW:"",dimH:"",weight:"",cables:"0",rs103amp:"",plats:{},locs:{},revs:{},pia:0,tests:{},proc:false,report:false});
 const newPq=()=>({id:Date.now(),on:false,rate:"1450",setupShifts:"1.5",tdShifts:"1.0",rows:{},pia:0,cw:false,proc:false,report:false});
 const newDcm=()=>({id:Date.now(),on:false,spec:"",rate:"1600",setupShifts:"1.5",testShifts:"3.0",pia:0,proc:false,report:false});
-const newHfv=()=>({id:Date.now(),on:false,spec:"",dur:"30",pia:0,testing:"1225",stdSetup:"500",addlCosts:"0",proc:false,report:false});
-const newSho=()=>({id:Date.now(),on:false,spec:"",shape:"Half Sine",pia:0,testing:"1250",stdSetup:"500",addlCosts:"0",proc:false,report:false});
+const newHfv=()=>({id:Date.now(),on:false,showSetup:true,spec:"",dur:"30",pia:0,testing:"1225",stdSetup:"500",addlCosts:"0",proc:false,report:false});
+const newSho=()=>({id:Date.now(),on:false,showSetup:true,spec:"",shape:"Half Sine",pia:0,testing:"1250",stdSetup:"500",addlCosts:"0",proc:false,report:false});
 
 // ── Summary calculation helper ────────────────────────────────────────────────
 // Compute a section's total setup = stdSetup + global drilling + global fab + addlCosts
@@ -2303,7 +2351,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     }
     if(s.hydroPre)add("Vib"+pre+" – Pre-Test Hydrostatic",sf(s.hydroPrice||500),null,"95");
     if(s.circ)add("Circulating System",2500,null,"94");
-    add("Vibration"+pre+" – Setup",sectionSetup(s,globalSetup)*pm,null,"94");
+    if(s.showSetup!==false)add("Vibration"+pre+" – Setup",sectionSetup(s,globalSetup)*pm,null,"94");
     // Vib instrumentation: between setup and testing
     if(inst.on){
       if(inst.items?.vib?.on)add("Vib Instrumentation",325*sf(inst.items.vib.channels,1),null,"33");
@@ -2335,7 +2383,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     const shockCat=isMW?"Medium Weight Shock":"Lightweight Shock";
     const shockSetupLabel=shockCat+pre+" – Setup"+(s.fromVib&&firstVibSetup>0?" (disc.)":"");
     const shockSetupDesc=s.fromVib&&firstVibSetup>0?"Pricing assumes the unit is coming directly from vibration testing.":null;
-    {const v=Math.round(sf(su*pm));if(v>0){const u=currentUnit;const sq=seq++;lines.push({label:shockSetupLabel,val:v,code:code,desc:shockSetupDesc,unit:u,seq:sq});}}
+    if(s.showSetup!==false){const v=Math.round(sf(su*pm));if(v>0){const u=currentUnit;const sq=seq++;lines.push({label:shockSetupLabel,val:v,code:code,desc:shockSetupDesc,unit:u,seq:sq});}}
     // Shock instrumentation + HSV: between setup and testing
     if(inst.on){
       if(inst.items?.shock?.on)add("Shock Instrumentation",525*sf(inst.items.shock.channels,1),null,"33");
@@ -2355,7 +2403,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     // Noise setup: chamber factor is the base; addlCosts from section can be added but NOT globalSetup fab/drill
     const noiseBase=sf(s.stdSetup,sf(NOISE_FAC[s.chamber],1000));
     const noiseSetup=Math.round(noiseBase+sf(s.addlCosts,0));
-    add("Noise"+pre+" – Setup",noiseSetup*pm,null,"11");
+    if(s.showSetup!==false)add("Noise"+pre+" – Setup",noiseSetup*pm,null,"11");
     add("Noise"+pre+" – Testing",sf(s.testing)*pm,null,"11");
     (s.customRows||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Custom",r.price,null,r.code||pcode(r.label||""));});
   });
@@ -2374,7 +2422,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
       const code=ENV_CODE[k]||"";
       const testing=k==="th"?(ENV_TH_PRICES[s.thDur]||sf(v.testing,1000)):sf(v.testing);
       const setupAmt=sf(v.setup,0);
-      if(setupAmt>0)add(lbl+" – Setup",setupAmt,null,code);
+      if(setupAmt>0&&s.showSetup!==false)add(lbl+" – Setup",setupAmt,null,code);
       if(testing>0)add(lbl+" – Testing",testing,null,code);
     });
   });
@@ -2391,7 +2439,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     const hfvSetupRaw = Math.round((hfvStd+hfvDrill+hfvFab+hfvAddl)*pm);
     const hfvSetupVal = isNaN(hfvSetupRaw)||hfvSetupRaw<=0 ? Math.round(hfvStd*pm)||500 : hfvSetupRaw;
     // Force push setup line directly — bypasses add()'s v>0 guard in case of edge cases
-    lines.push({label:"HF Vibration"+pre+" – Setup",val:r25(hfvSetupVal),code:"52",unit:currentUnit,seq:seq++});
+    if(s.showSetup!==false)lines.push({label:"HF Vibration"+pre+" – Setup",val:r25(hfvSetupVal),code:"52",unit:currentUnit,seq:seq++});
     add("HF Vibration"+pre+" – Testing",sf(s.testing)*pm,null,"52");
   });
 
@@ -2402,7 +2450,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     const pre=idx>0?" #"+(idx+1)+(s.identifier?" ("+s.identifier+")":""):"";
     const pm=s.pia||1;
     const baseSetup=sectionSetup(s,globalSetup); const shoSetup=hfvOn?Math.ceil(baseSetup*0.75/25)*25:baseSetup;
-    add("Shock (Other)"+pre+" – Setup"+(hfvOn?" (HFV disc.)":""),shoSetup*pm,null,"52");
+    if(s.showSetup!==false)add("Shock (Other)"+pre+" – Setup"+(hfvOn?" (HFV disc.)":""),shoSetup*pm,null,"52");
     add("Shock (Other)"+pre+" – Testing",sf(s.testing)*pm,null,"52");
     (s.customRows||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Custom",r.price,null,r.code||pcode(r.label||""));});
   });
@@ -2455,14 +2503,14 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   abs.filter(s=>s.on).forEach((s,idx)=>{
     currentUnit=idx;
     const pre=idx>0?" #"+(idx+1)+(s.identifier?" ("+s.identifier+")":""):"";
-    add("Airborne Noise"+pre+" – Setup",sectionSetup(s,globalSetup),null,"12");
+    if(s.showSetup!==false)add("Airborne Noise"+pre+" – Setup",sectionSetup(s,globalSetup),null,"12");
     add("Airborne Noise"+pre+" – Testing",sf(s.testing),null,"12");
     (s.customRows||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Custom",r.price,null,r.code||pcode(r.label||""));});
   });
   sbs.filter(s=>s.on).forEach((s,idx)=>{
     currentUnit=idx;
     const pre=idx>0?" #"+(idx+1)+(s.identifier?" ("+s.identifier+")":""):"";
-    add("Structureborne Noise"+pre+" – Setup",sectionSetup(s,globalSetup),null,"12");
+    if(s.showSetup!==false)add("Structureborne Noise"+pre+" – Setup",sectionSetup(s,globalSetup),null,"12");
     add("Structureborne Noise"+pre+" – Testing",sf(s.testing),null,"12");
     (s.customRows||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Custom",r.price,null,r.code||pcode(r.label||""));});
   });
@@ -5148,6 +5196,16 @@ export default function App({onLogout,currentUser}){
     await sendSubmitEmail(currentUser);
   };
 
+
+  const autoUnflag = async (qid) => {
+    if(!qid) return;
+    try {
+      await supabase.from("quote_flags")
+        .update({resolved:true,resolved_by:"auto_approval",resolved_at:new Date().toISOString()})
+        .eq("quote_id",qid)
+        .eq("resolved",false);
+    } catch(e){ console.warn("Auto-unflag failed:",e); }
+  };
   const handleApprove=async()=>{
     const evtA={event:"approved",by:currentUser,at:new Date().toISOString(),comments:approvalComments};
     const newApproval={...approval,status:"approved",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:approvalComments,history:[...(approval.history||[]),evtA]};
@@ -5157,7 +5215,7 @@ export default function App({onLogout,currentUser}){
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
-    if(newId){setCurrentQuoteId(newId);showToast("Quote approved ✓","success");}
+    if(newId){setCurrentQuoteId(newId);showToast("Quote approved ✓","success");autoUnflag(newId);}
     else showToast("Save failed — check your connection","error",5000);
     await sendDecisionEmail("APPROVED",currentUser,approvalComments,approval.submittedBy);
   };
@@ -5259,6 +5317,7 @@ export default function App({onLogout,currentUser}){
         const newApproval={...q.approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(q.approval?.history||[]),evtQ]};
         await saveQuoteToSupabase({...q,approval:newApproval,chatterEntries:q.chatterEntries||[],summary:q.summary,lineOrder:q.lineOrder,lineOverrides:q.lineOverrides},autoSpecs,autoNotes);
         await sendDecisionEmail(decision.toUpperCase(),currentUser,queueComments,q.approval?.submittedBy||"");
+        if(decision==="approved")await autoUnflag(id);
         // If this quote is currently open in the form, sync its state
         if(currentQuoteId&&String(currentQuoteId)===String(id)){
           const evtQL={event:decision,by:currentUser,at:now,comments:queueComments};
