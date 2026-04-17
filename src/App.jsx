@@ -5437,7 +5437,7 @@ export default function App({onLogout,currentUser}){
         setBudget({on:false,rows:[],markup:"25"});setSub({on:false,rows:[]});
         setTd("0");setSetup({techRate:"175",fabHours:"4",holes:"0",cables:"0",drillTap:false});
         setGlobalPR({procs:[],reps:[],coc:false,cocPrice:"250"});
-        setNotes("");setLineOverrides({});setLineOrder(null);
+        setNotes("");setLineOverrides({});setLineOrder(null);userEditedSpecs.current=false;userEditedNotes.current=false;
         setModalAnalysis({on:false,price:"6250"});setFixtureDrawing({on:false,price:"2950"});setInStockModal({on:false,targetProc:""});
         setWonInfo({wonDate:"",jobNum:"",poNum:""});setWonLocked(false);
         setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
@@ -5568,11 +5568,13 @@ export default function App({onLogout,currentUser}){
   // Stores what was actually inserted so it can always be removed cleanly
   const prevAutoSpecs=useRef("");
   const insertedAutoSpecs=useRef(""); // tracks what we actually put into tiSpecs
+  const userEditedSpecs=useRef(false); // true once user manually edits tiSpecs
   useEffect(()=>{
     const prev=prevAutoSpecs.current;
     prevAutoSpecs.current=autoSpecs;
     if(prev===autoSpecs)return;
     if(!isDirty)return; // never overwrite specs when not in edit mode
+    if(userEditedSpecs.current)return; // user has manually edited specs — don't auto-update
     setTi(t=>{
       const cur=t.tiSpecs||"";
       const inserted=insertedAutoSpecs.current;
@@ -5584,6 +5586,23 @@ export default function App({onLogout,currentUser}){
         else if(manual.includes("\n\n"+inserted))manual=manual.replace("\n\n"+inserted,"").trimEnd();
         else if(manual.includes(inserted+"\n\n"))manual=manual.replace(inserted+"\n\n","").trimEnd();
         else if(manual.includes(inserted))manual=manual.replace(inserted,"").trim();
+        else if(inserted&&cur.length>0){
+          // Format mismatch — inserted text not found verbatim in tiSpecs
+          // Auto-text is always appended at the end — try to strip any trailing
+          // auto-generated sentences by finding where manual text ends
+          // Heuristic: split by double newline, keep lines that don't start with
+          // known auto-text beginnings
+          const AUTO_STARTS=["Vibration testing","Shock testing","Drop Shock","Bench Handling",
+            "Noise testing","EMI testing","Power Quality","DC Magnetics","Airborne Noise",
+            "Structureborne Noise","Temperature","Humidity","Altitude","Salt Fog","ESS",
+            "Acceleration","Inclination","Rapid Decompression","Explosive Decompression",
+            "Drip Test","Submergence","Spray Test","Insulation Resistance",
+            "High Frequency","MIL-STD","Test procedure","Frequencies below","OASPLs",
+            "Current Waveform","The modal","Test fixture","The test procedure","The drawings"];
+          const parts=cur.split("\n\n");
+          const manualParts=parts.filter(p=>!AUTO_STARTS.some(s=>p.trim().startsWith(s)));
+          manual=manualParts.join("\n\n").trim();
+        }
       }
       if(!autoSpecs){insertedAutoSpecs.current="";return {...t,tiSpecs:manual};}
       insertedAutoSpecs.current=autoSpecs;
@@ -5594,11 +5613,13 @@ export default function App({onLogout,currentUser}){
 
   const prevAutoNotes=useRef("");
   const insertedAutoNotes=useRef("");
+  const userEditedNotes=useRef(false);
   useEffect(()=>{
     const prev=prevAutoNotes.current;
     prevAutoNotes.current=autoNotes;
     if(prev===autoNotes)return;
     if(!isDirty)return; // never overwrite notes when not in edit mode
+    if(userEditedNotes.current)return; // user has manually edited notes — don't auto-update
     setTi(t=>{
       const cur=t.tiNotes||"";
       const inserted=insertedAutoNotes.current;
@@ -5793,7 +5814,8 @@ export default function App({onLogout,currentUser}){
       q.abs||[newAb()], q.sbs||[newSb()]
     );
     prevAutoSpecs.current=loadedAutoSpecs;
-    insertedAutoSpecs.current=loadedAutoSpecs; // pre-seed so sync effect doesn't re-append
+    insertedAutoSpecs.current=loadedAutoSpecs;
+    userEditedSpecs.current=false; // reset on load
     // Pre-seed autoNotes the same way — compute from loaded tests so the
     // guard fires correctly and doesn't re-append on load
     const loadedAutoNotes=(()=>{
@@ -5815,7 +5837,8 @@ export default function App({onLogout,currentUser}){
       return lines.join("\n\n");
     })();
     prevAutoNotes.current=loadedAutoNotes;
-    insertedAutoNotes.current=loadedAutoNotes; // pre-seed so sync effect doesn't re-append
+    insertedAutoNotes.current=loadedAutoNotes;
+    userEditedNotes.current=false; // reset on load
     if(q.qi)setQi(q.qi);
     if(q.ti)setTi(q.ti);
     if(q.vibs)setVibs(q.vibs);
@@ -8465,12 +8488,18 @@ const STANDARD_TERMS = [
                 <div style={{fontSize:9,color:C.dim,marginBottom:4}}>Auto-generated from enabled tests. Shown on quote PDF. Edit to override.</div>
                 <textarea
                   value={ti.tiSpecs||""}
-                  onChange={e=>setTi({...ti,tiSpecs:e.target.value})}
+                  onChange={e=>{userEditedSpecs.current=true;setTi({...ti,tiSpecs:e.target.value})}}
                   placeholder="Enable test sections to auto-generate scope text, or type here..."
                   rows={5}
                   style={{...inp,width:"100%",resize:"vertical",fontSize:11,lineHeight:1.6}}/>
-                {autoSpecs&&(
-                  <div style={{fontSize:9,color:C.green,marginTop:2}}>✓ Auto-generated specs appended below any existing text</div>
+                {userEditedSpecs.current&&autoSpecs&&(
+                  <button onClick={()=>{userEditedSpecs.current=false;setTi({...ti,tiSpecs:""});insertedAutoSpecs.current="";}}
+                    style={{fontSize:9,color:C.dim,background:"none",border:"none",cursor:"pointer",padding:"2px 0",marginTop:2,display:"block"}}>
+                    ↺ Reset to auto-generated
+                  </button>
+                )}
+                {!userEditedSpecs.current&&autoSpecs&&(
+                  <div style={{fontSize:9,color:C.green,marginTop:2}}>✓ Auto-generated specs active</div>
                 )}
               </div>
               {/* Notes to customer */}
@@ -8479,12 +8508,12 @@ const STANDARD_TERMS = [
                 <div style={{fontSize:9,color:C.dim,marginBottom:4}}>Customer-facing notes. Shown on quote PDF. Auto-populates based on selected tests.</div>
                 <textarea
                   value={ti.tiNotes||""}
-                  onChange={e=>setTi({...ti,tiNotes:e.target.value})}
+                  onChange={e=>{userEditedNotes.current=true;setTi({...ti,tiNotes:e.target.value})}}
                   placeholder="Notes will auto-populate based on selected tests..."
                   rows={5}
                   style={{...inp,width:"100%",resize:"vertical",fontSize:11,lineHeight:1.6}}/>
                 {ti.tiNotes&&ti.tiNotes!==autoNotes&&(
-                  <button onClick={()=>setTi({...ti,tiNotes:""})}
+                  <button onClick={()=>{userEditedNotes.current=false;setTi({...ti,tiNotes:""});insertedAutoNotes.current="";}}
                     style={{fontSize:9,color:C.dim,background:"none",border:"none",cursor:"pointer",padding:"2px 0",marginTop:2}}>
                     ↺ Reset to auto-generated
                   </button>
