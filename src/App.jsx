@@ -5400,7 +5400,19 @@ export default function App({onLogout,currentUser}){
   // When summary length changes: reset lineOrder and remap deleted overrides by label
   useEffect(()=>{
     if(!isDirty)return; // never remap when not in edit mode — protects locked/submitted quotes
-    if(lineOrder&&lineOrder.length!==summary.lines.length)setLineOrder(null);
+    if(lineOrder&&lineOrder.length!==summary.lines.length){
+      const oldLen=lineOrder.length;
+      const newLen=summary.lines.length;
+      if(newLen>oldLen){
+        // Lines were added — append new indices to end of existing order
+        const newIndices=[];
+        for(let i=oldLen;i<newLen;i++)newIndices.push(i);
+        setLineOrder([...lineOrder,...newIndices]);
+      } else {
+        // Lines were removed — reset (indices are now invalid)
+        setLineOrder(null);
+      }
+    }
     // Remap only deleted flags — use stored label to find correct new index
     // Price/desc overrides are left alone (harmless if slightly off)
     const hasDeleted=Object.values(lineOverrides).some(ov=>ov?.deleted&&ov?.label);
