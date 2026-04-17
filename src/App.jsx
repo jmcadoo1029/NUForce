@@ -229,6 +229,10 @@ function TestInstance({inst,idx,total,Form,formProps,onUpdate,onRemove,newInstan
   const [localId,setLocalId]=useState(inst.identifier||"");
   useEffect(()=>setLocalId(inst.identifier||""),[inst.id]);
   const commitId=()=>onUpdate(idx,prev=>({...prev,identifier:localId}));
+  const handleIdChange=(e)=>{
+    setLocalId(e.target.value);
+    onUpdate(idx,prev=>({...prev,identifier:e.target.value}));
+  };
   return(
     <div data-testinstance={idx} style={{
       border:idx>0?"1px solid "+C.border:"none",
@@ -241,7 +245,7 @@ function TestInstance({inst,idx,total,Form,formProps,onUpdate,onRemove,newInstan
               else onUpdate(idx,{...inst,on:v});
             }}
             label={"Test #"+(idx+1)}/>
-          <input value={localId} onChange={e=>setLocalId(e.target.value)} onBlur={commitId}
+          <input value={localId} onChange={handleIdChange} onBlur={commitId}
             placeholder="Identifier (e.g. S/N, Unit #)"
             style={{...inp,flex:1,fontSize:11}}/>
           <button onClick={()=>onRemove(idx)}
@@ -253,7 +257,7 @@ function TestInstance({inst,idx,total,Form,formProps,onUpdate,onRemove,newInstan
       {idx===0&&total>1&&(
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
           <span style={{fontSize:11,color:C.muted,fontWeight:600}}>Test #1</span>
-          <input value={localId} onChange={e=>setLocalId(e.target.value)} onBlur={commitId}
+          <input value={localId} onChange={handleIdChange} onBlur={commitId}
             placeholder="Identifier (e.g. S/N, Unit #)"
             style={{...inp,flex:1,fontSize:11}}/>
         </div>
@@ -8546,17 +8550,24 @@ const STANDARD_TERMS = [
                   {(()=>{
                     const displayLines=summary.lines;
                     const order=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
-                    // Build label->override map for accurate deleted/desc lookup
-                    const sidebarOvByLabel={};
+                    // Override lookup: always use index first (exact match),
+                    // only fall back to label when index has no entry AND label is unique
                     const sidebarOvByIndex={};
+                    const labelCount={};
                     Object.entries(lineOverrides).forEach(([k,ov])=>{
                       sidebarOvByIndex[k]=ov;
-                      if(ov.label)sidebarOvByLabel[ov.label]=ov;
+                    });
+                    // Count how many times each label appears in displayLines
+                    displayLines.forEach(l=>{ labelCount[l.label]=(labelCount[l.label]||0)+1; });
+                    // Build label->override map only for unique labels
+                    const sidebarOvByLabel={};
+                    Object.entries(lineOverrides).forEach(([k,ov])=>{
+                      if(ov.label&&labelCount[ov.label]===1)sidebarOvByLabel[ov.label]=ov;
                     });
                     return order.map((origIdx,dispIdx)=>{
                       const l=displayLines[origIdx];
                       if(!l)return null;
-                      const ov=sidebarOvByLabel[l.label]||sidebarOvByIndex[origIdx]||{};
+                      const ov=sidebarOvByIndex[origIdx]||sidebarOvByLabel[l.label]||{};
                       if(ov.deleted)return null;
                       const dispPrice=ov.price!==undefined?ov.price:String(l.val);
                       const dispDesc=ov.desc!==undefined?ov.desc:"";
