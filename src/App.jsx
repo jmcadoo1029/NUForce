@@ -2774,7 +2774,20 @@ function buildSpecs(vibs,shocks,noises,envs,hfvs,shos,dcms,emis,pqs,abs,sbs){
   });
   shos.filter(s=>s.on&&s.spec).forEach((s,i)=>{
     const pre=i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):"";
-    lines.push("Shock testing"+pre+sc(s.spec)+".");
+    if((s.shape==="Half Sine"||s.shape==="Sawtooth")&&(s.nPulses||s.gLevel||s.pDur)){
+      const pulseDetails=[
+        s.nPulses?"Perform "+s.nPulses:"",
+        s.gLevel?s.gLevel+"g":"",
+        s.pDur?s.pDur+"ms shock pulses":"",
+      ].filter(Boolean).join(", ");
+      lines.push("Shock testing"+pre+" in accordance with "+s.spec+". "+pulseDetails+".");
+    } else if(s.shape==="Drop Shock"){
+      lines.push("Drop Shock testing"+pre+" in accordance with "+s.spec+".");
+    } else if(s.shape==="Bench Handling"){
+      lines.push("Bench Handling Shock testing"+pre+" in accordance with "+s.spec+".");
+    } else {
+      lines.push("Shock testing"+pre+sc(s.spec)+".");
+    }
   });
   dcms.filter(s=>s.on&&s.spec).forEach((s,i)=>{
     const pre=i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):"";
