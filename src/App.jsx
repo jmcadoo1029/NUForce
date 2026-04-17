@@ -5453,7 +5453,7 @@ export default function App({onLogout,currentUser}){
       // Unlabeled deletions are dropped permanently
     });
     if(changed)setLineOverrides(next);
-  },[summary.lines.length]);
+  },[summary.lines.map(l=>l.label).join('|')]);
 
   // Reset td override when no main tests are active
   useEffect(()=>{
@@ -5807,23 +5807,29 @@ export default function App({onLogout,currentUser}){
     // Load snapshot and clear dirty flag
     setSnapshot(q.snapshot||null);
     setIsDirty(false);
-    // Validate lineOverrides: only keep deleted flags where stored label matches
-    // the saved summary at that index. This prevents stale deletions from hiding wrong lines.
+    // Validate lineOverrides on load:
+    // - Deleted flags: keep only if the stored label exists somewhere in the saved summary
+    //   (not necessarily at the same index — indices shift when tests change)
+    // - Price/desc overrides: keep as-is
     if(q.lineOverrides!==undefined){
       const savedLines=q.summary?.lines||[];
+      // Build a set of all labels in the saved summary for O(1) lookup
+      const savedLabelSet=new Set(savedLines.map(l=>l.label));
+      // Also build a label->index map so we can remap to the correct current index
+      const savedLabelToIdx={};
+      savedLines.forEach((l,i)=>{ savedLabelToIdx[l.label]=i; });
       const validated={};
       Object.entries(q.lineOverrides).forEach(([k,ov])=>{
-        const idx=parseInt(k);
         if(ov?.deleted){
           const storedLabel=ov.label;
-          // Drop deletions with no stored label — they're stale (no way to verify)
+          // Drop deletions with no stored label — can't verify
           if(!storedLabel) return;
-          const currentLabel=savedLines[idx]?.label;
-          // Keep deletion only if stored label matches the line at that index
-          if(storedLabel===currentLabel){
-            validated[k]=ov;
+          // Keep deletion if the label exists in saved summary — remap to correct index
+          if(savedLabelSet.has(storedLabel)){
+            const correctIdx=savedLabelToIdx[storedLabel];
+            validated[String(correctIdx)]={...ov};
           }
-          // else: stale deletion (index shifted) — drop it
+          // else: label no longer exists in summary — drop silently
         } else {
           validated[k]=ov; // keep price/desc overrides as-is
         }
