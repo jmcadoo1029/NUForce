@@ -2605,6 +2605,14 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   if(sub.on)sub.rows.forEach(r=>{if(sf(r.price)>0)add(r.desc||"Subcontract Item",r.price,null,"98");});
 
   // Budget materials: add marked-up total to the selected setup line
+  if(ot.on)ot.rows.forEach(r=>{
+    const b=r.type==="Weekday"?300:825,h=r.type==="Weekday"?262.5:350;
+    const total=b+sf(r.techs,1)*sf(r.hours,0)*h;
+    if(total>0)add(r.label||"Overtime",total,null,r.pcode||"94");
+  });
+  if(custom.on)custom.rows.forEach(r=>{if(r.label||String(r.price).trim())addUser(r.label||"Custom Item",r.price,null,r.pcode||"94");});
+
+  // Budget processed AFTER custom lines so roll-into can find custom line labels
   if(budget&&budget.on&&budget.rows.length>0){
     const mp=sf(budget.markup,25)/100;
     const rollGroups={};
@@ -2618,10 +2626,8 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
       if(target==="SEPARATE"||target==="_none"){
         add("Budget Materials",amt,null,"");
       } else {
-        // Find matching line (setup or fixture fab) and add to its val
         const idx=lines.findIndex(l=>l.label===target);
         if(idx>=0){
-          // For fixture fab lines that have zero labor, ensure they appear with budget amt
           const cur=lines[idx];
           lines[idx]={...cur,val:Math.round(cur.val+amt)};
         } else {
@@ -2630,13 +2636,6 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
       }
     });
   }
-
-  if(ot.on)ot.rows.forEach(r=>{
-    const b=r.type==="Weekday"?300:825,h=r.type==="Weekday"?262.5:350;
-    const total=b+sf(r.techs,1)*sf(r.hours,0)*h;
-    if(total>0)add(r.label||"Overtime",total,null,r.pcode||"94");
-  });
-  if(custom.on)custom.rows.forEach(r=>{if(r.label||String(r.price).trim())addUser(r.label||"Custom Item",r.price,null,r.pcode||"94");});
 
   // Combined proc/report across all instances of all sections
   // Section proc/report prices — keyed by section type
@@ -5485,13 +5484,23 @@ export default function App({onLogout,currentUser}){
       const oldLen=lineOrder.length;
       const newLen=summary.lines.length;
       if(newLen>oldLen){
-        // Lines were added — append new indices to end of existing order
+        // Lines were added — append new indices at end, preserving existing order
         const newIndices=[];
         for(let i=oldLen;i<newLen;i++)newIndices.push(i);
         setLineOrder([...lineOrder,...newIndices]);
       } else {
-        // Lines were removed — reset (indices are now invalid)
-        setLineOrder(null);
+        // Lines were removed — rebuild order by keeping only valid indices
+        // Map old positions to new positions using label matching
+        const oldLabels=lineOrder.map(i=>summary.lines[i]?.label).filter(Boolean);
+        const newLabelToIdx={};
+        summary.lines.forEach((l,i)=>{newLabelToIdx[l.label]=i;});
+        const rebuilt=oldLabels
+          .map(lbl=>newLabelToIdx[lbl])
+          .filter(i=>i!==undefined);
+        // Add any new indices not already in rebuilt
+        const usedIdxs=new Set(rebuilt);
+        for(let i=0;i<newLen;i++){if(!usedIdxs.has(i))rebuilt.push(i);}
+        setLineOrder(rebuilt.length===newLen?rebuilt:null);
       }
     }
     // Remap only deleted flags — use stored label to find correct new index
