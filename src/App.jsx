@@ -25,9 +25,8 @@ function noiseTestingPrice(durVal, durUnit, level, compCost){
   const remaining=totalHrs-(fullBlocks*BLOCK); // hours in current block (1..40)
   const blockAdder=(h)=>{
     if(h<=1)return 0;
-    const extra=h-1; // hours beyond the base hour
-    // Once total hours in this block exceeds 20, ALL extra hours are $375
-    if(h>20) return extra*375;
+    const extra=h-1; // hours beyond base hour
+    if(h>20) return extra*375; // once block exceeds 20h, ALL extra hours at $375
     return extra*500; // hours 2-20 → $500/hr
   };
   return Math.round((base60*(fullBlocks+1))+blockAdder(remaining)+compUp);
@@ -602,15 +601,16 @@ function NoiseForm({s,set,setup,ti}){
       const hrs=s.durUnit==="hours"?Math.ceil(parseFloat(s.durVal)||1):Math.ceil((parseFloat(s.durVal)||30)/60);
       if(hrs<=1)return null;
       const base60=NOISE_BASE_60[s.level]||0;
-      const t1=Math.min(hrs-1,19);
-      const t2=Math.max(0,Math.min(hrs-20,20));
       const fullBlocks=Math.floor((hrs-1)/40);
+      const remaining=hrs-(fullBlocks*40);
+      const extraHrs=remaining-1;
+      const blockCost=remaining>20?extraHrs*375:extraHrs*500;
+      const rateNote=remaining>20?"all $375/hr":"$500/hr";
       return(
         <div style={{fontSize:10,color:"#6b7a8d",marginBottom:6,padding:"4px 8px",
           background:"#f8f9fb",borderRadius:5}}>
           {fullBlocks>0&&<span>{fullBlocks+1}× base ${base60.toLocaleString()} · </span>}
-          {t1>0&&<span>{t1}h × $500 = ${(t1*500).toLocaleString()} · </span>}
-          {t2>0&&<span>{t2}h × $375 = ${(t2*375).toLocaleString()} · </span>}
+          {extraHrs>0&&<span>hrs 2–{remaining} ({rateNote}): ${blockCost.toLocaleString()} · </span>}
           <strong>Total: {money(autoTesting)}</strong>
         </div>
       );
@@ -1599,14 +1599,12 @@ function SbForm({s,set,setup}){
   </div>;
 }
 
-function BudgetSection({budget,setBudget,allLines,setupLines,fixtureFabLines}){
-  const add=()=>setBudget({...budget,rows:[...budget.rows,{desc:"",qty:"1",unitCost:"0",rollInto:"SEPARATE"}]});
+function BudgetSection({budget,setBudget}){
+  const add=()=>setBudget({...budget,rows:[...budget.rows,{desc:"",qty:"1",unitCost:"0"}]});
   const rem=i=>setBudget({...budget,rows:budget.rows.filter((_,j)=>j!==i)});
   const upd=(i,k,v)=>setBudget({...budget,rows:budget.rows.map((r,j)=>j===i?{...r,[k]:v}:r)});
   const mp=sf(budget.markup,25)/100;
   const total=budget.rows.reduce((s,r)=>s+sf(r.qty,1)*sf(r.unitCost,0),0);
-  // Use all summary lines if available, fall back to setup+fixture lines
-  const rollOpts=["SEPARATE",...(allLines&&allLines.length>0?allLines:[...(setupLines||[]),...(fixtureFabLines||[])])];
 
   if(!budget.on) return(
     <div style={{marginBottom:10}}>
@@ -1622,25 +1620,19 @@ function BudgetSection({budget,setBudget,allLines,setupLines,fixtureFabLines}){
           <Inp value={budget.markup} onChange={v=>setBudget({...budget,markup:v})} width={50} right/>
         </div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 55px 75px 75px 120px 22px",gap:4,marginBottom:4}}>
-        {["Description","Qty","Unit Cost","Marked Up","Roll Into",""].map((h,i)=>(
+      <div style={{display:"grid",gridTemplateColumns:"1fr 55px 75px 75px 22px",gap:4,marginBottom:4}}>
+        {["Description","Qty","Unit Cost","Marked Up",""].map((h,i)=>(
           <div key={i} style={{fontSize:9,color:C.dim,padding:"0 4px"}}>{h}</div>
         ))}
       </div>
       {budget.rows.map((r,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 55px 75px 75px 120px 22px",gap:4,marginBottom:4,alignItems:"center"}}>
+        <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 55px 75px 75px 22px",gap:4,marginBottom:4,alignItems:"center"}}>
           <Inp value={r.desc} onChange={v=>upd(i,"desc",v)} width="100%"/>
           <Inp value={r.qty} onChange={v=>upd(i,"qty",v)} width={55} right/>
           <Inp value={r.unitCost} onChange={v=>upd(i,"unitCost",v)} width={75} right/>
           <div style={{fontSize:11,color:C.muted,textAlign:"right",paddingRight:4}}>
             {"$"}{Math.round(sf(r.qty,1)*sf(r.unitCost,0)*(1+mp)).toLocaleString()}
           </div>
-          <select value={r.rollInto||"SEPARATE"} onChange={e=>upd(i,"rollInto",e.target.value)}
-            style={{...sel,fontSize:10,padding:"3px 4px",width:"100%"}}>
-            {rollOpts.map(o=>(
-              <option key={o} value={o}>{o==="SEPARATE"?"— Separate line —":o}</option>
-            ))}
-          </select>
           <button onClick={()=>rem(i)}
             style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:13,padding:0}}>✕</button>
         </div>
@@ -2612,29 +2604,11 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   });
   if(custom.on)custom.rows.forEach(r=>{if(r.label||String(r.price).trim())addUser(r.label||"Custom Item",r.price,null,r.pcode||"94");});
 
-  // Budget processed AFTER custom lines so roll-into can find custom line labels
+  // Budget - each item adds as a separate Budget Materials line (no roll-into)
   if(budget&&budget.on&&budget.rows.length>0){
     const mp=sf(budget.markup,25)/100;
-    const rollGroups={};
-    budget.rows.forEach(r=>{
-      const target=r.rollInto||"_none";
-      if(!rollGroups[target])rollGroups[target]=0;
-      rollGroups[target]+=sf(r.qty,1)*sf(r.unitCost,0)*(1+mp);
-    });
-    Object.entries(rollGroups).forEach(([target,amt])=>{
-      if(amt<=0)return;
-      if(target==="SEPARATE"||target==="_none"){
-        add("Budget Materials",amt,null,"");
-      } else {
-        const idx=lines.findIndex(l=>l.label===target);
-        if(idx>=0){
-          const cur=lines[idx];
-          lines[idx]={...cur,val:Math.round(cur.val+amt)};
-        } else {
-          add("Budget ("+target+")",amt,null,"");
-        }
-      }
-    });
+    const totalBudget=budget.rows.reduce((s,r)=>s+sf(r.qty,1)*sf(r.unitCost,0)*(1+mp),0);
+    if(totalBudget>0) add("Budget Materials",totalBudget,null,"");
   }
 
   // Combined proc/report across all instances of all sections
@@ -2710,7 +2684,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   if(modalAnalysis?.on){
     // If in-stock modal applies to a proc line, bump that proc's price to 3750
     // (handled by inStockModal state on the proc side — modal analysis itself is always added)
-    add("Modal Analysis",modalAnalysis.price||"6250",null,"67");
+    add("Modal Analysis",modalAnalysis.price||"6750",null,"67");
   }
   // Sort: procs first, then test lines grouped by unit, then reports last
   const procLines=lines.filter(l=>l.code==="42"||l.code==="44"||l.label.toLowerCase().includes("procedure"));
@@ -4818,6 +4792,1058 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
 }
 
 // ── Main App ──────────────────────────────────────────────────────────────────
+
+
+// ── Pricing Calculator sub-components (defined outside to prevent focus loss) ──
+function CalcInp({value,onChange,width=70}){
+  return <input value={value} onChange={e=>onChange(e.target.value)}
+    style={{width,fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #d0d7de",fontFamily:"monospace"}}/>;
+}
+function CalcSel({value,onChange,options,width=160}){
+  return <select value={value} onChange={e=>onChange(e.target.value)}
+    style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #d0d7de",width}}>
+    {options.map(o=><option key={o} value={o}>{o}</option>)}
+  </select>;
+}
+function CalcRow2({label,children}){
+  return <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+    <span style={{fontSize:11,color:"#6b7a8d",minWidth:110}}>{label}</span>
+    {children}
+  </div>;
+}
+function CalcResult({setupAmt,testAmt}){
+  return <div style={{marginTop:12,padding:"10px 12px",background:"#1a2332",borderRadius:8,display:"flex",gap:24}}>
+    {setupAmt!==undefined&&<div>
+      <div style={{fontSize:9,color:"rgba(255,255,255,0.5)",letterSpacing:1,marginBottom:2}}>SUGGESTED SETUP</div>
+      <div style={{fontSize:16,fontWeight:700,color:"#fff",fontFamily:"monospace"}}>{money(setupAmt)}</div>
+    </div>}
+    {testAmt!==undefined&&<div>
+      <div style={{fontSize:9,color:"rgba(255,255,255,0.5)",letterSpacing:1,marginBottom:2}}>SUGGESTED TESTING</div>
+      <div style={{fontSize:16,fontWeight:700,color:"#5dade2",fontFamily:"monospace"}}>{money(testAmt)}</div>
+    </div>}
+  </div>;
+}
+
+function SpecSuggestion({text}){
+  const [copied,setCopied]=useState(false);
+  if(!text||!text.trim())return null;
+  const copy=()=>{
+    navigator.clipboard.writeText(text).then(()=>{
+      setCopied(true);
+      setTimeout(()=>setCopied(false),2000);
+    });
+  };
+  return(
+    <div style={{marginTop:10,padding:"8px 10px",background:"#f0f4ff",borderRadius:6,border:"1px solid #c7d4f0"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+        <span style={{fontSize:9,fontWeight:700,color:"#4a6fa5",letterSpacing:1}}>SPEC SUGGESTION</span>
+        <button onClick={copy}
+          style={{fontSize:9,background:copied?"#276749":"#4a6fa5",color:"#fff",border:"none",
+            borderRadius:4,padding:"2px 8px",cursor:"pointer",fontWeight:700}}>
+          {copied?"✓ Copied":"📋 Copy"}
+        </button>
+      </div>
+      <pre style={{fontSize:10,color:"#2c3e6b",fontFamily:"monospace",margin:0,whiteSpace:"pre-wrap",lineHeight:1.6}}>{text}</pre>
+    </div>
+  );
+}
+
+// ── Pricing Calculator ────────────────────────────────────────────────────────
+function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300b, onExportPq300p1}){
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState("vib");
+
+  // Shared inputs
+  const techRate = sf(setup?.techRate,175);
+  const fabHours = sf(setup?.fabHours,4);
+  const holes    = sf(setup?.holes,0);
+  const drillTap = setup?.drillTap||false;
+  const drill    = holes*0.5*techRate*(drillTap?1.5:1);
+  const fab      = fabHours*techRate;
+  const smartBase= (std)=>Math.round(sf(std,0)+drill+fab);
+
+  // Per-tab local state
+  const [vib,   setVib]   = useState({std:"900",testing:"3250",pia:"1",spec:"",freqRange:""});
+  const [shock, setShock] = useState({cat:"Medium Weight",std:"1500",testing:"4575",fromVib:false,wt:"",pia:"1",spec:"",grade:"",class_:"",type_:"",location:"Hull",blows:""});
+  const [noise, setNoise] = useState({chamber:"Speakerbox",level:"<=140dB",durVal:"30",durUnit:"minutes",pia:"1"});
+  const [env,   setEnv]   = useState({type:"Temperature & Humidity",thDur:"0 to 1 Day",altDwell:"1-30 min",testing:"1000",std:"500",spec:"",essDur:"10 minutes",thDurVal:"",thDurUnit:"hours"});
+  const [hfv,   setHfv]   = useState({std:"500",testing:"1225",pia:"1",dur:"30",spec:""});
+  const [sho,   setSho]   = useState({std:"500",testing:"1250",hfvDisc:false,pia:"1",shape:"Half Sine",gLevel:"",pDur:"",nPulses:"",spec:""});
+  const [ab,    setAb]    = useState({std:"1000",testing:"2850",pia:"1",spec:""});
+  const [sb,    setSb]    = useState({std:"850",testing:"2650",pia:"1",spec:""});
+
+  const TH_PRICES={"0 to 1 Day":1000,"3 Days":1350,"5 Days":1875,"7 Days":2275,"10 Days":2950};
+  const NOISE_CHAMBERS={"Speakerbox":1000,"64 Reverb Chamber":1500,"300 Reverb Chamber":2000,"Prog Wave Tube":2750};
+
+  // Weight-based shock testing
+  const wt = sf(shock.wt||ti?.wt,0);
+  const isMW = (shock.cat||"Medium Weight")==="Medium Weight";
+  const mwsTestPrice = isMW
+    ? (wt>0?(wt<=200?3975:wt<=500?4575:wt<=1000?5275:5975):sf(shock.testing,4575))
+    : sf(shock.testing,1450);
+
+  // Vib setup for shock discount
+  const vibSetupAmt = smartBase(vib.std);
+  const shockSetup = shock.fromVib
+    ? (shock.std==="1500"?mwDisc(vibSetupAmt):lwDisc(vibSetupAmt))
+    : smartBase(shock.std);
+
+  const TABS=[
+    {key:"vib",  label:"Vibration"},
+    {key:"shock",label:"Shock"},
+    {key:"noise",label:"Noise"},
+    {key:"env",  label:"Environmental"},
+    {key:"hfv",  label:"HF Vibration"},
+    {key:"sho",  label:"Shock (Other)"},
+    {key:"ab",   label:"Airborne"},
+    {key:"sb",   label:"Structureborne"},
+    {key:"emi",  label:"EMI"},
+    {key:"pq",   label:"Power Quality"},
+    {key:"dcm",  label:"DC Magnetics"},
+  ];
+
+  // EMI state
+  const [emiCalc,setEmiCalc]=useState({
+    spec:"MIL-STD-461",revs:{},plats:{},locs:{},tests:{},
+    dimL:"",dimW:"",dimH:"",cables:"1",phases:"3",
+    rate:String(EMI_SR),setupShifts:"3",tdShifts:"1",rs103amp:"5000",addl:"0",pia:1,
+  });
+  // PQ state
+  const [pqCalc,setPqCalc]=useState({
+    rate:String(PQ_SR),phases:"3",setupShifts:"1.5",tdShifts:"1.0",rows:{},cw:false,pia:1,
+  });
+  // DCM state
+  const [dcmCalc,setDcmCalc]=useState({
+    spec:"",rate:String(DCM_SR),setupShifts:"1.5",testShifts:"1.0",pia:1,
+  });
+  const [specText,setSpecText]=useState("");
+  const [copyMsg,setCopyMsg]=useState("");
+
+  // EMI shifts computed from calculator state
+  const emiShifts=useMemo(()=>calcEmiShifts({
+    dimL:emiCalc.dimL,dimW:emiCalc.dimW,dimH:emiCalc.dimH,
+    cables:emiCalc.cables,phases:emiCalc.phases,
+  }),[emiCalc.dimL,emiCalc.dimW,emiCalc.dimH,emiCalc.cables,emiCalc.phases]);
+
+  const emiRate=sf(emiCalc.rate,EMI_SR);
+  const emiSelTests=Object.entries(emiCalc.tests||{}).filter(([,v])=>v).map(([k])=>k);
+  const emiTestShifts=emiSelTests.reduce((a,t)=>a+(emiShifts[t]?.rounded||0),0);
+  const rs103Cost=emiSelTests.includes("RS103")?sf(emiCalc.rs103amp,5000):0;
+  const emiSetupCost=r25(sf(emiCalc.setupShifts,3)*emiRate*sf(emiCalc.pia,1));
+  const emiTestCost=r25((emiTestShifts*emiRate+rs103Cost)*sf(emiCalc.pia,1));
+  const emiTdCost=r25(sf(emiCalc.tdShifts,1)*emiRate);
+
+  // PQ computed
+  const PQ_P1=[
+    {key:"5.3.1",label:"Grounding (susceptibility) test",sh:0.5,sh3p:null},
+    {key:"5.3.2",label:"User equipment power profile test",sh:1.0,sh3p:null},
+    {key:"5.3.3",label:"Voltage and frequency maximum departure tolerance test",sh:1.0,sh3p:null},
+    {key:"5.3.4",label:"Voltage and frequency transient tolerance and recovery test",sh:1.0,sh3p:null},
+    {key:"5.3.5",label:"Voltage spike (susceptibility) test",sh:1.5,sh3p:2.0},
+    {key:"5.3.6",label:"Emergency conditions (susceptibility) test",sh:2.0,sh3p:null},
+    {key:"5.3.7",label:"Current waveform (emission) test",sh:0.75,sh3p:1.0},
+    {key:"5.3.8",label:"Voltage and frequency modulation test",sh:2.0,sh3p:null},
+    {key:"5.3.9",label:"Simulated human body impedance ground current test",sh:0.75,sh3p:null},
+    {key:"5.3.10.1",label:"Equipment line-to-ground voltage test",sh:0.5,sh3p:null},
+    {key:"5.3.10.2",label:"Equipment line-to-ground voltage test (AGD)",sh:0.5,sh3p:null},
+  ];
+  const PQ_300B=[
+    {key:"B5.3.1",label:"Voltage and frequency tolerance test",sh:1.0,sh3p:null},
+    {key:"B5.3.2",label:"Voltage and frequency transient tolerance and recovery test",sh:1.0,sh3p:null},
+    {key:"B5.3.3",label:"Voltage spike test",sh:1.5,sh3p:2.0},
+    {key:"B5.3.4",label:"Emergency condition test",sh:2.0,sh3p:null},
+    {key:"B5.3.5",label:"Grounding test",sh:0.5,sh3p:null},
+    {key:"B5.3.6",label:"User equipment power profile test",sh:1.0,sh3p:null},
+    {key:"B5.3.7",label:"Current waveform test",sh:0.75,sh3p:1.0},
+    {key:"B5.3.8",label:"Voltage and frequency modulation test",sh:2.0,sh3p:null},
+    {key:"B5.3.9",label:"Simulated human body leakage current test",sh:0.75,sh3p:null},
+    {key:"B5.3.10.1",label:"Equipment insulation resistance test",sh:0.5,sh3p:null},
+    {key:"B5.3.10.2",label:"Active ground detection test",sh:0.5,sh3p:null},
+  ];
+  const pqIs3ph=sf(pqCalc.phases||3,3)>=3;
+  const getShifts=r=>pqIs3ph&&r.sh3p!=null?r.sh3p:r.sh;
+  const pqRate=sf(pqCalc.rate,PQ_SR);
+  const p1Shifts=PQ_P1.reduce((a,r)=>a+(pqCalc.rows?.[r.key]?getShifts(r):0),0);
+  const b3Shifts=PQ_300B.reduce((a,r)=>a+(pqCalc.rows?.[r.key]?getShifts(r):0),0);
+  const pqTotalShifts=p1Shifts+b3Shifts;
+  const pqSetupCost=r25(sf(pqCalc.setupShifts,1.5)*pqRate*sf(pqCalc.pia,1));
+  const pqTestCost=r25(pqTotalShifts*pqRate*sf(pqCalc.pia,1));
+  const pqTdCost=r25(sf(pqCalc.tdShifts,1.0)*pqRate);
+
+  // DCM computed
+  const dcmRate=sf(dcmCalc.rate,DCM_SR);
+  const dcmTotal=r25((sf(dcmCalc.setupShifts,1.5)+sf(dcmCalc.testShifts,1.0))*dcmRate*sf(dcmCalc.pia,1));
+
+  const EMI_NOTES="EMI Notes:\n* This quote assumes that the susceptibility criteria can be determined in less than 3 seconds during real-time operation of the EUT, and that if additional monitoring personnel are needed, they would be provided by the customer. Customer to supply cables and all peripheral and monitoring equipment, and one mode of operation (operating or standby). Susceptibility determination provided by the customer. Pricing is based on customer-supplied information, the assumptions listed here, and acceptance of an approved test procedure.\n* Pricing and feasibility may be reevaluated upon completion and review of the NU Laboratories Test Configuration Form.\n* This quote assumes that the number of cables and outside diameter of the cables under test are within NU Laboratories capabilities/limitations.\n* Pricing assumes the standard list of tests from MIL-STD-461G, and that all testing is performed at NU Labs. Any tests requiring subcontracting will incur additional charges.";
+
+  const copyToClipboard=(text)=>{
+    navigator.clipboard.writeText(text).then(()=>{setCopyMsg("Copied!");setTimeout(()=>setCopyMsg(""),2000);});
+  };
+
+
+
+  // CalcInp, CalcSel, CalcRow2, CalcResult are defined outside as stable components
+
+  const SmartNote=({label})=>(
+    <div style={{fontSize:9,color:"#9aa5b1",marginBottom:8}}>
+      ↳ Setup reads from form: tech rate ${techRate}/hr, {fabHours}h fab{holes>0?`, ${holes} holes`:""}
+      {drill>0?` (+$${Math.round(drill).toLocaleString()} drill)`:""}
+      {fab>0?` (+$${Math.round(fab).toLocaleString()} fab)`:""}
+    </div>
+  );
+
+  return(
+    <div style={{marginTop:10,border:"1px solid #e0e4ea",borderRadius:10,overflow:"hidden",fontFamily:"Segoe UI,system-ui,sans-serif"}}>
+      {/* Header */}
+      <div style={{background:"#f8f9fb",padding:"8px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",
+        cursor:"pointer",borderBottom:open?"1px solid #e0e4ea":"none"}}
+        onClick={()=>setOpen(v=>!v)}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:12,fontWeight:700,color:"#1a2332",letterSpacing:.2}}>Pricing Calculator</span>
+          <span style={{fontSize:10,color:"#9aa5b1"}}>— reference tool, does not affect quote</span>
+        </div>
+        <span style={{fontSize:12,color:"#9aa5b1"}}>{open?"▲":"▼"}</span>
+      </div>
+
+      {open&&(
+        <div style={{padding:"12px 14px",background:"#fff"}}>
+          {/* Tabs */}
+          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:12}}>
+            {TABS.map(t=>(
+              <button key={t.key} onClick={()=>setTab(t.key)}
+                style={{fontSize:10,fontWeight:tab===t.key?700:400,padding:"4px 10px",borderRadius:20,
+                  border:"1px solid "+(tab===t.key?"#1a2332":"#d0d7de"),
+                  background:tab===t.key?"#1a2332":"#fff",
+                  color:tab===t.key?"#fff":"#6b7a8d",cursor:"pointer"}}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Vibration */}
+          {tab==="vib"&&(
+            <div>
+              <SmartNote/>
+              <CalcRow2 label="Spec"><CalcInp value={vib.spec||""} onChange={v=>setVib(s=>({...s,spec:v}))} width={150}/></CalcRow2>
+              <CalcRow2 label="Freq Range">
+                <CalcInp value={vib.freqRange||""} onChange={v=>setVib(s=>({...s,freqRange:v}))} width={80}/>
+                <span style={{fontSize:10,color:"#9aa5b1",marginLeft:4}}>Hz</span>
+              </CalcRow2>
+              <CalcRow2 label="Std Setup Base ($)"><CalcInp value={vib.std} onChange={v=>setVib(s=>({...s,std:v}))}/></CalcRow2>
+              <CalcRow2 label="Testing ($)"><CalcInp value={vib.testing} onChange={v=>setVib(s=>({...s,testing:v}))}/></CalcRow2>
+              <CalcRow2 label="PIA Multiplier"><CalcInp value={vib.pia} onChange={v=>setVib(s=>({...s,pia:v}))} width={50}/></CalcRow2>
+              <CalcResult setupAmt={Math.round(smartBase(vib.std)*sf(vib.pia,1))} testAmt={Math.round(sf(vib.testing)*sf(vib.pia,1))}/>
+              <SpecSuggestion text={(()=>{
+                const sc=s=>s?" in accordance with "+s:"";
+                const fp=vib.freqRange?", "+vib.freqRange+" Hz":"";
+                return vib.spec?"Type I Vibration"+sc(vib.spec)+fp+".":"";
+              })()}/>
+            </div>
+          )}
+          {tab==="shock"&&(()=>{
+            const wt=sf(shock.wt||ti?.wt,0);
+            const isMW=(shock.cat||"Medium Weight")==="Medium Weight";
+            const mwsTestPrice=isMW
+              ?(wt>0?(wt<=200?3975:wt<=500?4575:wt<=1000?5275:5975):sf(shock.testing,4575))
+              :sf(shock.testing,1450);
+            const shockSetup=shock.fromVib?Math.ceil(smartBase(shock.std)*0.75/25)*25:smartBase(shock.std);
+            return(
+              <div>
+                <SmartNote/>
+                <CalcRow2 label="Spec"><CalcInp value={shock.spec||""} onChange={v=>setShock(s=>({...s,spec:v}))} width={150}/></CalcRow2>
+                <CalcRow2 label="Weight Class">
+                  <CalcSel value={shock.cat||"Medium Weight"} width={150}
+                    onChange={v=>setShock(s=>({...s,cat:v,std:v==="Medium Weight"?"1500":"900",testing:v==="Medium Weight"?"4575":"1450"}))}
+                    options={["Medium Weight","Lightweight"]}/>
+                </CalcRow2>
+                <CalcRow2 label="Grade"><CalcInp value={shock.grade||""} onChange={v=>setShock(s=>({...s,grade:v}))} width={60}/></CalcRow2>
+                <CalcRow2 label="Class"><CalcInp value={shock.class_||""} onChange={v=>setShock(s=>({...s,class_:v}))} width={60}/></CalcRow2>
+                <CalcRow2 label="Type"><CalcInp value={shock.type_||""} onChange={v=>setShock(s=>({...s,type_:v}))} width={60}/></CalcRow2>
+                <CalcRow2 label="Location">
+                  <CalcSel value={shock.location||"Hull"} onChange={v=>setShock(s=>({...s,location:v}))} width={180}
+                    options={["Hull","Deck","Hull/Deck","Conventional Deck","Mitigated Deck","Isolated Deck","Shell","Wetted-Surface","Frame"]}/>
+                </CalcRow2>
+                <CalcRow2 label="# Blows"><CalcInp value={shock.blows||""} onChange={v=>setShock(s=>({...s,blows:v}))} width={60}/></CalcRow2>
+                {isMW&&(
+                  <CalcRow2 label="Unit Weight (lbs)">
+                    <CalcInp value={shock.wt} onChange={v=>setShock(s=>({...s,wt:v}))} width={70}/>
+                    {wt>0&&<span style={{fontSize:10,color:"#5dade2",marginLeft:6}}>→ ${mwsTestPrice.toLocaleString()}</span>}
+                  </CalcRow2>
+                )}
+                <CalcRow2 label="From Vib?">
+                  <input type="checkbox" checked={shock.fromVib||false} onChange={e=>setShock(s=>({...s,fromVib:e.target.checked}))}/>
+                  <span style={{fontSize:10,color:"#9aa5b1",marginLeft:4}}>25% disc on setup</span>
+                </CalcRow2>
+                <CalcRow2 label="PIA Multiplier"><CalcInp value={shock.pia} onChange={v=>setShock(s=>({...s,pia:v}))} width={50}/></CalcRow2>
+                <CalcResult setupAmt={Math.round(shockSetup*sf(shock.pia,1))} testAmt={Math.round(mwsTestPrice*sf(shock.pia,1))}/>
+                <SpecSuggestion text={(()=>{
+                  const sc=s=>s?" in accordance with "+s:"";
+                  const parts=[];
+                  if(shock.grade)parts.push("Grade "+shock.grade);
+                  if(shock.class_)parts.push("Class "+shock.class_);
+                  if(shock.type_)parts.push("Type "+shock.type_);
+                  const loc=shock.location||"Hull";
+                  parts.push(loc+" Mounted");
+                  if(shock.blows)parts.push(shock.blows+" blows");
+                  const det=parts.length?", "+parts.join(", "):"";
+                  return (shock.cat||"Medium Weight")+" Shock"+sc(shock.spec)+det+".";
+                })()}/>
+              </div>
+            );
+          })()}
+          {tab==="noise"&&(()=>{
+            const COMP_COST_CALC={"<=140dB":0,"145dB":750,"150dB":1500,"155dB":2500,"160dB":2500,"165dB":3500,"170dB":3500};
+            const isPWT=noise.chamber==="Prog Wave Tube";
+            const lvl=noise.level||"<=140dB";
+            const compCost=isPWT?3500:(COMP_COST_CALC[lvl]||0);
+            const compMarkup=Math.round(compCost*1.25);
+            const durVal=noise.durVal||"30";
+            const durUnit=noise.durUnit||"minutes";
+            const autoTestCalc=noiseTestingPrice(durVal,durUnit,lvl,compCost);
+            const chamberSetupCalc=NOISE_CHAMBERS[noise.chamber]||1000;
+            const L=sf(ti?.dimL,0),W=sf(ti?.dimW,0),H=sf(ti?.dimH,0);
+            const cuIn=L*W*H; const cuFt=cuIn/1728;
+            const dbNum=lvl==="<=140dB"?140:parseInt(lvl)||0;
+            const fitsSpkr=cuIn>0&&cuIn<=500&&dbNum<=145;
+            const fits64=cuIn>0&&cuFt<=6.4;
+            const fits300=cuIn>0&&cuFt<=30&&dbNum<=165;
+            const fitsPWT=cuIn>0&&H<=40&&W<=40&&dbNum<=165;
+            const rec=cuIn>0?(fitsSpkr?"Speakerbox":fits64?"64 Reverb Chamber":fits300?"300 Reverb Chamber":"Prog Wave Tube"):"";
+            const chamberOk=!cuIn||(noise.chamber==="Speakerbox"?fitsSpkr:noise.chamber==="64 Reverb Chamber"?fits64:noise.chamber==="300 Reverb Chamber"?fits300:fitsPWT);
+            const base30=NOISE_BASE_30[lvl]||0;
+            const base60=NOISE_BASE_60[lvl]||0;
+            const raw=parseFloat(durVal)||0;
+            const totalHrs=durUnit==="hours"?Math.ceil(raw):raw<=30?null:Math.ceil(raw/60);
+            const BLOCK=40;
+            const mathLines=[];
+            if(totalHrs===null||totalHrs<=0){
+              mathLines.push("≤30 min → base (30-min rate): $"+base30.toLocaleString());
+            } else if(totalHrs<=1){
+              mathLines.push("≤1 hr → base (60-min rate): $"+base60.toLocaleString());
+            } else {
+              const fullBlocks=Math.floor((totalHrs-1)/BLOCK);
+              const remaining=totalHrs-(fullBlocks*BLOCK);
+              const extraHrs=remaining-1;
+              const blockCost=remaining>20?extraHrs*375:extraHrs*500;
+              const rateLabel=remaining>20?"$375/hr (>20h rate)":"$500/hr";
+              if(fullBlocks===0){
+                mathLines.push("Base (1 hr): $"+base60.toLocaleString());
+                if(extraHrs>0){
+                  if(remaining>20) mathLines.push("Hours 2–"+remaining+" (block >20h → all at $375/hr): +$"+blockCost.toLocaleString());
+                  else mathLines.push("Hours 2–"+remaining+" ($500/hr): +$"+blockCost.toLocaleString());
+                }
+              } else {
+                mathLines.push("Full 40-hr blocks: "+(fullBlocks+1)+" × $"+base60.toLocaleString()+" = $"+((fullBlocks+1)*base60).toLocaleString());
+                mathLines.push("  Note: blocks ≤20 extra hrs → $500/hr; blocks >20 extra hrs → all $375/hr");
+                if(remaining>1){
+                  mathLines.push("Final block ("+remaining+" hrs): base $"+base60.toLocaleString());
+                  mathLines.push("  Hours 2–"+remaining+" ("+rateLabel+"): +$"+blockCost.toLocaleString());
+                }
+              }
+            }
+            if(compMarkup>0) mathLines.push("Compressor markup ("+compCost.toLocaleString()+" × 1.25): +$"+compMarkup.toLocaleString());
+            return(
+              <div>
+                <CalcRow2 label="Chamber">
+                  <CalcSel value={noise.chamber} onChange={v=>setNoise(s=>({...s,chamber:v}))}
+                    options={Object.keys(NOISE_CHAMBERS)} width={200}/>
+                </CalcRow2>
+                {rec&&(
+                  <div style={{fontSize:10,borderRadius:5,padding:"4px 8px",marginBottom:6,
+                    background:chamberOk?"#f0fdf4":"#fdf3f2",color:chamberOk?"#15803d":"#dc2626"}}>
+                    {chamberOk?"✓ "+noise.chamber+" is appropriate":"⚠ Recommended: "+rec+" — "+noise.chamber+" may not be suitable"}
+                  </div>
+                )}
+                <CalcRow2 label="OASPL Level">
+                  <CalcSel value={lvl} onChange={v=>setNoise(s=>({...s,level:v}))}
+                    options={["<=140dB","145dB","150dB","155dB","160dB","165dB","170dB"]} width={120}/>
+                </CalcRow2>
+                <CalcRow2 label="Duration">
+                  <CalcInp value={noise.durVal||"30"} onChange={v=>setNoise(s=>({...s,durVal:v}))} width={55}/>
+                  <CalcSel value={noise.durUnit||"minutes"} onChange={v=>setNoise(s=>({...s,durUnit:v}))}
+                    options={["minutes","hours"]} width={90}/>
+                </CalcRow2>
+                {compCost>0&&(
+                  <div style={{fontSize:10,color:"#b45309",background:"#fffbeb",borderRadius:5,padding:"4px 8px",marginBottom:6}}>
+                    {isPWT?"Prog Wave Tube always requires":"Level requires"} compressor: ${compCost.toLocaleString()} → ${compMarkup.toLocaleString()} marked up
+                  </div>
+                )}
+                <CalcRow2 label="PIA Multiplier"><CalcInp value={noise.pia} onChange={v=>setNoise(s=>({...s,pia:v}))} width={50}/></CalcRow2>
+                <CalcResult setupAmt={Math.round(chamberSetupCalc*sf(noise.pia,1))} testAmt={Math.round(autoTestCalc*sf(noise.pia,1))}/>
+                {mathLines.length>0&&(
+                  <div style={{marginTop:8,padding:"8px 10px",background:"#f8f9fb",borderRadius:6,border:"1px solid #e8ecf0"}}>
+                    <div style={{fontSize:9,fontWeight:700,color:"#9aa5b1",letterSpacing:1,marginBottom:4}}>CALCULATION BREAKDOWN</div>
+                    {mathLines.map((l,i)=>(
+                      <div key={i} style={{fontSize:10,color:"#9aa5b1",fontFamily:"monospace",lineHeight:1.6}}>{l}</div>
+                    ))}
+                    <div style={{fontSize:10,color:"#6b7a8d",fontWeight:700,borderTop:"1px solid #e8ecf0",marginTop:4,paddingTop:4,fontFamily:"monospace"}}>
+                      Total: ${autoTestCalc.toLocaleString()}
+                      {sf(noise.pia,1)>1?" × "+noise.pia+" PIA = $"+Math.round(autoTestCalc*sf(noise.pia,1)).toLocaleString():""}
+                    </div>
+                  </div>
+                )}
+                <SpecSuggestion text={(()=>{
+                  const sc=s=>s?" in accordance with "+s:"";
+                  const oasp=lvl?", "+lvl+" OASPL":"";
+                  const dur=(noise.durVal&&noise.durUnit)?" for "+noise.durVal+" "+noise.durUnit:"";
+                  return "Noise Susceptibility"+sc(noise.spec||"")+oasp+dur+".";
+                })()}/>
+              </div>
+            );
+          })()}
+          {/* Environmental */}
+          {tab==="env"&&(()=>{
+            const isTH=["Temperature & Humidity","Temperature Only","Humidity Only"].includes(env.type);
+            const isAlt=env.type==="Altitude";
+            const isAcc=env.type==="Acceleration";
+            const isIncl=env.type==="Inclination";
+            const isESS=env.type==="ESS";
+            const typeToKey={
+              "Temperature & Humidity":"th","Temperature Only":"th","Humidity Only":"th",
+              "Altitude":"alt","Salt Fog":"sf","ESS":"ess","Rapid Decompression":"rd",
+              "Explosive Decompression":"ed","Acceleration":"acc","Inclination":"incl",
+              "Drip Test":"drip","Submergence":"sub","Spray Test":"spray",
+              "Insulation Resistance":"insres",
+            };
+            const ENV_BASE_PRICING={
+              th:{setup:500,testing:null},sf:{setup:0,testing:1750},alt:{setup:500,testing:null},
+              ess:{setup:0,testing:1000},acc:{setup:null,testing:1950},incl:{setup:null,testing:1750},
+              rd:{setup:1000,testing:2275},ed:{setup:1250,testing:2450},drip:{setup:500,testing:750},
+              sub:{setup:500,testing:750},spray:{setup:1250,testing:1250},insres:{setup:0,testing:500},
+            };
+            const envKey=typeToKey[env.type]||"alt";
+            const base=ENV_BASE_PRICING[envKey]||{setup:500,testing:1000};
+            const smartSetupAmt=(isAcc||isIncl)?Math.round(sf(isAcc?"2000":"1250",0)+drill+fab):base.setup;
+            const ALT_DWELL_PRICES={"1-30 min":1000,"31-60 min":1500,"1-2 hr":2275};
+            const altTestAmt=ALT_DWELL_PRICES[env.altDwell||"1-30 min"]||1000;
+            const testAmt=isTH?(ENV_TH_PRICES[env.thDur]||1000):isAlt?altTestAmt:(base.testing||1000);
+            const setupAmt=smartSetupAmt;
+            // Build spec suggestion
+            const specLines=[];
+            if(env.spec) specLines.push("Spec: "+env.spec);
+            if(isTH){
+              specLines.push("Test Type: "+env.type);
+              if(env.thDurVal) specLines.push("Duration: "+env.thDurVal+" "+(env.thDurUnit||"hours"));
+              else specLines.push("Duration: "+env.thDur);
+            } else if(isAlt){
+              specLines.push("Altitude Testing");
+              specLines.push("Dwell: "+env.altDwell);
+            } else if(isESS){
+              specLines.push("Environmental Stress Screening (ESS)");
+              if(env.essDur) specLines.push("Duration/Axis: "+env.essDur);
+            } else {
+              specLines.push(env.type);
+            }
+            return(
+              <div>
+                <CalcRow2 label="Test Type">
+                  <CalcSel value={env.type} onChange={v=>setEnv(s=>({...s,type:v}))} width={220}
+                    options={["Temperature & Humidity","Temperature Only","Humidity Only","Altitude","Salt Fog","ESS","Rapid Decompression","Explosive Decompression","Acceleration","Inclination","Drip Test","Submergence","Spray Test","Insulation Resistance"]}/>
+                </CalcRow2>
+                <CalcRow2 label="Spec"><CalcInp value={env.spec||""} onChange={v=>setEnv(s=>({...s,spec:v}))} width={150}/></CalcRow2>
+                {isTH&&(<>
+                  <CalcRow2 label="T&H Type">
+                    <CalcSel value={env.thType||"Temperature & Humidity"} onChange={v=>setEnv(s=>({...s,thType:v}))}
+                      options={["Temperature & Humidity","Temperature Only","Humidity Only"]} width={200}/>
+                  </CalcRow2>
+                  <CalcRow2 label="Duration (preset)">
+                    <CalcSel value={env.thDur||"0 to 1 Day"} onChange={v=>setEnv(s=>({...s,thDur:v}))}
+                      options={Object.keys(ENV_TH_PRICES)} width={130}/>
+                    <span style={{fontSize:10,color:"#5dade2",marginLeft:6}}>→ ${(ENV_TH_PRICES[env.thDur||"0 to 1 Day"]||1000).toLocaleString()}</span>
+                  </CalcRow2>
+                  <CalcRow2 label="Custom Duration">
+                    <CalcInp value={env.thDurVal||""} onChange={v=>setEnv(s=>({...s,thDurVal:v}))} width={55}/>
+                    <CalcSel value={env.thDurUnit||"hours"} onChange={v=>setEnv(s=>({...s,thDurUnit:v}))}
+                      options={["minutes","hours","days"]} width={90}/>
+                    <span style={{fontSize:9,color:"#9aa5b1",marginLeft:4}}>spec text only</span>
+                  </CalcRow2>
+                </>)}
+                {isAlt&&(
+                  <CalcRow2 label="Dwell Time">
+                    <CalcSel value={env.altDwell||"1-30 min"} onChange={v=>setEnv(s=>({...s,altDwell:v}))}
+                      options={["1-30 min","31-60 min","1-2 hr"]} width={120}/>
+                    <span style={{fontSize:10,color:"#5dade2",marginLeft:6}}>→ ${altTestAmt.toLocaleString()}</span>
+                  </CalcRow2>
+                )}
+                {isESS&&(
+                  <CalcRow2 label="Duration/Axis">
+                    <CalcInp value={env.essDur||"10 minutes"} onChange={v=>setEnv(s=>({...s,essDur:v}))} width={120}/>
+                  </CalcRow2>
+                )}
+                {(isAcc||isIncl)&&(
+                  <div style={{fontSize:9,color:"#9aa5b1",marginBottom:6,padding:"4px 8px",background:"#f8f9fb",borderRadius:5}}>
+                    Setup: base ${isAcc?"$2,000":"$1,250"} + ${Math.round(fab).toLocaleString()} fab + ${Math.round(drill).toLocaleString()} drill
+                  </div>
+                )}
+                <CalcResult setupAmt={setupAmt>0?setupAmt:undefined} testAmt={testAmt}/>
+                <SpecSuggestion text={(()=>{
+                  const sc=s=>s?" in accordance with "+s:"";
+                  const sp=env.spec||"";
+                  if(isTH){
+                    const thMap={"Temperature & Humidity":"Temperature & Humidity","Temperature Only":"Temperature","Humidity Only":"Humidity"};
+                    const t=thMap[env.thType||"Temperature & Humidity"]||"Temperature & Humidity";
+                    const customDur=env.thDurVal?(env.thDurVal+" "+(env.thDurUnit||"hours")):env.thDur||"";
+                    const dur=customDur?", "+customDur:"";
+                    return t+" testing"+sc(sp)+dur+".";
+                  } else if(isAlt){
+                    const dw=env.altDwell?", "+env.altDwell+" dwell":"";
+                    return "Altitude testing"+sc(sp)+dw+".";
+                  } else if(isESS){
+                    const dur=env.essDur||"10 minutes";
+                    return "ESS testing"+sc(sp)+", "+dur+" per axis.";
+                  } else if(env.type==="Salt Fog") return "Salt Fog testing"+sc(sp)+".";
+                  else if(env.type==="Acceleration") return "Acceleration testing"+sc(sp)+".";
+                  else if(env.type==="Inclination") return "Inclination testing"+sc(sp)+".";
+                  else if(env.type==="Rapid Decompression") return "Rapid Decompression testing"+sc(sp)+".";
+                  else if(env.type==="Explosive Decompression") return "Explosive Decompression testing"+sc(sp)+".";
+                  else if(env.type==="Drip Test") return "Drip Test"+sc(sp)+".";
+                  else if(env.type==="Submergence") return "Submergence testing"+sc(sp)+".";
+                  else if(env.type==="Spray Test") return "Spray Test"+sc(sp)+".";
+                  else if(env.type==="Insulation Resistance") return "Insulation Resistance"+sc(sp)+".";
+                  return env.type+" testing"+sc(sp)+".";
+                })()}/>
+              </div>
+            );
+          })()}
+          {tab==="hfv"&&(()=>{
+            const durMin=sf(hfv.dur||"30",30);
+            const autoTest=hfvTestingPrice(durMin);
+            const hrs=durMin/60;
+            const setupAmt=Math.round(smartBase(hfv.std)*sf(hfv.pia,1));
+            const testAmt=Math.round(autoTest*sf(hfv.pia,1));
+            return(
+              <div>
+                <SmartNote/>
+                <CalcRow2 label="Spec"><CalcInp value={hfv.spec||""} onChange={v=>setHfv(s=>({...s,spec:v}))} width={150}/></CalcRow2>
+                <CalcRow2 label="Std Setup Base ($)"><CalcInp value={hfv.std} onChange={v=>setHfv(s=>({...s,std:v}))}/></CalcRow2>
+                <CalcRow2 label="Duration/Axis (min)">
+                  <CalcInp value={hfv.dur||"30"} onChange={v=>setHfv(s=>({...s,dur:v}))} width={55}/>
+                  <span style={{fontSize:10,color:"#5dade2",marginLeft:6}}>→ ${autoTest.toLocaleString()}/axis</span>
+                </CalcRow2>
+                <div style={{fontSize:9,color:"#9aa5b1",marginBottom:6,padding:"4px 8px",background:"#f8f9fb",borderRadius:5,fontFamily:"monospace"}}>
+                  {hrs<=1?"≤60 min: $1,225":hrs<=3?"1–3 hr: $1,225 + $750×"+(hrs-1).toFixed(2)+"h":"3+ hr: $1,225 + $1,500 + $525×"+(hrs-3).toFixed(2)+"h"}
+                  {" = $"+autoTest.toLocaleString()+" per axis"}
+                </div>
+                <CalcRow2 label="PIA Multiplier"><CalcInp value={hfv.pia} onChange={v=>setHfv(s=>({...s,pia:v}))} width={50}/></CalcRow2>
+                <CalcResult setupAmt={setupAmt} testAmt={testAmt}/>
+                <SpecSuggestion text={(()=>{
+                  const sc=s=>s?" in accordance with "+s:"";
+                  return "Vibration testing"+sc(hfv.spec)+", tested for "+(hfv.dur||"30")+" minutes per axis.";
+                })()}/>
+              </div>
+            );
+          })()}
+          {tab==="sho"&&(()=>{
+            const hfvDiscount=sho.hfvDisc;
+            const baseSetup=smartBase(sho.std);
+            const setupAmt=hfvDiscount?Math.ceil(baseSetup*0.75/25)*25:baseSetup;
+            const testAmt=Math.round(sf(sho.testing,1250)*sf(sho.pia,1));
+            const setupAmtPIA=Math.round(setupAmt*sf(sho.pia,1));
+            return(
+              <div>
+                <SmartNote/>
+                <CalcRow2 label="Pulse Shape">
+                  <CalcSel value={sho.shape||"Half Sine"} onChange={v=>setSho(s=>({...s,shape:v}))}
+                    options={["Half Sine","Sawtooth","Bench Handling","Drop Shock"]} width={150}/>
+                </CalcRow2>
+                <CalcRow2 label="G Level">
+                  <CalcInp value={sho.gLevel||""} onChange={v=>setSho(s=>({...s,gLevel:v}))} width={70}/>
+                </CalcRow2>
+                <CalcRow2 label="Pulse Duration (ms)">
+                  <CalcInp value={sho.pDur||""} onChange={v=>setSho(s=>({...s,pDur:v}))} width={70}/>
+                </CalcRow2>
+                <CalcRow2 label="# Pulses">
+                  <CalcInp value={sho.nPulses||""} onChange={v=>setSho(s=>({...s,nPulses:v}))} width={60}/>
+                </CalcRow2>
+                <CalcRow2 label="Spec"><CalcInp value={sho.spec||""} onChange={v=>setSho(s=>({...s,spec:v}))} width={150}/></CalcRow2>
+                <CalcRow2 label="Std Setup Base ($)"><CalcInp value={sho.std} onChange={v=>setSho(s=>({...s,std:v}))}/></CalcRow2>
+                <CalcRow2 label="Testing ($)"><CalcInp value={sho.testing} onChange={v=>setSho(s=>({...s,testing:v}))}/></CalcRow2>
+                <CalcRow2 label="HFV Discount?">
+                  <input type="checkbox" checked={sho.hfvDisc||false} onChange={e=>setSho(s=>({...s,hfvDisc:e.target.checked}))}/>
+                  <span style={{fontSize:10,color:"#9aa5b1",marginLeft:4}}>25% off setup</span>
+                </CalcRow2>
+                <CalcRow2 label="PIA Multiplier"><CalcInp value={sho.pia} onChange={v=>setSho(s=>({...s,pia:v}))} width={50}/></CalcRow2>
+                {hfvDiscount&&(
+                  <div style={{fontSize:9,color:"#b45309",background:"#fffbeb",borderRadius:5,padding:"4px 8px",marginBottom:6}}>
+                    HFV discount applied: ${baseSetup.toLocaleString()} × 75% = ${setupAmt.toLocaleString()}
+                  </div>
+                )}
+                <CalcResult setupAmt={setupAmtPIA} testAmt={testAmt}/>
+                <SpecSuggestion text={(()=>{
+                  if(!sho.spec)return "";
+                  const shape=sho.shape||"Half Sine";
+                  if(shape==="Drop Shock") return "Drop Shock testing in accordance with "+sho.spec+".";
+                  if(shape==="Bench Handling") return "Bench Handling Shock testing in accordance with "+sho.spec+".";
+                  if((shape==="Half Sine"||shape==="Sawtooth")&&(sho.nPulses||sho.gLevel||sho.pDur)){
+                    const pd=[
+                      sho.nPulses?"Perform "+sho.nPulses:"",
+                      sho.gLevel?sho.gLevel+"g":"",
+                      sho.pDur?sho.pDur+"ms shock pulses":"",
+                    ].filter(Boolean).join(", ");
+                    return "Shock testing in accordance with "+sho.spec+". "+pd+".";
+                  }
+                  return "Shock testing in accordance with "+sho.spec+".";
+                })()}/>
+              </div>
+            );
+          })()}
+          {tab==="ab"&&(
+            <div>
+              <SmartNote/>
+              <CalcRow2 label="Spec"><CalcInp value={ab.spec||""} onChange={v=>setAb(s=>({...s,spec:v}))} width={150}/></CalcRow2>
+              <CalcRow2 label="Std Setup Base ($)"><CalcInp value={ab.std} onChange={v=>setAb(s=>({...s,std:v}))}/></CalcRow2>
+              <CalcRow2 label="Testing ($)"><CalcInp value={ab.testing} onChange={v=>setAb(s=>({...s,testing:v}))}/></CalcRow2>
+              <CalcRow2 label="PIA Multiplier"><CalcInp value={ab.pia} onChange={v=>setAb(s=>({...s,pia:v}))} width={50}/></CalcRow2>
+              <CalcResult setupAmt={Math.round(smartBase(ab.std)*sf(ab.pia,1))} testAmt={Math.round(sf(ab.testing)*sf(ab.pia,1))}/>
+              <SpecSuggestion text={ab.spec?"Airborne Noise testing in accordance with "+ab.spec+".":""}/>
+            </div>
+          )}
+          {tab==="sb"&&(
+            <div>
+              <SmartNote/>
+              <CalcRow2 label="Spec"><CalcInp value={sb.spec||""} onChange={v=>setSb(s=>({...s,spec:v}))} width={150}/></CalcRow2>
+              <CalcRow2 label="Std Setup Base ($)"><CalcInp value={sb.std} onChange={v=>setSb(s=>({...s,std:v}))}/></CalcRow2>
+              <CalcRow2 label="Testing ($)"><CalcInp value={sb.testing} onChange={v=>setSb(s=>({...s,testing:v}))}/></CalcRow2>
+              <CalcRow2 label="PIA Multiplier"><CalcInp value={sb.pia} onChange={v=>setSb(s=>({...s,pia:v}))} width={50}/></CalcRow2>
+              <CalcResult setupAmt={Math.round(smartBase(sb.std)*sf(sb.pia,1))} testAmt={Math.round(sf(sb.testing)*sf(sb.pia,1))}/>
+              <SpecSuggestion text={sb.spec?"Structureborne Noise testing in accordance with "+sb.spec+".":""}/>
+            </div>
+          )}
+          {tab==="emi"&&(
+            <div>
+              {(ti?.dimL||ti?.dimW||ti?.wt||ti?.phase)&&(
+                <div style={{fontSize:10,color:"#1a5276",background:"#eaf2ff",borderRadius:6,
+                  padding:"5px 10px",marginBottom:8}}>
+                  Dimensions, weight and power are pre-filled from the Test Item Description above.
+                </div>
+              )}
+              <EmiForm s={emiCalc} set={setEmiCalc} ti={ti}/>
+              <CalcResult setupAmt={emiSetupCost} testAmt={emiTestCost}/>
+              <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>Teardown: {money(emiTdCost)} &nbsp;·&nbsp; Total: {money(emiSetupCost+emiTestCost+emiTdCost)}</div>
+              <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
+                <button onClick={()=>copyToClipboard(EMI_NOTES)}
+                  style={{fontSize:11,padding:"5px 12px",borderRadius:6,border:"1px solid #1a5276",background:"#eaf2ff",color:"#1a5276",cursor:"pointer",fontWeight:600}}>
+                  Copy EMI Notes
+                </button>
+                {(emiCalc.revs||{})["Rev F"]&&onExportEmiF&&(
+                  <button onClick={()=>onExportEmiF(emiCalc)}
+                    style={{fontSize:11,padding:"5px 12px",borderRadius:6,border:"none",background:"#1a2332",color:"#fff",cursor:"pointer",fontWeight:600}}>
+                    Export 461F Spec PDF
+                  </button>
+                )}
+                {(emiCalc.revs||{})["Rev G"]&&onExportEmiG&&(
+                  <button onClick={()=>onExportEmiG(emiCalc)}
+                    style={{fontSize:11,padding:"5px 12px",borderRadius:6,border:"none",background:"#4a1942",color:"#fff",cursor:"pointer",fontWeight:600}}>
+                    Export 461G Spec PDF
+                  </button>
+                )}
+                {!(emiCalc.revs||{})["Rev F"]&&!(emiCalc.revs||{})["Rev G"]&&onExportEmiF&&(
+                  <button onClick={()=>onExportEmiF(emiCalc)}
+                    style={{fontSize:11,padding:"5px 12px",borderRadius:6,border:"none",background:"#1a2332",color:"#fff",cursor:"pointer",fontWeight:600}}>
+                    Export Spec PDF
+                  </button>
+                )}
+                {copyMsg&&<span style={{fontSize:11,color:"#166534",alignSelf:"center"}}>{copyMsg}</span>}
+              </div>
+            </div>
+          )}
+
+          {/* PQ Tab — full PqForm */}
+          {tab==="pq"&&(
+            <div>
+              {(ti?.phase||ti?.amps)&&(
+                <div style={{fontSize:10,color:"#1a5276",background:"#eaf2ff",borderRadius:6,
+                  padding:"5px 10px",marginBottom:8}}>
+                  Phase and amperage are pre-filled from the Test Item Description above.
+                </div>
+              )}
+              <PqForm s={pqCalc} set={setPqCalc} ti={ti}/>
+              <CalcResult setupAmt={pqSetupCost} testAmt={pqTestCost}/>
+              <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>Teardown: {money(pqTdCost)} &nbsp;·&nbsp; Total: {money(pqSetupCost+pqTestCost+pqTdCost)}</div>
+              <div style={{marginTop:8,display:"flex",gap:8,flexWrap:"wrap"}}>
+                {pqCalc.rows&&Object.entries(pqCalc.rows).some(([k,v])=>v&&k.startsWith("B"))&&onExportPq300b&&(
+                  <button onClick={()=>onExportPq300b(pqCalc)}
+                    style={{fontSize:11,padding:"5px 12px",borderRadius:6,border:"none",background:"#154360",color:"#fff",cursor:"pointer",fontWeight:600}}>
+                    Export PQ 300B Spec PDF
+                  </button>
+                )}
+                {pqCalc.rows&&Object.entries(pqCalc.rows).some(([k,v])=>v&&!k.startsWith("B"))&&onExportPq300p1&&(
+                  <button onClick={()=>onExportPq300p1(pqCalc)}
+                    style={{fontSize:11,padding:"5px 12px",borderRadius:6,border:"none",background:"#1a3a4a",color:"#fff",cursor:"pointer",fontWeight:600}}>
+                    Export PQ 300 Part 1 Spec PDF
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* DC Magnetics Tab */}
+          {tab==="dcm"&&(
+            <div>
+              <CalcRow2 label="Spec"><input value={dcmCalc.spec} onChange={e=>setDcmCalc(s=>({...s,spec:e.target.value}))}
+                style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #d0d7de",width:200}}/></CalcRow2>
+              <CalcRow2 label="Shift Rate ($)"><CalcInp value={dcmCalc.rate} onChange={v=>setDcmCalc(s=>({...s,rate:v}))}/></CalcRow2>
+              <CalcRow2 label="Setup Shifts"><CalcInp value={dcmCalc.setupShifts} onChange={v=>setDcmCalc(s=>({...s,setupShifts:v}))}/></CalcRow2>
+              <CalcRow2 label="Testing Shifts"><CalcInp value={dcmCalc.testShifts} onChange={v=>setDcmCalc(s=>({...s,testShifts:v}))}/></CalcRow2>
+              <CalcRow2 label="PIA"><CalcInp value={String(dcmCalc.pia)} onChange={v=>setDcmCalc(s=>({...s,pia:parseFloat(v)||1}))} width={50}/></CalcRow2>
+              <div style={{marginTop:10,padding:"10px 12px",background:"#1a2332",borderRadius:8}}>
+                <div style={{fontSize:9,color:"rgba(255,255,255,0.5)",letterSpacing:1,marginBottom:2}}>SUGGESTED TOTAL</div>
+                <div style={{fontSize:16,fontWeight:700,color:"#fff",fontFamily:"monospace"}}>{money(dcmTotal)}</div>
+              </div>
+
+
+            </div>
+          )}
+
+          <div style={{marginTop:10,fontSize:9,color:"#c0c8d0",fontStyle:"italic"}}>
+            These are suggested prices only and do not affect the quote.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ── Instrumentation Calculator ────────────────────────────────────────────────
+function InstrumentationCalculator(){
+  const [open, setOpen] = useState(false);
+  const [inst, setInst] = useState({
+    shock:false, shockCh:"1",
+    cmShock:false, cmShockCh:"1",
+    vib:false, vibCh:"1",
+    cmVib:false, cmVibCh:"1",
+    hsv:false,
+  });
+
+  const ITEMS=[
+    {key:"shock",  chKey:"shockCh",  label:"Shock Instrumentation",        price:525},
+    {key:"cmShock",chKey:"cmShockCh",label:"Contact Monitoring (Shock)",    price:350},
+    {key:"vib",    chKey:"vibCh",    label:"Vib Additional Channels",       price:325},
+    {key:"cmVib",  chKey:"cmVibCh",  label:"Contact Monitoring (Vibe)",     price:750},
+  ];
+
+  const total =
+    ITEMS.reduce((a,i)=>a+(inst[i.key]?i.price*sf(inst[i.chKey],1):0),0)+
+    (inst.hsv?1950:0);
+
+  return(
+    <div style={{marginTop:6,border:"1px solid #e0e4ea",borderRadius:10,overflow:"hidden",fontFamily:"Segoe UI,system-ui,sans-serif"}}>
+      <div style={{background:"#f8f9fb",padding:"8px 14px",display:"flex",alignItems:"center",
+        justifyContent:"space-between",cursor:"pointer",borderBottom:open?"1px solid #e0e4ea":"none"}}
+        onClick={()=>setOpen(v=>!v)}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:13}}>🔌</span>
+          <span style={{fontSize:12,fontWeight:700,color:"#1a2332",letterSpacing:.2}}>Instrumentation Calculator</span>
+          <span style={{fontSize:10,color:"#9aa5b1"}}>— reference tool, does not affect quote</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {total>0&&<span style={{fontSize:12,fontWeight:700,color:"#1a5276"}}>{money(total)}</span>}
+          <span style={{fontSize:12,color:"#9aa5b1"}}>{open?"▲":"▼"}</span>
+        </div>
+      </div>
+
+      {open&&(
+        <div style={{padding:"12px 14px",background:"#fff"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {ITEMS.map(item=>(
+              <div key={item.key} style={{display:"flex",alignItems:"center",gap:8,
+                padding:"6px 10px",borderRadius:7,
+                background:inst[item.key]?"#eaf2ff":"#f8f9fb",
+                border:"1px solid "+(inst[item.key]?"#1a5276":"#e8ecf0")}}>
+                <input type="checkbox" checked={inst[item.key]}
+                  onChange={e=>setInst(prev=>({...prev,[item.key]:e.target.checked}))}
+                  style={{cursor:"pointer"}}/>
+                <span style={{fontSize:11,color:"#1a2332",flex:1,fontWeight:inst[item.key]?600:400}}>
+                  {item.label}
+                </span>
+                <span style={{fontSize:10,color:"#9aa5b1"}}>${item.price}/ch</span>
+                {inst[item.key]&&(
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontSize:10,color:"#6b7a8d"}}>Channels:</span>
+                    <input type="number" min="1" value={inst[item.chKey]}
+                      onChange={e=>setInst(prev=>({...prev,[item.chKey]:e.target.value}))}
+                      style={{width:45,fontSize:11,padding:"2px 4px",borderRadius:5,
+                        border:"1px solid #1a5276",textAlign:"center"}}/>
+                    <span style={{fontSize:11,fontWeight:600,color:"#1a5276",minWidth:55,textAlign:"right"}}>
+                      {money(item.price*sf(inst[item.chKey],1))}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* HSV */}
+            <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:7,
+              background:inst.hsv?"#eaf2ff":"#f8f9fb",
+              border:"1px solid "+(inst.hsv?"#1a5276":"#e8ecf0")}}>
+              <input type="checkbox" checked={inst.hsv}
+                onChange={e=>setInst(prev=>({...prev,hsv:e.target.checked}))}
+                style={{cursor:"pointer"}}/>
+              <span style={{fontSize:11,color:"#1a2332",flex:1,fontWeight:inst.hsv?600:400}}>
+                High Speed Video
+              </span>
+              <span style={{fontSize:10,color:"#9aa5b1"}}>flat rate</span>
+              {inst.hsv&&<span style={{fontSize:11,fontWeight:600,color:"#1a5276",minWidth:55,textAlign:"right"}}>{money(1950)}</span>}
+            </div>
+          </div>
+
+          {total>0&&(
+            <div style={{marginTop:10,padding:"10px 12px",background:"#1a2332",borderRadius:8,
+              display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:11,color:"rgba(255,255,255,0.6)",fontWeight:600}}>TOTAL INSTRUMENTATION</span>
+              <span style={{fontSize:16,fontWeight:700,color:"#fff",fontFamily:"monospace"}}>{money(total)}</span>
+            </div>
+          )}
+
+          <div style={{marginTop:8,fontSize:9,color:"#c0c8d0",fontStyle:"italic"}}>
+            Suggested total only — does not affect the quote.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── V2 Product Picker ─────────────────────────────────────────────────────────
+function ProductPicker({onAdd, onClose, setup, ti, vibs, hfvs, summary}){
+  const [selected, setSelected] = useState({}); // {productKey: qty}
+  const [thDur, setThDur] = useState("0 to 1 Day");
+
+
+  // Smart pricing helpers
+  const techRate = sf(setup?.techRate,175);
+  const fabHours = sf(setup?.fabHours,4);
+  const holes = sf(setup?.holes,0);
+  const drillTap = setup?.drillTap||false;
+  const drillCost = holes*0.5*techRate*(drillTap?1.5:1);
+  const fabCost = fabHours*techRate;
+  const smartSetup = Math.round(900 + drillCost + fabCost); // base 900 + fab + drill
+  const hfvOn = hfvs?.some(s=>s.on)||false;
+  const vibSetupAmt = Math.round(sf(vibs?.[0]?.stdSetup||900)+drillCost+fabCost);
+
+  // T&H prices
+  const TH_PRICES = {"0 to 1 Day":1000,"3 Days":1350,"5 Days":1875,"7 Days":2275,"10 Days":2950};
+
+  // Weight-based shock testing
+  const wt = sf(ti?.wt,0);
+  const mwsTest = wt>0 ? (wt<=200?3975:wt<=500?4575:wt<=1000?5275:5975) : 4575;
+
+
+
+  const PRODUCTS = [
+    // Vibration
+    {key:"vib_setup",cat:"Vibration",label:"Vibration – Setup",code:"94",price:smartSetup,smart:true},
+    {key:"vib_test",cat:"Vibration",label:"Vibration – Testing",code:"94",price:3250},
+    // Medium Weight Shock
+    {key:"mws_setup",cat:"Medium Weight Shock",label:"Medium Weight Shock – Setup",code:"91",price:Math.round(1500+drillCost+fabCost),smart:true},
+    {key:"mws_test",cat:"Medium Weight Shock",label:"Medium Weight Shock – Testing",code:"91",price:mwsTest,smart:wt>0},
+    // Lightweight Shock
+    {key:"lws_setup",cat:"Lightweight Shock",label:"Lightweight Shock – Setup",code:"92",price:Math.round(900+drillCost+fabCost),smart:true},
+    {key:"lws_test",cat:"Lightweight Shock",label:"Lightweight Shock – Testing",code:"92",price:1450},
+    // HF Vibration
+    {key:"hfv_setup",cat:"HF Vibration",label:"HF Vibration – Setup",code:"52",price:Math.round(500+drillCost+fabCost),smart:true},
+    {key:"hfv_test",cat:"HF Vibration",label:"HF Vibration – Testing",code:"52",price:1225},
+    // Shock Other
+    {key:"sho_setup",cat:"Shock (Other)",label:"Shock (Other) – Setup",code:"52",price:hfvOn?Math.round((500+drillCost+fabCost)*0.75):Math.round(500+drillCost+fabCost),smart:true},
+    {key:"sho_test",cat:"Shock (Other)",label:"Shock (Other) – Testing",code:"52",price:1250},
+    // Temp & Humidity
+    {key:"th_setup",cat:"Temp & Humidity",label:"Temperature & Humidity – Setup",code:"53",price:500},
+    {key:"th_test",cat:"Temp & Humidity",label:"Temperature & Humidity – Testing",code:"53",price:TH_PRICES[thDur]||1000,smart:true},
+    {key:"to_setup",cat:"Temp & Humidity",label:"Temperature Only – Setup",code:"53",price:500},
+    {key:"to_test",cat:"Temp & Humidity",label:"Temperature Only – Testing",code:"53",price:TH_PRICES[thDur]||1000,smart:true},
+    {key:"hu_setup",cat:"Temp & Humidity",label:"Humidity Only – Setup",code:"53",price:500},
+    {key:"hu_test",cat:"Temp & Humidity",label:"Humidity Only – Testing",code:"53",price:TH_PRICES[thDur]||1000,smart:true},
+    // ESS
+    {key:"ess_setup",cat:"ESS",label:"ESS – Setup",code:"54",price:500},
+    {key:"ess_test",cat:"ESS",label:"ESS – Testing",code:"54",price:1000},
+    // Salt Fog
+    {key:"sf_setup",cat:"Salt Fog",label:"Salt Fog – Setup",code:"55",price:500},
+    {key:"sf_test",cat:"Salt Fog",label:"Salt Fog – Testing",code:"55",price:1750},
+    // Altitude
+    {key:"alt_setup",cat:"Altitude",label:"Altitude – Setup",code:"56",price:500},
+    {key:"alt_test",cat:"Altitude",label:"Altitude – Testing",code:"56",price:1000},
+    // Rapid Decompression
+    {key:"rd_setup",cat:"Rapid Decompression",label:"Rapid Decompression – Setup",code:"56",price:1000},
+    {key:"rd_test",cat:"Rapid Decompression",label:"Rapid Decompression – Testing",code:"56",price:2275},
+    // Explosive Decompression
+    {key:"ed_setup",cat:"Explosive Decompression",label:"Explosive Decompression – Setup",code:"56",price:1250},
+    {key:"ed_test",cat:"Explosive Decompression",label:"Explosive Decompression – Testing",code:"56",price:2450},
+    // Acceleration
+    {key:"acc_setup",cat:"Acceleration",label:"Acceleration – Setup",code:"57",price:2000},
+    {key:"acc_test",cat:"Acceleration",label:"Acceleration – Testing",code:"57",price:1950},
+    // Inclination
+    {key:"incl_setup",cat:"Inclination",label:"Inclination – Setup",code:"93",price:1250},
+    {key:"incl_test",cat:"Inclination",label:"Inclination – Testing",code:"93",price:1750},
+    // Drip
+    {key:"drip_setup",cat:"Drip Test",label:"Drip Test – Setup",code:"58",price:500},
+    {key:"drip_test",cat:"Drip Test",label:"Drip Test – Testing",code:"58",price:750},
+    // Submergence
+    {key:"sub_setup",cat:"Submergence",label:"Submergence – Setup",code:"58",price:500},
+    {key:"sub_test",cat:"Submergence",label:"Submergence – Testing",code:"58",price:750},
+    // Spray
+    {key:"spray_setup",cat:"Spray Test",label:"Spray Test – Setup",code:"58",price:1250},
+    {key:"spray_test",cat:"Spray Test",label:"Spray Test – Testing",code:"58",price:1250},
+    // Insulation Resistance
+    {key:"insres",cat:"Insulation Resistance",label:"Insulation Resistance & Dielectric Strength",code:"59",price:500},
+    // Noise
+    {key:"noise_setup",cat:"Noise Susceptibility",label:"Noise Susceptibility – Setup",code:"11",price:1000},
+    {key:"noise_test",cat:"Noise Susceptibility",label:"Noise Susceptibility – Testing",code:"11",price:3950},
+    // Airborne
+    {key:"ab_setup",cat:"Airborne Noise",label:"Airborne Noise – Setup",code:"12",price:Math.round(1000+drillCost+fabCost),smart:true},
+    {key:"ab_test",cat:"Airborne Noise",label:"Airborne Noise – Testing",code:"12",price:2850},
+    // Structureborne
+    {key:"sb_setup",cat:"Structureborne Noise",label:"Structureborne Noise – Setup",code:"12",price:Math.round(850+drillCost+fabCost),smart:true},
+    {key:"sb_test",cat:"Structureborne Noise",label:"Structureborne Noise – Testing",code:"12",price:2650},
+    // Hydrostatic
+    {key:"hydro_pre",cat:"Hydrostatic",label:"Pre-Test Hydrostatic",code:"95",price:500},
+    {key:"hydro_post",cat:"Hydrostatic",label:"Post-Test Hydrostatic",code:"95",price:500},
+    {key:"hydro_both",cat:"Hydrostatic",label:"Post & Pre-Test Hydrostatic",code:"95",price:1000},
+    // Procedures & Reports
+    {key:"proc",cat:"Procedures & Reports",label:"Test Procedure",code:"42",price:1750},
+    {key:"rep",cat:"Procedures & Reports",label:"Test Report",code:"41",price:1050},
+    {key:"coc",cat:"Procedures & Reports",label:"Certificate of Compliance",code:"41",price:250},
+    {key:"modal_analysis",cat:"Procedures & Reports",label:"Modal Analysis",code:"67",price:6750},
+    {key:"fixture_drawing",cat:"Procedures & Reports",label:"Test Fixture Drawings",code:"42",price:2950},
+    // High Speed Video
+    {key:"shock_inst",cat:"Instrumentation",label:"Shock Instrumentation",code:"33",price:525},
+    {key:"cm_shock",cat:"Instrumentation",label:"Contact Monitoring (Shock)",code:"33",price:350},
+    {key:"vib_ch",cat:"Instrumentation",label:"Vib Additional Channels",code:"33",price:325},
+    {key:"cm_vib",cat:"Instrumentation",label:"Contact Monitoring (Vibe)",code:"33",price:750},
+    {key:"hsv",cat:"Instrumentation",label:"High Speed Video",code:"32",price:1950},
+    // Tear Down
+    {key:"td",cat:"Other",label:"Tear Down",code:"96",price:750},
+    // EMI
+    {key:"emi_setup",cat:"EMI",label:"EMI – Setup",code:"51",price:0,custom:true},
+    {key:"emi_test",cat:"EMI",label:"EMI – Testing",code:"51",price:0,custom:true},
+    {key:"emi_td",cat:"EMI",label:"EMI – Teardown",code:"51",price:0,custom:true},
+    {key:"emi_proc",cat:"EMI",label:"EMI Procedure",code:"44",price:3425},
+    {key:"emi_rep",cat:"EMI",label:"EMI Report",code:"43",price:2850},
+    // PQ
+    {key:"pq_setup",cat:"Power Quality",label:"PQ – Setup",code:"51",price:0,custom:true},
+    {key:"pq_test",cat:"Power Quality",label:"PQ – Testing",code:"51",price:0,custom:true},
+    {key:"pq_td",cat:"Power Quality",label:"PQ – Teardown",code:"51",price:0,custom:true},
+    {key:"pq_proc",cat:"Power Quality",label:"PQ Procedure",code:"44",price:2925},
+    {key:"pq_rep",cat:"Power Quality",label:"PQ Report",code:"43",price:2450},
+    // DC Magnetics
+    {key:"dcm_setup",cat:"DC Magnetics",label:"DC Magnetics – Setup",code:"51",price:0,custom:true},
+    {key:"dcm_test",cat:"DC Magnetics",label:"DC Magnetics – Testing",code:"51",price:0,custom:true},
+    {key:"dcm_td",cat:"DC Magnetics",label:"DC Magnetics – Teardown",code:"51",price:0,custom:true},
+    {key:"dcm_proc",cat:"DC Magnetics",label:"DC Mag Procedure",code:"44",price:1950},
+    {key:"dcm_rep",cat:"DC Magnetics",label:"DC Mag Report",code:"43",price:1500},
+    // Subcontracting
+    {key:"sub_item",cat:"Other",label:"Subcontracting",code:"98",price:0,custom:true},
+    // Custom
+    {key:"custom_item",cat:"Other",label:"Custom Line Item",code:"94",price:0,custom:true},
+  ];
+
+  // Sort products by code number then label
+  const sortedProducts = [...PRODUCTS].sort((a,b)=>{
+    const codeA = parseInt(a.code)||0;
+    const codeB = parseInt(b.code)||0;
+    if(codeA!==codeB) return codeA-codeB;
+    return a.label.localeCompare(b.label);
+  });
+
+  const toggle = (key) => {
+    setSelected(prev => {
+      if(prev[key]) { const n={...prev}; delete n[key]; return n; }
+      return {...prev, [key]:1};
+    });
+  };
+
+  const setQty = (key,val) => {
+    const n = parseInt(val)||1;
+    setSelected(prev=>({...prev,[key]:Math.max(1,n)}));
+  };
+
+  const handleAdd = () => {
+    const lines = [];
+
+    Object.entries(selected).forEach(([key,qty])=>{
+      const prod = PRODUCTS.find(p=>p.key===key);
+      if(!prod) return;
+      for(let i=0;i<qty;i++){
+        lines.push({label:prod.label,code:prod.code,price:prod.price,desc:""});
+      }
+    });
+    if(lines.length>0) onAdd(lines);
+    onClose();
+  };
+
+  const selCount = Object.keys(selected).length;
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:2000,display:"flex",alignItems:"flex-start",justifyContent:"center",background:"rgba(0,0,0,0.4)",overflowY:"auto",padding:"20px 0"}}>
+      <div style={{background:"#fff",borderRadius:12,width:"min(700px,96vw)",boxShadow:"0 8px 40px rgba(0,0,0,0.2)",fontFamily:"Segoe UI,system-ui,sans-serif"}}>
+        {/* Header */}
+        <div style={{padding:"16px 20px",borderBottom:"1px solid #e8ecf0",display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1a2332",borderRadius:"12px 12px 0 0"}}>
+          <div style={{color:"#fff",fontWeight:700,fontSize:15,letterSpacing:.3}}>+ Add Line Items</div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,0.7)",fontSize:18,cursor:"pointer",padding:"0 4px"}}>✕</button>
+        </div>
+
+        {/* T&H duration selector — shown when T&H items selected */}
+        {Object.keys(selected).some(k=>k.startsWith("th_")||k.startsWith("to_")||k.startsWith("hu_"))&&(
+          <div style={{padding:"10px 20px",background:"#f8f9fb",borderBottom:"1px solid #e8ecf0",display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:11,color:"#6b7a8d",fontWeight:600}}>T&H Duration:</span>
+            <select value={thDur} onChange={e=>setThDur(e.target.value)}
+              style={{fontSize:11,padding:"4px 8px",borderRadius:6,border:"1px solid #d0d7de",background:"#fff"}}>
+              {Object.entries(TH_PRICES).map(([k,v])=>(
+                <option key={k} value={k}>{k} — ${v.toLocaleString()}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Products — flat list sorted by code */}
+        <div style={{padding:"12px 20px",maxHeight:"55vh",overflowY:"auto"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:3}}>
+            {sortedProducts.map(prod=>{
+              const isSel = !!selected[prod.key];
+              return(
+                <div key={prod.key} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:7,
+                  background:isSel?"#eaf2ff":"#f8f9fb",border:"1px solid "+(isSel?"#1a5276":"#e8ecf0"),
+                  cursor:"pointer",transition:"all 0.1s"}}
+                  onClick={()=>toggle(prod.key)}>
+                  <div style={{width:16,height:16,borderRadius:4,border:"2px solid "+(isSel?"#1a5276":"#d0d7de"),
+                    background:isSel?"#1a5276":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    {isSel&&<span style={{color:"#fff",fontSize:10,lineHeight:1}}>✓</span>}
+                  </div>
+                  <span style={{fontSize:10,color:"#9aa5b1",minWidth:22,fontFamily:"monospace"}}>{prod.code}</span>
+                  <span style={{flex:1,fontSize:12,color:"#1a2332",fontWeight:isSel?600:400}}>{prod.label}</span>
+                  {isSel&&(
+                    <div style={{display:"flex",alignItems:"center",gap:4}} onClick={e=>e.stopPropagation()}>
+                      <span style={{fontSize:10,color:"#6b7a8d"}}>qty:</span>
+                      <input type="number" min="1" max="20" value={selected[prod.key]}
+                        onChange={e=>setQty(prod.key,e.target.value)}
+                        style={{width:40,fontSize:11,padding:"2px 4px",borderRadius:5,border:"1px solid #1a5276",textAlign:"center"}}/>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+        </div>
+
+        {/* Footer */}
+        <div style={{padding:"12px 20px",borderTop:"1px solid #e8ecf0",display:"flex",alignItems:"center",justifyContent:"space-between",background:"#f8f9fb",borderRadius:"0 0 12px 12px"}}>
+          <span style={{fontSize:11,color:"#9aa5b1"}}>{selCount} item{selCount!==1?"s":""} selected</span>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={onClose} style={{background:"#fff",border:"1px solid #d0d7de",borderRadius:7,padding:"7px 16px",fontSize:12,cursor:"pointer",color:"#6b7a8d"}}>Cancel</button>
+            <button onClick={handleAdd} disabled={selCount===0}
+              style={{background:selCount===0?"#e8ecf0":"#1a2332",border:"none",borderRadius:7,padding:"7px 20px",
+                fontSize:12,fontWeight:700,cursor:selCount===0?"default":"pointer",
+                color:selCount===0?"#9aa5b1":"#fff",transition:"all 0.15s"}}>
+              Add {selCount>0?selCount+" ":""}{selCount===1?"Item":"Items"} to Quote
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App({onLogout,currentUser}){
   const [qi,setQi]=useState({opp:"",account:"",billTo:"",billToCity:"",contact:"",email:"",prepby:"",rev:"",revDate:"",date:new Date().toLocaleDateString("en-US"),rfq:"",stage:"Proposal/Price Quote",type:"New Business",relatedOpps:""});
   const [ti,setTi]=useState({item:"",qty:"1",model:"",drawing:"",loads:null,dimL:"",dimW:"",dimH:"",wt:"",volt:"",pwrType:"AC",phase:"",hz:"",inrush:"",amps:"",mounting:"",pressureFlow:"",gsi:"Unknown",witness:"Unknown",docRestriction:"None",dpas:"",tiSpecs:"",tiNotes:""});
@@ -4875,8 +5901,11 @@ export default function App({onLogout,currentUser}){
   const [globalPR,setGlobalPR]=useState({procs:[],reps:[],coc:false,cocPrice:"250"});
   const [notes,setNotes]=useState("");
   const [lineOverrides,setLineOverrides]=useState({}); // {idx:{price,desc,deleted}}
-  const [lineOrder,setLineOrder]=useState(null); // null=use default order; array of original indices when reordered
+  const [lineOrder,setLineOrder]=useState(null);
+  const [unifiedOrder,setUnifiedOrder]=useState(null); // [{type:'auto'|'picker',idx}] // null=use default order; array of original indices when reordered
   const [dragIdx,setDragIdx]=useState(null);
+  const dragFromRef=useRef(null);
+  const dragToRef=useRef(null);
   const [abs,setAbs]=useState([newAb()]);
   const [sbs,setSbs]=useState([newSb()]);
   const [locked,setLocked]=useState(false);
@@ -4886,7 +5915,7 @@ export default function App({onLogout,currentUser}){
   const [openQuotesLoading,setOpenQuotesLoading]=useState(false);
   const [dragOverId,setDragOverId]=useState(null);
   const dragRowId=useRef(null);
-  const [modalAnalysis,setModalAnalysis]=useState({on:false,price:"6250"});
+  const [modalAnalysis,setModalAnalysis]=useState({on:false,price:"6750"});
   const [fixtureDrawing,setFixtureDrawing]=useState({on:false,price:"2950"});
   const [inStockModal,setInStockModal]=useState({on:false,targetProc:""});
   // persist to saves
@@ -4903,6 +5932,10 @@ export default function App({onLogout,currentUser}){
   const [showChatter,setShowChatter]=useState(false);
   const [quoteSentAt,setQuoteSentAt]=useState(null); // date string if this quote has been marked sent
   const [showFollowUpPopover,setShowFollowUpPopover]=useState(false);
+  const [showProductPicker,setShowProductPicker]=useState(false);
+  const [pickerDragIdx,setPickerDragIdx]=useState(null);
+  const [advancedModeOpen,setAdvancedModeOpen]=useState(false);
+  const [pickerLines,setPickerLines]=useState([]); // lines added via product picker
   const [quoteFlag,setQuoteFlag]=useState(null);
   const [showFlagPopover,setShowFlagPopover]=useState(false);
   const [flagNote,setFlagNote]=useState("");
@@ -5192,7 +6225,7 @@ export default function App({onLogout,currentUser}){
       savedAt: new Date().toISOString(),
     };
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides,snapshot:savedSnapshot};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,snapshot:savedSnapshot};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);setSnapshot(savedSnapshot);setIsDirty(false);showToast("Submitted for approval","info");}
     else showToast("Submit failed — check your connection","error",5000);
@@ -5216,7 +6249,7 @@ export default function App({onLogout,currentUser}){
     setLocked(true);
     setApprovalComments("");
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Quote approved ✓","success");autoUnflag(newId);}
     else showToast("Save failed — check your connection","error",5000);
@@ -5230,7 +6263,7 @@ export default function App({onLogout,currentUser}){
     setLocked(false);
     setApprovalComments("");
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Quote rejected","info");}
     else showToast("Save failed — check your connection","error",5000);
@@ -5261,7 +6294,7 @@ export default function App({onLogout,currentUser}){
       savedAt: new Date().toISOString(),
     };
     const q={id:currentQuoteId||undefined,opp:effectiveQi.opp,customer:effectiveQi.account,rfq:effectiveQi.rfq,total:displayTotal,
-      qi:effectiveQi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides,snapshot:savedSnapshot};
+      qi:effectiveQi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,snapshot:savedSnapshot};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);setSnapshot(savedSnapshot);setIsDirty(false);showToast("Submitted for Closed Won approval","info");}
     else showToast("Submit failed — check your connection","error",5000);
@@ -5271,7 +6304,7 @@ export default function App({onLogout,currentUser}){
     const newWonApproval={...wonApproval,status:"won_approved",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:comments||""};
     setWonApproval(newWonApproval);
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Closed Won approved ✓","success");}
     else showToast("Save failed — check your connection","error",5000);
@@ -5282,7 +6315,7 @@ export default function App({onLogout,currentUser}){
     setWonApproval(newWonApproval);
     setLocked(false);
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Closed Won rejected","info");}
     else showToast("Save failed — check your connection","error",5000);
@@ -5401,7 +6434,7 @@ export default function App({onLogout,currentUser}){
       const result=window.confirm("Save the current quote before switching?\n\nClick OK to save, or Cancel to discard.");
       if(result){
         const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
+          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
         await saveQuoteToSupabase(q,autoSpecs,autoNotes);
       }
     }
@@ -5436,8 +6469,8 @@ export default function App({onLogout,currentUser}){
         setBudget({on:false,rows:[],markup:"25"});setSub({on:false,rows:[]});
         setTd("0");setSetup({techRate:"175",fabHours:"4",holes:"0",cables:"0",drillTap:false});
         setGlobalPR({procs:[],reps:[],coc:false,cocPrice:"250"});
-        setNotes("");setLineOverrides({});setLineOrder(null);userEditedSpecs.current=false;userEditedNotes.current=false;
-        setModalAnalysis({on:false,price:"6250"});setFixtureDrawing({on:false,price:"2950"});setInStockModal({on:false,targetProc:""});
+        setNotes("");setLineOverrides({});setLineOrder(null);setPickerLines([]);userEditedSpecs.current=false;userEditedNotes.current=false;
+        setModalAnalysis({on:false,price:"6750"});setFixtureDrawing({on:false,price:"2950"});setInStockModal({on:false,targetProc:""});
         setWonInfo({wonDate:"",jobNum:"",poNum:""});setWonLocked(false);
         setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
         setChatterEntries([]);setChatterInput("");
@@ -5654,11 +6687,15 @@ export default function App({onLogout,currentUser}){
   // Nav/display total respects lineOverrides (price edits + deleted lines), matching PDF behaviour
   // Use snapshot total when not dirty — immune to formula changes
   // Use live calcSummary when dirty (user is actively editing test selections)
-  const liveTotal=useMemo(()=>summary.lines.reduce((a,l,idx)=>{
-    const ov=lineOverrides[idx]||{};
-    if(ov.deleted)return a;
-    return a+(ov.price!==undefined?sf(ov.price,0):l.val);
-  },0),[summary.lines,lineOverrides]);
+  const liveTotal=useMemo(()=>{
+    const baseTotal=summary.lines.reduce((a,l,idx)=>{
+      const ov=lineOverrides[idx]||{};
+      if(ov.deleted)return a;
+      return a+(ov.price!==undefined?sf(ov.price,0):l.val);
+    },0);
+    const pickerTotal=(pickerLines||[]).reduce((a,l)=>a+(l.price||0),0);
+    return baseTotal+pickerTotal;
+  },[summary.lines,lineOverrides,pickerLines]);
   const displayTotal=(!isDirty&&snapshot!=null) ? (snapshot.total??liveTotal) : liveTotal;
 
   // Clone quote — optionally save original first, then open modal for new opp #
@@ -5673,7 +6710,7 @@ export default function App({onLogout,currentUser}){
         const q={id:undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
           qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,
           budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,
-          inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
+          inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
         const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
         if(!newId){showToast("Save failed before flagging","error");setFlagLoading(false);return;}
         setCurrentQuoteId(newId);
@@ -5705,11 +6742,37 @@ export default function App({onLogout,currentUser}){
     setFlagLoading(false);
   };
 
+  const sortPickerLines = (lines) => {
+    const order = l => {
+      const code = l.code||"";
+      const label = (l.label||"").toLowerCase();
+      if(code==="42"||code==="44"||label.includes("procedure")) return 0;
+      if(code==="96"||label.includes("tear down")||label.includes("teardown")) return 8;
+      if(code==="41"||code==="43"||label.includes("report")||label.includes("certificate")) return 9;
+      return 5;
+    };
+    return [...lines].sort((a,b)=>order(a)-order(b));
+  };
+
+  const handleProductPickerAdd = (lines) => {
+    const newLines = lines.map(l => ({
+      id: Date.now()+Math.random(),
+      label: l.label,
+      code: l.code||"94",
+      price: l.price||0,
+      desc: l.desc||"",
+    }));
+    setPickerLines(prev => sortPickerLines([...prev, ...newLines]));
+    setUnifiedOrder(null); // reset so new items appear at end
+    setIsDirty(true);
+    showToast(`Added ${lines.length} line item${lines.length!==1?"s":""} to quote`, "success");
+  };
+
   const handleClone=()=>{
     const result=window.confirm("Save the current quote before cloning?\n\nClick OK to save first, or Cancel to clone without saving.");
     if(result){
       const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
+        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
       saveQuoteToSupabase(q,autoSpecs,autoNotes);
     }
     setCloneOppInput("");
@@ -5740,7 +6803,7 @@ export default function App({onLogout,currentUser}){
       if(result){
         const id=currentQuoteId||undefined;
         const q={id,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
+          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
         saveQuoteToSupabase(q,autoSpecs,autoNotes);
       }
     }
@@ -5754,8 +6817,8 @@ export default function App({onLogout,currentUser}){
     setBudget({on:false,rows:[],markup:"25"}); setSub({on:false,rows:[]});
     setTd("0"); setSetup({techRate:"175",fabHours:"4",holes:"0",cables:"0",drillTap:false});
     setGlobalPR({procs:[],reps:[],coc:false,cocPrice:"250"});
-    setNotes(""); setLineOverrides({}); setLineOrder(null);
-    setModalAnalysis({on:false,price:"6250"}); setFixtureDrawing({on:false,price:"2950"}); setInStockModal({on:false,targetProc:""});
+    setNotes(""); setLineOverrides({}); setLineOrder(null); setPickerLines([]); setUnifiedOrder(null);
+    setModalAnalysis({on:false,price:"6750"}); setFixtureDrawing({on:false,price:"2950"}); setInStockModal({on:false,targetProc:""});
     setWonInfo({wonDate:"",jobNum:"",poNum:""}); setWonLocked(false);
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("vibrato");
@@ -5783,7 +6846,7 @@ export default function App({onLogout,currentUser}){
       savedAt: new Date().toISOString(),
     };
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,snapshot:savedSnapshot};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,snapshot:savedSnapshot};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){
       setCurrentQuoteId(newId);
@@ -5877,7 +6940,7 @@ export default function App({onLogout,currentUser}){
     if(q.sbs)setSbs(q.sbs);
     if(q.globalPR)setGlobalPR(q.globalPR);
     if(q.splitProcReport!==undefined)setSplitProcReport(q.splitProcReport);
-    if(q.modalAnalysis)setModalAnalysis(q.modalAnalysis); else setModalAnalysis({on:false,price:"6250"});
+    if(q.modalAnalysis)setModalAnalysis(q.modalAnalysis); else setModalAnalysis({on:false,price:"6750"});
     if(q.fixtureDrawing)setFixtureDrawing(q.fixtureDrawing); else setFixtureDrawing({on:false,price:"2950"});
     if(q.inStockModal)setInStockModal(q.inStockModal); else setInStockModal({on:false,targetProc:""});
     if(q.notes)setNotes(q.notes);
@@ -5906,6 +6969,7 @@ export default function App({onLogout,currentUser}){
     // - Deleted flags: keep only if the stored label exists somewhere in the saved summary
     //   (not necessarily at the same index — indices shift when tests change)
     // - Price/desc overrides: keep as-is
+    setPickerLines(q.pickerLines||[]); setUnifiedOrder(q.unifiedOrder||null);
     if(q.lineOverrides!==undefined){
       const savedLines=q.summary?.lines||[];
       // Build a set of all labels in the saved summary for O(1) lookup
@@ -6015,29 +7079,61 @@ const STANDARD_TERMS = [
     "All hardware provided by NU Laboratories is assumed to be SAE Grade 5. All fixturing provided by NU Laboratories is assumed to be A36 Steel. All other hardware and fixture requirements will be quoted separately if not detailed on this quote.",
   ];
 
-  const exportPDF = async () => {
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-    script.onload = () => {
-      const script2 = document.createElement("script");
-      script2.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js";
-      script2.onload = () => buildPDF(false);
-      document.head.appendChild(script2);
-    };
-    document.head.appendChild(script);
+  // ── Calculator EMI/PQ PDF adapters ──────────────────────────────────────────
+  // These adapt calculator state to the existing PDF builders which read from App scope
+  // by temporarily injecting the calculator data as the active EMI/PQ instance
+
+  const exportCalcEmi461fPDF = async (calcState) => {
+    if(window.jspdf){await buildEmi461fPDF(calcState);return;}
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload=()=>buildEmi461fPDF(calcState);
+    document.head.appendChild(s);
   };
 
-  const exportBudgetPDF = async () => {
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-    script.onload = () => {
-      const script2 = document.createElement("script");
-      script2.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js";
-      script2.onload = () => buildPDF(true);
-      document.head.appendChild(script2);
-    };
-    document.head.appendChild(script);
+  const exportCalcEmi461gPDF = async (calcState) => {
+    if(window.jspdf){await buildEmi461gPDF(calcState);return;}
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload=()=>buildEmi461gPDF(calcState);
+    document.head.appendChild(s);
   };
+
+  const exportCalcPq300bPDF_calc = async (calcState) => {
+    if(window.jspdf){await buildPq300bPDF(calcState);return;}
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload=()=>buildPq300bPDF(calcState);
+    document.head.appendChild(s);
+  };
+
+  const exportCalcPq300Part1PDF_calc = async (calcState) => {
+    if(window.jspdf){await buildPq300Part1PDF(calcState);return;}
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload=()=>buildPq300Part1PDF(calcState);
+    document.head.appendChild(s);
+  };
+
+  const loadJsPDF = (cb) => {
+    // Load jsPDF then autotable, always in sequence to be safe
+    const doLoad = () => {
+      const s2=document.createElement("script");
+      s2.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js";
+      s2.onload=()=>{ try{cb();}catch(e){console.error('PDF build error:',e);} };
+      document.head.appendChild(s2);
+    };
+    if(window.jspdf&&(window.jspdf.jsPDF||window.jspdf.default)){
+      doLoad(); return;
+    }
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s.onload=doLoad;
+    document.head.appendChild(s);
+  };
+
+  const exportPDF = async () => { loadJsPDF(()=>buildPDF(false)); };
+  const exportBudgetPDF = async () => { loadJsPDF(()=>buildPDF(true)); };
 
   const exportDcMagPDF = async () => {
     if(window.jspdf){await buildDcMagPDF();return;}
@@ -6195,7 +7291,7 @@ const STANDARD_TERMS = [
     document.head.appendChild(script);
   };
 
-  const buildPq300bPDF = async () => {
+  const buildPq300bPDF = async (pqOverride=null) => {
     const {jsPDF} = window.jspdf;
     const doc = new jsPDF({unit:"pt",format:"letter"});
     const PW = doc.internal.pageSize.getWidth();
@@ -6389,7 +7485,7 @@ const STANDARD_TERMS = [
     });
     y+=4;
 
-    const fname = (qi.opp||'PQ-300B-Specs')+'.pdf';
+    const fname=(qi.opp?(qi.opp+' Test Specifications'):'PQ-300B-Test-Specifications')+'.pdf';
     await savePdfAs(doc, fname);
   };
 
@@ -6401,7 +7497,7 @@ const STANDARD_TERMS = [
     document.head.appendChild(script);
   };
 
-  const buildEmi461fPDF = async () => {
+  const buildEmi461fPDF = async (emiOverride=null) => {
     const {jsPDF} = window.jspdf;
     const doc = new jsPDF({unit:"pt",format:"letter"});
     const PW = doc.internal.pageSize.getWidth();
@@ -6460,20 +7556,20 @@ const STANDARD_TERMS = [
     y+=10;
 
     // Compute all positions and test counts from the same math as shift calculations
-    const activeEmi = emis.find(s=>s.on)||(emis[0]||{});
+    const activeEmi = emiOverride ? {...emiOverride, on:true} : (emis.find(s=>s.on)||(emis[0]||{}));
     const dispL = activeEmi.dimL||ti.dimL||'0';
     const dispW = activeEmi.dimW||ti.dimW||'0';
     const dispH = activeEmi.dimH||ti.dimH||'0';
-    const emiCalc = calcEmiShifts({
+    const emiCalcData = calcEmiShifts({
       dimL:dispL, dimW:dispW, dimH:dispH,
       cables:activeEmi.cables||'0',
       phases:activeEmi.phases||ti.phase||'3'
     });
-    const c114 = emiCalc.CS114; // has sigTests, pwrTests, totalTests
-    const c116 = emiCalc.CS116;
-    const re102p = emiCalc.RE102.pos;
-    const rs101p = emiCalc.RS101.pos;
-    const rs103p = emiCalc.RS103.pos;
+    const c114 = emiCalcData.CS114;
+    const c116 = emiCalcData.CS116;
+    const re102p = emiCalcData.RE102.pos;
+    const rs101p = emiCalcData.RS101.pos;
+    const rs103p = emiCalcData.RS103.pos;
     const pwrCables = sf(activeEmi.phases||ti.phase||'3',3)===1?3:4;
     const pos=(n)=>n+' position'+(n!==1?'s':'');
 
@@ -6524,11 +7620,15 @@ const STANDARD_TERMS = [
        note:null},
     ];
 
-    // Only show tests selected by user across all active EMI instances
+    // Only show tests selected by user
     const selectedKeys=new Set();
-    emis.filter(s=>s.on).forEach(s=>{
-      Object.entries(s.tests||{}).forEach(([k,v])=>{if(v)selectedKeys.add(k);});
-    });
+    if(emiOverride){
+      Object.entries(emiOverride.tests||{}).forEach(([k,v])=>{if(v)selectedKeys.add(k);});
+    } else {
+      emis.filter(s=>s.on).forEach(s=>{
+        Object.entries(s.tests||{}).forEach(([k,v])=>{if(v)selectedKeys.add(k);});
+      });
+    }
     const activeRows=EMI_461F.filter(r=>selectedKeys.has(r.key));
 
     if(activeRows.length===0){
@@ -6623,7 +7723,7 @@ const STANDARD_TERMS = [
 
     const tp=doc.internal.getNumberOfPages();
     for(let p=1;p<=tp;p++){doc.setPage(p);drawFooter();}
-    const fname=(qi.opp||'EMI-461F-Specs')+'.pdf';
+    const fname=(qi.opp?(qi.opp+' Test Specifications'):'EMI-461F-Test-Specifications')+'.pdf';
     await savePdfAs(doc, fname);
   };
 
@@ -6635,7 +7735,7 @@ const STANDARD_TERMS = [
     document.head.appendChild(script);
   };
 
-  const buildEmi461gPDF = async () => {
+  const buildEmi461gPDF = async (emiOverride=null) => {
     const {jsPDF} = window.jspdf;
     const doc = new jsPDF({unit:"pt",format:"letter"});
     const PW = doc.internal.pageSize.getWidth();
@@ -6694,7 +7794,7 @@ const STANDARD_TERMS = [
     y+=10;
 
     // ── Compute positions and test counts from calcEmiShifts ──
-    const activeEmi = emis.find(s=>s.on)||(emis[0]||{});
+    const activeEmi = emiOverride ? {...emiOverride,on:true} : (emis.find(s=>s.on)||(emis[0]||{}));
     const dispL = activeEmi.dimL||ti.dimL||'0';
     const dispW = activeEmi.dimW||ti.dimW||'0';
     const dispH = activeEmi.dimH||ti.dimH||'0';
@@ -6703,11 +7803,11 @@ const STANDARD_TERMS = [
       cables:activeEmi.cables||'0',
       phases:activeEmi.phases||ti.phase||'3'
     });
-    const c114 = emiCalc.CS114;
-    const c116 = emiCalc.CS116;
-    const re102p = emiCalc.RE102.pos;
-    const rs101p = emiCalc.RS101.pos;
-    const rs103p = emiCalc.RS103.pos;
+    const c114 = emiCalcData.CS114;
+    const c116 = emiCalcData.CS116;
+    const re102p = emiCalcData.RE102.pos;
+    const rs101p = emiCalcData.RS101.pos;
+    const rs103p = emiCalcData.RS103.pos;
     const pos=(n)=>n+' position'+(n!==1?'s':'');
 
     // CS115: same cable structure as CS114 but fewer power tests (bulk + high side only = pwrCables)
@@ -6767,9 +7867,13 @@ const STANDARD_TERMS = [
 
     // Only show tests selected by user
     const selectedKeys=new Set();
-    emis.filter(s=>s.on).forEach(s=>{
-      Object.entries(s.tests||{}).forEach(([k,v])=>{if(v)selectedKeys.add(k);});
-    });
+    if(emiOverride){
+      Object.entries(emiOverride.tests||{}).forEach(([k,v])=>{if(v)selectedKeys.add(k);});
+    } else {
+      emis.filter(s=>s.on).forEach(s=>{
+        Object.entries(s.tests||{}).forEach(([k,v])=>{if(v)selectedKeys.add(k);});
+      });
+    }
     const activeRows=EMI_461G.filter(r=>selectedKeys.has(r.key));
 
     if(activeRows.length===0){
@@ -6854,7 +7958,7 @@ const STANDARD_TERMS = [
 
     const tp=doc.internal.getNumberOfPages();
     for(let p=1;p<=tp;p++){doc.setPage(p);drawFooter();}
-    const fname=(qi.opp||'EMI-461G-Specs')+'.pdf';
+    const fname=(qi.opp?(qi.opp+' Test Specifications'):'EMI-461G-Test-Specifications')+'.pdf';
     await savePdfAs(doc, fname);
   };
 
@@ -6866,7 +7970,7 @@ const STANDARD_TERMS = [
     document.head.appendChild(script);
   };
 
-  const buildPq300Part1PDF = async () => {
+  const buildPq300Part1PDF = async (pqOverride=null) => {
     const {jsPDF} = window.jspdf;
     const doc = new jsPDF({unit:"pt",format:"letter"});
     const PW = doc.internal.pageSize.getWidth();
@@ -7058,12 +8162,13 @@ const STANDARD_TERMS = [
     });
     y+=4;
 
-    const fname = (qi.opp||'PQ-300-Part1-Specs')+'.pdf';
+    const fname=(qi.opp?(qi.opp+' Test Specifications'):'PQ-300-Part1-Test-Specifications')+'.pdf';
     await savePdfAs(doc, fname);
   };
 
   const buildPDF = async (budgetOnly) => {
-    const {jsPDF} = window.jspdf;
+    const {jsPDF} = window.jspdf||{};
+    if(!jsPDF){console.error('jsPDF not loaded');return;}
     const doc = new jsPDF({unit:"pt",format:"letter"});
     const PW = doc.internal.pageSize.getWidth();   // 612
     const PH = doc.internal.pageSize.getHeight();  // 792
@@ -7277,6 +8382,16 @@ const STANDARD_TERMS = [
       }
       const pdfLines = summary.lines;
       const order = lineOrder&&lineOrder.length===pdfLines.length ? lineOrder : pdfLines.map((_,i)=>i);
+      // Merge auto-calc and picker lines into single sorted list
+      // Sort: procedures top (42/44), main middle, teardown before reports, reports bottom (41/43)
+      const sortRank = (code, label) => {
+        const c = String(code||''); const l = (label||'').toLowerCase();
+        if(c==='42'||c==='44'||l.includes('procedure')) return 0;
+        if(c==='67'||l.includes('modal analysis')) return 1;
+        if(c==='96'||l.includes('tear down')||l.includes('teardown')) return 8;
+        if(c==='41'||c==='43'||l.includes('test report')||l.includes('certificate')) return 9;
+        return 5;
+      };
       // Override lookup: index first, label fallback only for unique labels
       // Prevents cross-contamination between same-label lines (e.g. two Altitude tests)
       const pdfLabelCount={};
@@ -7291,28 +8406,71 @@ const STANDARD_TERMS = [
       });
       const pdfOvByIndex={};
       Object.entries(lineOverrides).forEach(([k,ov])=>{ pdfOvByIndex[k]=ov; });
-      order.forEach((origIdx, dispIdx) => {
-        const l = pdfLines[origIdx];
-        if(!l)return;
-        const ov = pdfOvByIndex[origIdx] || pdfOvByLabel[l.label] || {};
-        if(ov.deleted) return;
-        const price = snapPriceByLabel[l.label]!==undefined ? snapPriceByLabel[l.label] : l.val;
-        const desc = ov.desc&&ov.desc.trim() ? ov.desc.trim() : null;
-        const rowH = desc ? 26 : 14;
-        if(y + rowH + 2 > PH-52){ drawFooter(); doc.addPage(); pageNum++; y=54; drawTblHdr(); }
-        const bg = dispIdx%2===0 ? [255,255,255] : [247,248,250];
-        doc.setFillColor(...bg); doc.rect(ML, y, TW, rowH, 'F');
-        setF('normal', 9, DARK);
-        doc.text('1', ML+cQty/2, y+10, {align:'center'});
-        if(l.code){ setF('normal',8,MUTED); doc.text(String(l.code), ML+cQty+4, y+10); }
-        setF('normal', 9, DARK); doc.text(l.label, ML+cQty+cCode+4, y+10);
-        if(desc){
-          setF('italic', 7.5, [130,130,130]);
-          const dw = doc.splitTextToSize(desc, cDesc-10);
-          doc.text(dw, ML+cQty+cCode+4, y+19);
+      // Build merged list of auto-calc + picker lines, sorted by rank
+      const autoRows = order
+        .map((origIdx, dispIdx) => {
+          const l = pdfLines[origIdx];
+          if(!l) return null;
+          const ov = pdfOvByIndex[origIdx] || pdfOvByLabel[l.label] || {};
+          if(ov.deleted) return null;
+          const price = snapPriceByLabel[l.label]!==undefined ? snapPriceByLabel[l.label] : l.val;
+          const desc = ov.desc&&ov.desc.trim() ? ov.desc.trim() : null;
+          return {type:'auto', l, price, desc, dispIdx, rank: sortRank(l.code, l.label)};
+        })
+        .filter(Boolean);
+      const pickerRows = (pickerLines||[]).map((pl,pli) => ({
+        type:'picker', pl, pli, rank: sortRank(pl.code, pl.label)
+      }));
+      // Merge: procs first (rank 0-1), then auto-calc mains in their order,
+      // then picker mains, then teardown, then reports
+      const allRows = [
+        ...autoRows.filter(r=>r.rank<5),
+        ...pickerRows.filter(r=>r.rank<5),
+        ...autoRows.filter(r=>r.rank===5),
+        ...pickerRows.filter(r=>r.rank===5),
+        ...autoRows.filter(r=>r.rank>5&&r.rank<9),
+        ...pickerRows.filter(r=>r.rank>5&&r.rank<9),
+        ...autoRows.filter(r=>r.rank>=9),
+        ...pickerRows.filter(r=>r.rank>=9),
+      ];
+      allRows.forEach((row, allIdx) => {
+        const bg = allIdx%2===0 ? [255,255,255] : [247,248,250];
+        if(row.type==='auto'){
+          const {l, price, desc} = row;
+          const rowH = desc ? 26 : 14;
+          if(y + rowH + 2 > PH-52){ drawFooter(); doc.addPage(); pageNum++; y=54; drawTblHdr(); }
+          doc.setFillColor(...bg); doc.rect(ML, y, TW, rowH, 'F');
+          setF('normal', 9, DARK);
+          doc.text('1', ML+cQty/2, y+10, {align:'center'});
+          if(l.code){ setF('normal',8,MUTED); doc.text(String(l.code), ML+cQty+4, y+10); }
+          setF('normal', 9, DARK); doc.text(l.label, ML+cQty+cCode+4, y+10);
+          if(desc){
+            setF('italic', 7.5, [130,130,130]);
+            const dw = doc.splitTextToSize(desc, cDesc-10);
+            doc.text(dw, ML+cQty+cCode+4, y+19);
+          }
+          setF('bold', 9, DARK); doc.text(money(price), PW-MR-4, y+10, {align:'right'});
+          y += rowH;
+        } else {
+          const {pl} = row;
+          const desc = pl.desc&&pl.desc.trim() ? pl.desc.trim() : null;
+          const rowH = desc ? 26 : 14;
+          if(y + rowH + 2 > PH-52){ drawFooter(); doc.addPage(); pageNum++; y=54; drawTblHdr(); }
+          doc.setFillColor(...bg); doc.rect(ML, y, TW, rowH, 'F');
+          setF('normal', 9, DARK);
+          doc.text('1', ML+cQty/2, y+10, {align:'center'});
+          if(pl.code){ setF('normal',8,MUTED); doc.text(String(pl.code), ML+cQty+4, y+10); }
+          setF('normal', 9, DARK);
+          const labelLines = doc.splitTextToSize(pl.label||'', cDesc-10);
+          doc.text(labelLines, ML+cQty+cCode+4, y+10);
+          if(desc){
+            setF('italic', 7.5, [130,130,130]);
+            const dw = doc.splitTextToSize(desc, cDesc-10);
+            doc.text(dw, ML+cQty+cCode+4, y+19);
+          }
+          setF('bold', 9, DARK); doc.text(money(pl.price||0), PW-MR-4, y+10, {align:'right'});
+          y += rowH;
         }
-        setF('bold', 9, DARK); doc.text(money(price), PW-MR-4, y+10, {align:'right'});
-        y += rowH;
       });
 
       // Total row
@@ -7322,7 +8480,8 @@ const STANDARD_TERMS = [
       doc.setFillColor(245,245,245); doc.rect(ML, y, TW, 20, 'F');
       setF('bold', 11, DARK);
       doc.text('TOTAL', ML+cQty+cCode+4, y+14);
-      const total = summary.lines.reduce((a,l,idx)=>{
+      const pickerTotal = (pickerLines||[]).reduce((a,l)=>a+(l.price||0),0);
+      const total = pickerTotal + summary.lines.reduce((a,l,idx)=>{
         const ov=lineOverrides[idx]||{};
         if(ov.deleted)return a;
         return a+(ov.price!==undefined?sf2(ov.price):l.val);
@@ -8273,7 +9432,7 @@ const STANDARD_TERMS = [
                             if(submit)handleSubmitWonApproval(s);
                             else{
                               const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-                                qi:{...qi,stage:s},ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides};
+                                qi:{...qi,stage:s},ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
                               saveQuoteToSupabase(q,autoSpecs,autoNotes).then(newId=>{
                                 if(newId){setCurrentQuoteId(newId);showToast("Saved — "+(qi.opp||"Untitled"),"success");}
                                 else showToast("Save failed — check your connection","error",5000);
@@ -8454,12 +9613,7 @@ const STANDARD_TERMS = [
 
               {/* Budget + Subcontracting stacked */}
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                <BudgetSection budget={budget} setBudget={setBudget}
-                  allLines={(summary.lines||[]).map(l=>l.label).filter(Boolean)}
-                  setupLines={summary.setupLineLabels||[]} fixtureFabLines={[
-                  ...vibs.filter(s=>s.on&&s.fixtureFab?.on).map((s,i)=>"Fixture Fabrication – Vibration"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):"")),
-                  ...shocks.filter(s=>s.on&&s.fixtureFab?.on).map((s,i)=>"Fixture Fabrication – Shock"+(i>0?" #"+(i+1)+(s.identifier?" ("+s.identifier+")":""):"")),
-                ]}/>
+                <BudgetSection budget={budget} setBudget={setBudget}/>
                 <div style={{...card}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:sub.on?8:0}}>
                     <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2}}>SUBCONTRACTING</div>
@@ -8535,48 +9689,31 @@ const STANDARD_TERMS = [
               </div>
             </div>
 
-            {/* ── Row 4: Quote Summary ── */}
-            <div style={{...card,marginBottom:10}}>
+            {/* ── Row 4: Quote Summary — always interactive ── */}
+            <div style={{...card,marginBottom:10,pointerEvents:"auto",position:"relative"}}>
               <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2,marginBottom:6}}>QUOTE SUMMARY</div>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,flexWrap:"wrap"}}>
-                <Toggle small checked={splitProcReport} onChange={setSplitProcReport} label="List Proc/Reports Individually"/>
-                <Toggle small checked={inStockModal.on||false}
-                  onChange={v=>{
-                    setInStockModal({...inStockModal,on:v});
-                    // When enabled, bump matching proc price to 3750
-                  }}
-                  label="Includes In-Stock Modal Analysis"/>
-              </div>
-              {inStockModal.on&&(
-                <div style={{background:C.panel,borderRadius:7,padding:"8px 10px",marginBottom:8,fontSize:11}}>
-                  <div style={{fontSize:9,color:C.dim,fontWeight:700,marginBottom:5,letterSpacing:.5}}>APPLY IN-STOCK MODAL TO PROCEDURE</div>
-                  <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                    {(()=>{
-                      const procOpts=summary.lines.filter(l=>l.code==="42"||l.code==="44"||(l.label||"").toLowerCase().includes("procedure"));
-                      if(procOpts.length===0)return <span style={{color:C.muted,fontSize:10}}>No procedure lines — add a test procedure first.</span>;
-                      return procOpts.map((l,i)=>(
-                        <label key={i} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
-                          <input type="radio" name="inStockModalTarget"
-                            checked={inStockModal.targetProc===l.label}
-                            onChange={()=>setInStockModal({...inStockModal,targetProc:l.label})}
-                            style={{accentColor:C.accent}}/>
-                          <span style={{fontSize:11,color:C.text}}>{l.label}</span>
-                          <span style={{fontSize:10,color:C.muted,marginLeft:"auto"}}>→ $3,750</span>
-                        </label>
-                      ));
-                    })()}
-                  </div>
-                </div>
+
+              <div style={{pointerEvents:"auto",position:"relative"}}>
+              {(isDirty||(currentQuoteId&&!locked))&&(
+                <button onClick={()=>setShowProductPicker(true)}
+                  style={{marginBottom:8,background:"#1a2332",border:"none",borderRadius:7,
+                    padding:"6px 14px",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",
+                    display:"flex",alignItems:"center",gap:6,letterSpacing:.3}}>
+                  + Add Line Items
+                </button>
               )}
+              </div>
+
+
               {qi.opp&&<div style={{fontSize:13,color:C.red,fontWeight:600,marginBottom:2,display:"flex",alignItems:"center",gap:6}}>
                 {qi.opp}
 
               </div>}
               {(qi.billTo||qi.account)&&<div style={{fontSize:11,color:C.muted,marginBottom:4}}>{qi.billTo||qi.account}</div>}
               {qi.rfq&&<div style={{fontSize:10,color:C.dim,marginBottom:10}}>{"RFQ: "}{qi.rfq}</div>}
-              {summary.lines.length===0?(
+              {summary.lines.length===0&&pickerLines.length===0?(
                 <div style={{color:C.border,fontSize:12,textAlign:"center",marginTop:30,marginBottom:30,lineHeight:1.8}}>
-                  Enable a test section<br/>to see pricing
+                  Click "+ Add Line Items" to build your quote
                 </div>
               ):(
                 <>
@@ -8592,83 +9729,135 @@ const STANDARD_TERMS = [
                   </div>
                   {(()=>{
                     const displayLines=summary.lines;
-                    const order=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
-                    // Override lookup: always use index first (exact match),
-                    // only fall back to label when index has no entry AND label is unique
+                    const autoOrder=lineOrder&&lineOrder.length===displayLines.length?lineOrder:displayLines.map((_,i)=>i);
                     const sidebarOvByIndex={};
                     const labelCount={};
-                    Object.entries(lineOverrides).forEach(([k,ov])=>{
-                      sidebarOvByIndex[k]=ov;
-                    });
-                    // Count how many times each label appears in displayLines
+                    Object.entries(lineOverrides).forEach(([k,ov])=>{ sidebarOvByIndex[k]=ov; });
                     displayLines.forEach(l=>{ labelCount[l.label]=(labelCount[l.label]||0)+1; });
-                    // Build label->override map only for unique labels
                     const sidebarOvByLabel={};
                     Object.entries(lineOverrides).forEach(([k,ov])=>{
                       if(ov.label&&labelCount[ov.label]===1)sidebarOvByLabel[ov.label]=ov;
                     });
-                    return order.map((origIdx,dispIdx)=>{
+                    const autoRows=autoOrder.map((origIdx,dispIdx)=>{
                       const l=displayLines[origIdx];
                       if(!l)return null;
                       const ov=sidebarOvByIndex[origIdx]||sidebarOvByLabel[l.label]||{};
                       if(ov.deleted)return null;
-                      const dispPrice=ov.price!==undefined?ov.price:String(l.val);
-                      const dispDesc=ov.desc!==undefined?ov.desc:"";
-                      const isDragging=dragIdx===dispIdx;
-                      return(
-                        <div key={origIdx}
-                          draggable
-                          onDragStart={()=>setDragIdx(dispIdx)}
-                          onDragOver={e=>{e.preventDefault();if(dragIdx!==null&&dragIdx!==dispIdx){
-                            const newOrder=[...order];
-                            const [moved]=newOrder.splice(dragIdx,1);
-                            newOrder.splice(dispIdx,0,moved);
-                            setLineOrder(newOrder);
-                            setDragIdx(dispIdx);
-                          }}}
-                          onDragEnd={()=>setDragIdx(null)}
-                          style={{display:"grid",gridTemplateColumns:"14px 36px 1fr 130px 80px 20px",
-                            gap:4,alignItems:"center",borderBottom:"1px solid "+C.border,
-                            padding:"5px 0",background:isDragging?"#f0f4ff":dispIdx%2===0?"transparent":C.panel+"66",
-                            cursor:"grab",opacity:isDragging?0.5:1}}>
-                          {/* Drag handle */}
-                          <span style={{fontSize:10,color:C.dim,cursor:"grab",userSelect:"none",textAlign:"center"}}>⠿</span>
-                          {/* Code badge */}
-                          <span style={{fontSize:9,color:"#6b7a8d",background:C.panel,borderRadius:3,
-                            padding:"2px 4px",fontFamily:"monospace",textAlign:"center",
-                            border:"1px solid "+C.border}}>
-                            {l.code||"—"}
-                          </span>
-                          {/* Label + optional description input */}
-                          <div style={{minWidth:0}}>
-                            <div style={{fontSize:11,color:C.text,fontWeight:500,lineHeight:1.3}}>{l.label}</div>
-                            <input
-                              value={dispDesc}
-                              onChange={e=>setLineOverrides({...lineOverrides,[origIdx]:{...ov,desc:e.target.value||undefined,label:l.label}})}
-                              placeholder="+ line item description (optional)"
-                              style={{width:"100%",fontSize:9,color:C.muted,background:"transparent",
-                                border:"none",outline:"none",padding:"1px 0",marginTop:1,
-                                fontStyle:dispDesc?"normal":"italic",boxSizing:"border-box"}}/>
+                      return {type:"auto",origIdx,dispIdx,l,ov};
+                    }).filter(Boolean);
+                    const pickerRows=pickerLines.map((pl,pli)=>({type:"picker",pli,pl}));
+                    // Build allRows: use unifiedOrder if set, else default auto-then-picker
+                    let allRows;
+                    if(unifiedOrder&&unifiedOrder.length===(autoRows.length+pickerRows.length)){
+                      allRows=unifiedOrder.map(({type,idx})=>
+                        type==='auto'?autoRows[idx]:pickerRows[idx]
+                      ).filter(Boolean);
+                    } else {
+                      allRows=[...autoRows,...pickerRows];
+                    }
+                    return allRows.map((row,uIdx)=>{
+                      const isDragging=dragIdx===uIdx;
+                      const isHover=!isDragging&&dragIdx!==null&&uIdx===pickerDragIdx;
+                      const bg=isDragging?"#f0f4ff":isHover?"#e8f4fd":uIdx%2===0?"transparent":C.panel+"66";
+                      const rowStyle={display:"grid",gridTemplateColumns:"14px 36px 1fr 130px 80px 20px",
+                        gap:4,alignItems:"center",borderBottom:"1px solid "+C.border,
+                        padding:"5px 0",background:bg,cursor:"grab",opacity:isDragging?0.5:1};
+                      const onDS=e=>{
+                        e.dataTransfer.effectAllowed="move";
+                        dragFromRef.current=uIdx;
+                        setDragIdx(uIdx);
+                        setPickerDragIdx(null);
+                      };
+                      const onDO=e=>{
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect="move";
+                        dragToRef.current=uIdx;
+                        setPickerDragIdx(uIdx); // reuse as hover indicator only
+                      };
+                      const onDE=e=>{
+                        const from=dragFromRef.current;
+                        const to=dragToRef.current;
+                        setDragIdx(null);
+                        setPickerDragIdx(null);
+                        dragFromRef.current=null;
+                        dragToRef.current=null;
+                        if(from===null||from===undefined||to===null||to===undefined||to===from){setIsDirty(true);return;}
+                        const snap=[...allRows];
+                        const [moved]=snap.splice(from,1);
+                        const insertAt=from<to?to-1:to;
+                        snap.splice(insertAt,0,moved);
+                        // Build unified order: store {type, idx} for each row
+                        // idx = position within autoRows or pickerRows respectively
+                        const autoRowsList=[...autoRows];
+                        const pickerRowsList=[...pickerRows];
+                        const newUnified=snap.map(r=>{
+                          if(r.type==='auto'){
+                            const ai=autoRowsList.findIndex(a=>a.origIdx===r.origIdx);
+                            return {type:'auto',idx:ai};
+                          } else {
+                            const pi=pickerRowsList.findIndex(p=>p.pl===r.pl);
+                            return {type:'picker',idx:pi};
+                          }
+                        });
+                        setUnifiedOrder(newUnified);
+                        // Also update lineOrder and pickerLines order for persistence
+                        const newAutoOrder=snap.filter(r=>r.type==='auto').map(r=>r.origIdx);
+                        const newPicker=snap.filter(r=>r.type==='picker').map(r=>r.pl);
+                        if(newAutoOrder.length>0)setLineOrder(newAutoOrder);
+                        setPickerLines(newPicker);
+                        setIsDirty(true);
+                      };
+                      if(row.type==="auto"){
+                        const {origIdx,l,ov}=row;
+                        const dispPrice=ov.price!==undefined?ov.price:String(l.val);
+                        const dispDesc=ov.desc!==undefined?ov.desc:"";
+                        return(
+                          <div key={"a"+origIdx} draggable onDragStart={onDS} onDragOver={onDO} onDragEnd={onDE} style={rowStyle}>
+                            <span style={{fontSize:10,color:C.dim,cursor:"grab",userSelect:"none",textAlign:"center"}}>⠿</span>
+                            <span style={{fontSize:9,color:"#6b7a8d",background:C.panel,borderRadius:3,padding:"2px 4px",fontFamily:"monospace",textAlign:"center",border:"1px solid "+C.border}}>{l.code||"—"}</span>
+                            <div style={{minWidth:0}}>
+                              <div style={{fontSize:11,color:C.text,fontWeight:500,lineHeight:1.3}}>{l.label}</div>
+                              <input value={dispDesc}
+                                onChange={e=>setLineOverrides({...lineOverrides,[origIdx]:{...ov,desc:e.target.value||undefined,label:l.label}})}
+                                placeholder="+ line item description (optional)"
+                                style={{width:"100%",fontSize:9,color:C.muted,background:"transparent",border:"none",outline:"none",padding:"1px 0",marginTop:1,fontStyle:dispDesc?"normal":"italic",boxSizing:"border-box"}}/>
+                            </div>
+                            <span/>
+                            <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:2}}>
+                              <span style={{fontSize:10,color:C.muted}}>$</span>
+                              <input value={dispPrice}
+                                onChange={e=>setLineOverrides({...lineOverrides,[origIdx]:{...ov,price:e.target.value,label:l.label}})}
+                                style={{width:68,fontSize:12,fontWeight:700,color:C.text,fontFamily:"monospace",background:"transparent",border:"none",borderBottom:"1px solid "+C.border,outline:"none",textAlign:"right",padding:"1px 2px"}}/>
+                            </div>
+                            <button onClick={()=>setLineOverrides({...lineOverrides,[origIdx]:{...ov,deleted:true,label:l.label}})}
+                              style={{background:"none",border:"none",color:C.dim,cursor:"pointer",fontSize:12,padding:0,lineHeight:1,textAlign:"center"}} title="Remove line">✕</button>
                           </div>
-                          {/* empty spacer */}
-                          <span/>
-                          {/* Price — editable, bold */}
-                          <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:2}}>
-                            <span style={{fontSize:10,color:C.muted}}>$</span>
-                            <input
-                              value={dispPrice}
-                              onChange={e=>setLineOverrides({...lineOverrides,[origIdx]:{...ov,price:e.target.value,label:l.label}})}
-                              style={{width:68,fontSize:12,fontWeight:700,color:C.text,fontFamily:"monospace",
-                                background:"transparent",border:"none",borderBottom:"1px solid "+C.border,
-                                outline:"none",textAlign:"right",padding:"1px 2px"}}/>
+                        );
+                      } else {
+                        const {pl,pli}=row;
+                        return(
+                          <div key={"p"+pli} draggable onDragStart={onDS} onDragOver={onDO} onDragEnd={onDE} style={rowStyle}>
+                            <span style={{fontSize:10,color:C.dim,cursor:"grab",userSelect:"none",textAlign:"center"}}>⠿</span>
+                            <span style={{fontSize:9,color:"#6b7a8d",background:C.panel,borderRadius:3,padding:"2px 4px",fontFamily:"monospace",textAlign:"center",border:"1px solid "+C.border}}>{pl.code||"—"}</span>
+                            <div style={{minWidth:0}}>
+                              <div style={{fontSize:11,color:C.text,fontWeight:500,lineHeight:1.3}}>{pl.label}</div>
+                              <input value={pl.desc||""}
+                                onChange={e=>setPickerLines(prev=>prev.map((l,i)=>i===pli?{...l,desc:e.target.value}:l))}
+                                placeholder="+ line item description (optional)"
+                                style={{width:"100%",fontSize:9,color:C.muted,background:"transparent",border:"none",outline:"none",padding:"1px 0",marginTop:1,fontStyle:pl.desc?"normal":"italic",boxSizing:"border-box"}}/>
+                            </div>
+                            <span/>
+                            <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:2}}>
+                              <span style={{fontSize:10,color:C.muted}}>$</span>
+                              <input value={String(pl.price||0)}
+                                onChange={e=>setPickerLines(prev=>prev.map((l,i)=>i===pli?{...l,price:parseFloat(e.target.value)||0}:l))}
+                                style={{width:68,fontSize:12,fontWeight:700,color:C.text,fontFamily:"monospace",background:"transparent",border:"none",borderBottom:"1px solid "+C.border,outline:"none",textAlign:"right",padding:"1px 2px"}}/>
+                            </div>
+                            <button onClick={()=>{setPickerLines(prev=>prev.filter((_,i)=>i!==pli));setUnifiedOrder(null);}}
+                              style={{background:"none",border:"none",color:C.dim,cursor:"pointer",fontSize:12,padding:0,lineHeight:1,textAlign:"center"}} title="Remove line">✕</button>
                           </div>
-                          {/* Delete */}
-                          <button onClick={()=>setLineOverrides({...lineOverrides,[origIdx]:{...ov,deleted:true,label:l.label}})}
-                            style={{background:"none",border:"none",color:C.dim,cursor:"pointer",
-                              fontSize:12,padding:0,lineHeight:1,textAlign:"center"}}
-                            title="Remove line">✕</button>
-                        </div>
-                      );
+                        );
+                      }
                     });
                   })()}
                   {(Object.values(lineOverrides).some(o=>o.deleted)||lineOrder)&&(
@@ -8695,7 +9884,7 @@ const STANDARD_TERMS = [
                         const ov=lineOverrides[idx]||{};
                         if(ov.deleted)return a;
                         return a+(ov.price!==undefined?sf(ov.price):l.val);
-                      },0))}
+                      },0)+(pickerLines||[]).reduce((a,l)=>a+(l.price||0),0))}
                     </span>
                   </div>
                   <div style={{pointerEvents:"auto",opacity:1}}>
@@ -8746,58 +9935,90 @@ const STANDARD_TERMS = [
                       461G — TEST SPECIFICATIONS
                     </button>
                   )}
-                  </div>
+                  </div>{/* end pointerEvents:auto buttons wrapper */}
                 </>
               )}
             </div>{/* end Row 4 */}
 
+            {/* ── Pricing & Instrumentation Calculators ── */}
+            <PricingCalculator setup={setup} ti={ti}
+              onExportEmiF={exportCalcEmi461fPDF}
+              onExportEmiG={exportCalcEmi461gPDF}
+              onExportPq300b={exportCalcPq300bPDF_calc}
+              onExportPq300p1={exportCalcPq300Part1PDF_calc}/>
+            <InstrumentationCalculator/>
+
             {/* ── Row 5+: Test sections ── */}
             <div>
-            <MultiSection title="VIBRATION  (MIL-STD-167)" instances={vibs}
-              onAdd={mkAdder(vibs,setVibs,newVib)}
-              onRemove={mkRemover(vibs,setVibs)}
-              onUpdate={mkUpdater(vibs,setVibs)}
-              newInstance={newVib}
-              Form={VibForm} formProps={setupProps}/>
 
-            <MultiSection title="SHOCK TESTING  (MIL-STD-901)" instances={shocks}
-              onAdd={mkAdder(shocks,setShocks,newShock)}
-              onRemove={mkRemover(shocks,setShocks)}
-              onUpdate={mkUpdater(shocks,setShocks)}
-              newInstance={newShock}
-              Form={ShockForm} formProps={{vibSetup,ti,...setupProps}}/>
-
-            <Section title="INSTRUMENTATION" enabled={inst.on} onToggle={v=>setInst(v?{...inst,on:true}:{on:false,items:{}})}>
-              <InstForm s={inst} set={setInst}/>
+            <Section title="OVERTIME" enabled={ot.on} onToggle={v=>setOt(v?{...ot,on:true}:{on:false,rows:[]})}>
+              <OtForm s={ot} set={setOt}/>
             </Section>
 
-            <MultiSection title="NOISE SUSCEPTIBILITY  (MIL-STD-810)" instances={noises}
-              onAdd={mkAdder(noises,setNoises,newNoise)}
-              onRemove={mkRemover(noises,setNoises)}
-              onUpdate={mkUpdater(noises,setNoises)}
-              newInstance={newNoise}
-              Form={NoiseForm} formProps={{ti,...setupProps}}/>
 
-            <MultiSection title="ENVIRONMENTAL TESTING" instances={envs}
-              onAdd={mkAdder(envs,setEnvs,newEnv)}
-              onRemove={mkRemover(envs,setEnvs)}
-              onUpdate={mkUpdater(envs,setEnvs)}
-              newInstance={newEnv}
-              Form={EnvForm} formProps={{}}/>
 
-            <MultiSection title="HIGH FREQUENCY VIBRATION" instances={hfvs}
-              onAdd={mkAdder(hfvs,setHfvs,newHfv)}
-              onRemove={mkRemover(hfvs,setHfvs)}
-              onUpdate={mkUpdater(hfvs,setHfvs)}
-              newInstance={newHfv}
-              Form={HfvForm} formProps={setupProps}/>
+            <Section title="CUSTOM LINE ITEMS" enabled={custom.on} onToggle={v=>setCustom(v?{...custom,on:true}:{on:false,rows:[]})}>
+              <CustomForm s={custom} set={setCustom}/>
+            </Section>
 
-            <MultiSection title="SHOCK (OTHER)" instances={shos}
-              onAdd={mkAdder(shos,setShos,newSho)}
-              onRemove={mkRemover(shos,setShos)}
-              onUpdate={mkUpdater(shos,setShos)}
-              newInstance={newSho}
-              Form={ShoForm} formProps={setupProps}/>
+            {/* Advanced Mode — auto-calc test sections */}
+            <div style={{marginBottom:8,border:"1px solid #e0e4ea",borderRadius:10,overflow:"hidden"}}>
+              <div style={{background:"#f8f9fb",padding:"10px 14px",display:"flex",alignItems:"center",
+                justifyContent:"space-between",cursor:"pointer",borderBottom:advancedModeOpen?"1px solid #e0e4ea":"none"}}
+                onClick={()=>setAdvancedModeOpen(v=>!v)}>
+                <div>
+                  <span style={{fontSize:12,fontWeight:700,color:"#1a2332",letterSpacing:.2}}>Advanced Mode</span>
+                  <span style={{fontSize:10,color:"#9aa5b1",marginLeft:8}}>— auto-calculating test forms</span>
+                </div>
+                <span style={{fontSize:12,color:"#9aa5b1"}}>{advancedModeOpen?"▲":"▼"}</span>
+              </div>
+              {advancedModeOpen&&(
+                <div style={{padding:"8px 0"}}>
+                  <MultiSection title="VIBRATION  (MIL-STD-167)" instances={vibs}
+                    onAdd={mkAdder(vibs,setVibs,newVib)}
+                    onRemove={mkRemover(vibs,setVibs)}
+                    onUpdate={mkUpdater(vibs,setVibs)}
+                    newInstance={newVib}
+                    Form={VibForm} formProps={setupProps}/>
+
+                  <MultiSection title="SHOCK TESTING  (MIL-STD-901)" instances={shocks}
+                    onAdd={mkAdder(shocks,setShocks,newShock)}
+                    onRemove={mkRemover(shocks,setShocks)}
+                    onUpdate={mkUpdater(shocks,setShocks)}
+                    newInstance={newShock}
+                    Form={ShockForm} formProps={{vibSetup,ti,...setupProps}}/>
+
+                  <Section title="INSTRUMENTATION" enabled={inst.on} onToggle={v=>setInst(v?{...inst,on:true}:{on:false,items:{}})}>
+                    <InstForm s={inst} set={setInst}/>
+                  </Section>
+
+                  <MultiSection title="NOISE SUSCEPTIBILITY  (MIL-STD-810)" instances={noises}
+                    onAdd={mkAdder(noises,setNoises,newNoise)}
+                    onRemove={mkRemover(noises,setNoises)}
+                    onUpdate={mkUpdater(noises,setNoises)}
+                    newInstance={newNoise}
+                    Form={NoiseForm} formProps={{ti,...setupProps}}/>
+
+                  <MultiSection title="ENVIRONMENTAL TESTING" instances={envs}
+                    onAdd={mkAdder(envs,setEnvs,newEnv)}
+                    onRemove={mkRemover(envs,setEnvs)}
+                    onUpdate={mkUpdater(envs,setEnvs)}
+                    newInstance={newEnv}
+                    Form={EnvForm} formProps={{}}/>
+
+                  <MultiSection title="HIGH FREQUENCY VIBRATION" instances={hfvs}
+                    onAdd={mkAdder(hfvs,setHfvs,newHfv)}
+                    onRemove={mkRemover(hfvs,setHfvs)}
+                    onUpdate={mkUpdater(hfvs,setHfvs)}
+                    newInstance={newHfv}
+                    Form={HfvForm} formProps={setupProps}/>
+
+                  <MultiSection title="SHOCK (OTHER)" instances={shos}
+                    onAdd={mkAdder(shos,setShos,newSho)}
+                    onRemove={mkRemover(shos,setShos)}
+                    onUpdate={mkUpdater(shos,setShos)}
+                    newInstance={newSho}
+                    Form={ShoForm} formProps={setupProps}/>
 
             <MultiSection title="EMI TESTING  (MIL-STD-461)" tag="SHIFTS" instances={emis}
               onAdd={mkAdder(emis,setEmis,newEmi)}
@@ -8820,128 +10041,23 @@ const STANDARD_TERMS = [
               newInstance={newDcm}
               Form={DcmForm} formProps={{}}/>
 
-            <MultiSection title="AIRBORNE NOISE" instances={abs}
-              onAdd={mkAdder(abs,setAbs,newAb)}
-              onRemove={mkRemover(abs,setAbs)}
-              onUpdate={mkUpdater(abs,setAbs)}
-              newInstance={newAb}
-              Form={AbForm} formProps={setupProps}/>
+                  <MultiSection title="AIRBORNE NOISE" instances={abs}
+                    onAdd={mkAdder(abs,setAbs,newAb)}
+                    onRemove={mkRemover(abs,setAbs)}
+                    onUpdate={mkUpdater(abs,setAbs)}
+                    newInstance={newAb}
+                    Form={AbForm} formProps={setupProps}/>
 
-            <MultiSection title="STRUCTUREBORNE NOISE" instances={sbs}
-              onAdd={mkAdder(sbs,setSbs,newSb)}
-              onRemove={mkRemover(sbs,setSbs)}
-              onUpdate={mkUpdater(sbs,setSbs)}
-              newInstance={newSb}
-              Form={SbForm} formProps={setupProps}/>
-
-            <Section title="OVERTIME" enabled={ot.on} onToggle={v=>setOt(v?{...ot,on:true}:{on:false,rows:[]})}>
-              <OtForm s={ot} set={setOt}/>
-            </Section>
-
-
-            {/* ── Global Procedures / Reports / CoC — interactive when editing ── */}
-            <div style={{pointerEvents:(locked||(currentQuoteId&&!isDirty))?"none":"auto",
-              opacity:(locked||(currentQuoteId&&!isDirty))?0.65:1}}>
-            {(()=>{
-              const pr=globalPR;
-              const anyPR=pr.procs.length>0||pr.reps.length>0||pr.coc;
-              const addProc=()=>setGlobalPR({...pr,procs:[...pr.procs,{label:"Test Procedure",price:"1750"}]});
-              const addRep=()=>setGlobalPR({...pr,reps:[...pr.reps,{label:"Test Report",price:"1050"}]});
-              const updProc=(i,k,v)=>setGlobalPR({...pr,procs:pr.procs.map((r,j)=>j===i?{...r,[k]:v}:r)});
-              const updRep=(i,k,v)=>setGlobalPR({...pr,reps:pr.reps.map((r,j)=>j===i?{...r,[k]:v}:r)});
-              const remProc=i=>setGlobalPR({...pr,procs:pr.procs.filter((_,j)=>j!==i)});
-              const remRep=i=>setGlobalPR({...pr,reps:pr.reps.filter((_,j)=>j!==i)});
-              return(
-                <div style={{...card,padding:0,overflow:"hidden",border:"1px solid "+(anyPR?C.red+"66":C.border),
-                  boxShadow:anyPR?"0 1px 4px rgba(192,57,43,0.12)":"0 1px 3px rgba(0,0,0,0.06)"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:9,padding:"10px 14px",
-                    background:anyPR?"#fdf3f2":C.card}}>
-                    <span style={{fontWeight:600,fontSize:12,color:anyPR?C.red:C.muted,flex:1,letterSpacing:.3}}>
-                      TEST PROCEDURES &amp; REPORTS
-                    </span>
-                  </div>
-                  <div style={{padding:"12px 14px 14px",background:"#fff"}}>
-                    <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:1,marginBottom:6}}>PROCEDURES — CODE 42</div>
-                    {pr.procs.map((r,i)=>(
-                      <div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:5,
-                        background:C.panel,borderRadius:7,padding:"6px 8px"}}>
-                        <span style={{fontSize:9,background:"#e8ecf0",color:C.muted,borderRadius:3,
-                          padding:"2px 5px",fontFamily:"monospace",border:"1px solid "+C.border}}>{r.code||"42"}</span>
-                        <Inp value={r.label} onChange={v=>updProc(i,"label",v)} width={180}/>
-                        <span style={{fontSize:11,color:C.muted}}>$</span>
-                        <Inp value={r.price} onChange={v=>updProc(i,"price",v)} width={70} right/>
-                        <button onClick={()=>remProc(i)} style={{background:"none",border:"none",
-                          color:C.dim,cursor:"pointer",fontSize:13,marginLeft:"auto"}}>✕</button>
-                      </div>
-                    ))}
-                    <button onClick={addProc} style={{background:"none",border:"none",color:C.accent,
-                      cursor:"pointer",fontSize:11,padding:0,marginBottom:10}}>
-                      + Add test procedure
-                    </button>
-                    <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:1,marginBottom:6,marginTop:4}}>REPORTS — CODE 41</div>
-                    {pr.reps.map((r,i)=>(
-                      <div key={i} style={{display:"flex",gap:6,alignItems:"center",marginBottom:5,
-                        background:C.panel,borderRadius:7,padding:"6px 8px"}}>
-                        <span style={{fontSize:9,background:"#e8ecf0",color:C.muted,borderRadius:3,
-                          padding:"2px 5px",fontFamily:"monospace",border:"1px solid "+C.border}}>{r.code||"41"}</span>
-                        <Inp value={r.label} onChange={v=>updRep(i,"label",v)} width={180}/>
-                        <span style={{fontSize:11,color:C.muted}}>$</span>
-                        <Inp value={r.price} onChange={v=>updRep(i,"price",v)} width={70} right/>
-                        <button onClick={()=>remRep(i)} style={{background:"none",border:"none",
-                          color:C.dim,cursor:"pointer",fontSize:13,marginLeft:"auto"}}>✕</button>
-                      </div>
-                    ))}
-                    <button onClick={addRep} style={{background:"none",border:"none",color:C.accent,
-                      cursor:"pointer",fontSize:11,padding:0,marginBottom:10}}>
-                      + Add test report
-                    </button>
-                    <div style={{borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
-                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                        <Toggle small checked={pr.coc||false} onChange={v=>setGlobalPR({...pr,coc:v})}
-                          label="Certificate of Compliance"/>
-                        {pr.coc&&(
-                          <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}>
-                            <span style={{fontSize:9,background:"#e8ecf0",color:C.muted,borderRadius:3,
-                              padding:"2px 5px",fontFamily:"monospace",border:"1px solid "+C.border}}>41</span>
-                            <span style={{fontSize:11,color:C.muted}}>$</span>
-                            <Inp value={pr.cocPrice||"250"} onChange={v=>setGlobalPR({...pr,cocPrice:v})} width={70} right/>
-                          </div>
-                        )}
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                        <Toggle small checked={modalAnalysis.on||false} onChange={v=>setModalAnalysis({...modalAnalysis,on:v})}
-                          label="Modal Analysis"/>
-                        {modalAnalysis.on&&(
-                          <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}>
-                            <span style={{fontSize:9,background:"#e8ecf0",color:C.muted,borderRadius:3,
-                              padding:"2px 5px",fontFamily:"monospace",border:"1px solid "+C.border}}>67</span>
-                            <span style={{fontSize:11,color:C.muted}}>$</span>
-                            <Inp value={modalAnalysis.price||"6250"} onChange={v=>setModalAnalysis({...modalAnalysis,price:v})} width={70} right/>
-                          </div>
-                        )}
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:10}}>
-                        <Toggle small checked={fixtureDrawing.on||false} onChange={v=>setFixtureDrawing({...fixtureDrawing,on:v})}
-                          label="Fixture Drawings"/>
-                        {fixtureDrawing.on&&(
-                          <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:"auto"}}>
-                            <span style={{fontSize:9,background:"#e8ecf0",color:C.muted,borderRadius:3,
-                              padding:"2px 5px",fontFamily:"monospace",border:"1px solid "+C.border}}>42</span>
-                            <span style={{fontSize:11,color:C.muted}}>$</span>
-                            <Inp value={fixtureDrawing.price||"2950"} onChange={v=>setFixtureDrawing({...fixtureDrawing,price:v})} width={70} right/>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <MultiSection title="STRUCTUREBORNE NOISE" instances={sbs}
+                    onAdd={mkAdder(sbs,setSbs,newSb)}
+                    onRemove={mkRemover(sbs,setSbs)}
+                    onUpdate={mkUpdater(sbs,setSbs)}
+                    newInstance={newSb}
+                    Form={SbForm} formProps={setupProps}/>
                 </div>
-              );
-            })()}
-            </div>{/* end always-interactive PR block */}
+              )}
+            </div>
 
-            <Section title="CUSTOM LINE ITEMS" enabled={custom.on} onToggle={v=>setCustom(v?{...custom,on:true}:{on:false,rows:[]})}>
-              <CustomForm s={custom} set={setCustom}/>
-            </Section>
 
           </div>{/* end pointer-events wrapper */}
             </div>{/* end test sections lock wrapper */}
@@ -8951,6 +10067,19 @@ const STANDARD_TERMS = [
 
       </>)}{/* end dashboard/form conditional */}
       </div>{/* end body flex row */}
+
+      {/* ── Product Picker Modal ── */}
+      {showProductPicker&&(
+        <ProductPicker
+          onAdd={handleProductPickerAdd}
+          onClose={()=>setShowProductPicker(false)}
+          setup={setup}
+          ti={ti}
+          vibs={vibs}
+          hfvs={hfvs}
+          summary={summary}
+        />
+      )}
 
       {/* ── Chatter panel ── */}
       {showChatter&&<div onClick={()=>setShowChatter(false)} style={{position:"fixed",inset:0,zIndex:1100,background:"rgba(0,0,0,0.25)"}}/>}
@@ -9014,7 +10143,7 @@ const STANDARD_TERMS = [
                 setChatterInput("");
                 // Save immediately so chatter persists without requiring manual SAVE
                 const q={id:currentQuoteId,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-                  qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries:updated,summary,lineOrder,lineOverrides};
+                  qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries:updated,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
                 await saveQuoteToSupabase(q,autoSpecs,autoNotes);
                 setChatterSaving(false);
               }}
