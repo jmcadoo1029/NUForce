@@ -2604,12 +2604,8 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   });
   if(custom.on)custom.rows.forEach(r=>{if(r.label||String(r.price).trim())addUser(r.label||"Custom Item",r.price,null,r.pcode||"94");});
 
-  // Budget - each item adds as a separate Budget Materials line (no roll-into)
-  if(budget&&budget.on&&budget.rows.length>0){
-    const mp=sf(budget.markup,25)/100;
-    const totalBudget=budget.rows.reduce((s,r)=>s+sf(r.qty,1)*sf(r.unitCost,0)*(1+mp),0);
-    if(totalBudget>0) add("Budget Materials",totalBudget,null,"");
-  }
+  // Budget - tracking only, no longer adds a line item to the quote summary
+  // (existing loaded quotes with a saved Budget Materials line will still show via snapshot)
 
   // Combined proc/report across all instances of all sections
   // Section proc/report prices — keyed by section type
