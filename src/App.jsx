@@ -9749,9 +9749,13 @@ const STANDARD_TERMS = [
                     // Build allRows: use unifiedOrder if set, else default auto-then-picker
                     let allRows;
                     if(unifiedOrder&&unifiedOrder.length===(autoRows.length+pickerRows.length)){
-                      allRows=unifiedOrder.map(({type,idx})=>
-                        type==='auto'?autoRows[idx]:pickerRows[idx]
-                      ).filter(Boolean);
+                      allRows=unifiedOrder.map(u=>{
+                        if(u.type==='auto') return autoRows.find(r=>r.origIdx===u.origIdx);
+                        else return pickerRows.find(r=>(r.pl.id||r.pl.label)===(u.id||u.label));
+                      }).filter(Boolean);
+                      // Fall back if any row not found (e.g. line was deleted)
+                      if(allRows.length!==autoRows.length+pickerRows.length)
+                        allRows=[...autoRows,...pickerRows];
                     } else {
                       allRows=[...autoRows,...pickerRows];
                     }
@@ -9772,7 +9776,7 @@ const STANDARD_TERMS = [
                         e.preventDefault();
                         e.dataTransfer.dropEffect="move";
                         dragToRef.current=uIdx;
-                        setPickerDragIdx(uIdx); // reuse as hover indicator only
+                        setPickerDragIdx(uIdx);
                       };
                       const onDE=e=>{
                         const from=dragFromRef.current;
@@ -9782,25 +9786,19 @@ const STANDARD_TERMS = [
                         dragFromRef.current=null;
                         dragToRef.current=null;
                         if(from===null||from===undefined||to===null||to===undefined||to===from){setIsDirty(true);return;}
+                        // Use allRows from THIS render — indices are correct for this render
+                        // Store identity keys (not indices) so future renders can match
                         const snap=[...allRows];
                         const [moved]=snap.splice(from,1);
                         const insertAt=from<to?to-1:to;
                         snap.splice(insertAt,0,moved);
-                        // Build unified order: store {type, idx} for each row
-                        // idx = position within autoRows or pickerRows respectively
-                        const autoRowsList=[...autoRows];
-                        const pickerRowsList=[...pickerRows];
-                        const newUnified=snap.map(r=>{
-                          if(r.type==='auto'){
-                            const ai=autoRowsList.findIndex(a=>a.origIdx===r.origIdx);
-                            return {type:'auto',idx:ai};
-                          } else {
-                            const pi=pickerRowsList.findIndex(p=>p.pl===r.pl);
-                            return {type:'picker',idx:pi};
-                          }
-                        });
-                        setUnifiedOrder(newUnified);
-                        // Also update lineOrder and pickerLines order for persistence
+                        // Store as identity keys: auto rows by origIdx, picker rows by id
+                        const newUnifiedKeys=snap.map(r=>
+                          r.type==='auto'
+                            ?{type:'auto',origIdx:r.origIdx}
+                            :{type:'picker',id:r.pl.id||r.pl.label}
+                        );
+                        setUnifiedOrder(newUnifiedKeys);
                         const newAutoOrder=snap.filter(r=>r.type==='auto').map(r=>r.origIdx);
                         const newPicker=snap.filter(r=>r.type==='picker').map(r=>r.pl);
                         if(newAutoOrder.length>0)setLineOrder(newAutoOrder);
