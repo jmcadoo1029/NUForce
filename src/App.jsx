@@ -2604,8 +2604,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
   });
   if(custom.on)custom.rows.forEach(r=>{if(r.label||String(r.price).trim())addUser(r.label||"Custom Item",r.price,null,r.pcode||"94");});
 
-  // Budget - tracking only, no longer adds a line item to the quote summary
-  // (existing loaded quotes with a saved Budget Materials line will still show via snapshot)
+  // Budget - tracking only, does not add a line item to quote summary
 
   // Combined proc/report across all instances of all sections
   // Section proc/report prices — keyed by section type
@@ -6338,7 +6337,7 @@ export default function App({onLogout,currentUser}){
         // Closed Won approval — update wonApproval, use won_approved/won_rejected statuses
         const wonStatus=decision==="approved"?"won_approved":"won_rejected";
         const newWonApproval={...q.wonApproval,status:wonStatus,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(q.wonApproval?.history||[]),evtQ]};
-        await saveQuoteToSupabase({...q,wonApproval:newWonApproval,chatterEntries:q.chatterEntries||[],summary:q.summary,lineOrder:q.lineOrder,lineOverrides:q.lineOverrides},autoSpecs,autoNotes);
+        await saveQuoteToSupabase({...q,wonApproval:newWonApproval,chatterEntries:q.chatterEntries||[]},autoSpecs,autoNotes);
         await sendDecisionEmail("CLOSED WON "+decision.toUpperCase(),currentUser,queueComments,q.wonApproval?.submittedBy||"");
         // If this quote is currently open in the form, sync its state
         if(currentQuoteId&&String(currentQuoteId)===String(id)){
@@ -6347,7 +6346,7 @@ export default function App({onLogout,currentUser}){
       } else {
         // Regular quote approval
         const newApproval={...q.approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(q.approval?.history||[]),evtQ]};
-        await saveQuoteToSupabase({...q,approval:newApproval,chatterEntries:q.chatterEntries||[],summary:q.summary,lineOrder:q.lineOrder,lineOverrides:q.lineOverrides},autoSpecs,autoNotes);
+        await saveQuoteToSupabase({...q,approval:newApproval,chatterEntries:q.chatterEntries||[]},autoSpecs,autoNotes);
         await sendDecisionEmail(decision.toUpperCase(),currentUser,queueComments,q.approval?.submittedBy||"");
         if(decision==="approved")await autoUnflag(id);
         // If this quote is currently open in the form, sync its state
