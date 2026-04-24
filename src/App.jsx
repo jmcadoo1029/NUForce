@@ -8411,25 +8411,9 @@ const STANDARD_TERMS = [
           allRows=null; // fallback if any mismatch
       }
       if(!allRows){
-        // No unifiedOrder — use default sort: procedures top, reports bottom
-        const sortRank=(code,label)=>{
-          const c=String(code||'');const l=(label||'').toLowerCase();
-          if(c==='42'||c==='44'||l.includes('procedure'))return 0;
-          if(c==='67'||l.includes('modal analysis'))return 1;
-          if(c==='96'||l.includes('tear down')||l.includes('teardown'))return 8;
-          if(c==='41'||c==='43'||l.includes('test report')||l.includes('certificate'))return 9;
-          return 5;
-        };
-        const ranked=[
-          ...autoRowPool.map(r=>({...r,rank:sortRank(r.l.code,r.l.label)})),
-          ...pickerRowPool.map(r=>({...r,rank:sortRank(r.pl.code,r.pl.label)})),
-        ];
-        allRows=[
-          ...ranked.filter(r=>r.rank<5),
-          ...ranked.filter(r=>r.rank===5),
-          ...ranked.filter(r=>r.rank>5&&r.rank<9),
-          ...ranked.filter(r=>r.rank>=9),
-        ];
+        // No unifiedOrder — same order as sidebar: auto lines then picker lines
+        // Both groups preserve their internal order (lineOrder / pickerLines array)
+        allRows=[...autoRowPool,...pickerRowPool];
       }
       allRows.forEach((row, allIdx) => {
         const bg = allIdx%2===0 ? [255,255,255] : [247,248,250];
