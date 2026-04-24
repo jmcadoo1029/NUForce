@@ -8377,18 +8377,7 @@ const STANDARD_TERMS = [
       }
       const pdfLines = summary.lines;
       const order = lineOrder&&lineOrder.length===pdfLines.length ? lineOrder : pdfLines.map((_,i)=>i);
-      // Merge auto-calc and picker lines into single sorted list
-      // Sort: procedures top (42/44), main middle, teardown before reports, reports bottom (41/43)
-      const sortRank = (code, label) => {
-        const c = String(code||''); const l = (label||'').toLowerCase();
-        if(c==='42'||c==='44'||l.includes('procedure')) return 0;
-        if(c==='67'||l.includes('modal analysis')) return 1;
-        if(c==='96'||l.includes('tear down')||l.includes('teardown')) return 8;
-        if(c==='41'||c==='43'||l.includes('test report')||l.includes('certificate')) return 9;
-        return 5;
-      };
-      // Override lookup: index first, label fallback only for unique labels
-      // Prevents cross-contamination between same-label lines (e.g. two Altitude tests)
+      // Override lookup
       const pdfLabelCount={};
       summary.lines.forEach(l=>{ pdfLabelCount[l.label]=(pdfLabelCount[l.label]||0)+1; });
       const pdfOvByLabel={};
@@ -8401,33 +8390,47 @@ const STANDARD_TERMS = [
       });
       const pdfOvByIndex={};
       Object.entries(lineOverrides).forEach(([k,ov])=>{ pdfOvByIndex[k]=ov; });
-      // Build merged list of auto-calc + picker lines, sorted by rank
-      const autoRows = order
-        .map((origIdx, dispIdx) => {
-          const l = pdfLines[origIdx];
-          if(!l) return null;
-          const ov = pdfOvByIndex[origIdx] || pdfOvByLabel[l.label] || {};
-          if(ov.deleted) return null;
-          const price = snapPriceByLabel[l.label]!==undefined ? snapPriceByLabel[l.label] : l.val;
-          const desc = ov.desc&&ov.desc.trim() ? ov.desc.trim() : null;
-          return {type:'auto', l, price, desc, dispIdx, rank: sortRank(l.code, l.label)};
-        })
-        .filter(Boolean);
-      const pickerRows = (pickerLines||[]).map((pl,pli) => ({
-        type:'picker', pl, pli, rank: sortRank(pl.code, pl.label)
-      }));
-      // Merge: procs first (rank 0-1), then auto-calc mains in their order,
-      // then picker mains, then teardown, then reports
-      const allRows = [
-        ...autoRows.filter(r=>r.rank<5),
-        ...pickerRows.filter(r=>r.rank<5),
-        ...autoRows.filter(r=>r.rank===5),
-        ...pickerRows.filter(r=>r.rank===5),
-        ...autoRows.filter(r=>r.rank>5&&r.rank<9),
-        ...pickerRows.filter(r=>r.rank>5&&r.rank<9),
-        ...autoRows.filter(r=>r.rank>=9),
-        ...pickerRows.filter(r=>r.rank>=9),
-      ];
+      // Build auto and picker row pools
+      const autoRowPool = order.map((origIdx,dispIdx)=>{
+        const l=pdfLines[origIdx]; if(!l)return null;
+        const ov=pdfOvByIndex[origIdx]||pdfOvByLabel[l.label]||{};
+        if(ov.deleted)return null;
+        const price=snapPriceByLabel[l.label]!==undefined?snapPriceByLabel[l.label]:l.val;
+        const desc=ov.desc&&ov.desc.trim()?ov.desc.trim():null;
+        return {type:'auto',origIdx,l,price,desc,dispIdx};
+      }).filter(Boolean);
+      const pickerRowPool=(pickerLines||[]).map((pl,pli)=>({type:'picker',pl,pli,id:pl.id||pl.label}));
+      // Use unifiedOrder if available — matches sidebar exactly
+      let allRows;
+      if(unifiedOrder&&unifiedOrder.length===(autoRowPool.length+pickerRowPool.length)){
+        allRows=unifiedOrder.map(u=>{
+          if(u.type==='auto') return autoRowPool.find(r=>r.origIdx===u.origIdx);
+          else return pickerRowPool.find(r=>(r.pl.id||r.pl.label)===(u.id||u.label));
+        }).filter(Boolean);
+        if(allRows.length!==autoRowPool.length+pickerRowPool.length)
+          allRows=null; // fallback if any mismatch
+      }
+      if(!allRows){
+        // No unifiedOrder — use default sort: procedures top, reports bottom
+        const sortRank=(code,label)=>{
+          const c=String(code||'');const l=(label||'').toLowerCase();
+          if(c==='42'||c==='44'||l.includes('procedure'))return 0;
+          if(c==='67'||l.includes('modal analysis'))return 1;
+          if(c==='96'||l.includes('tear down')||l.includes('teardown'))return 8;
+          if(c==='41'||c==='43'||l.includes('test report')||l.includes('certificate'))return 9;
+          return 5;
+        };
+        const ranked=[
+          ...autoRowPool.map(r=>({...r,rank:sortRank(r.l.code,r.l.label)})),
+          ...pickerRowPool.map(r=>({...r,rank:sortRank(r.pl.code,r.pl.label)})),
+        ];
+        allRows=[
+          ...ranked.filter(r=>r.rank<5),
+          ...ranked.filter(r=>r.rank===5),
+          ...ranked.filter(r=>r.rank>5&&r.rank<9),
+          ...ranked.filter(r=>r.rank>=9),
+        ];
+      }
       allRows.forEach((row, allIdx) => {
         const bg = allIdx%2===0 ? [255,255,255] : [247,248,250];
         if(row.type==='auto'){
