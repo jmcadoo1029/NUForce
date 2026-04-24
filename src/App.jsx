@@ -6758,7 +6758,13 @@ export default function App({onLogout,currentUser}){
       desc: l.desc||"",
     }));
     setPickerLines(prev => sortPickerLines([...prev, ...newLines]));
-    setUnifiedOrder(null); // reset so new items appear at end
+    // Preserve existing sort order — append new lines to END of unifiedOrder
+    setUnifiedOrder(prev => {
+      if(!prev) return null; // no existing order, stay null (default append)
+      // Append new picker entries at the end of existing unified order
+      const newEntries = newLines.map(l => ({type:'picker', id: l.id||l.label, label: l.label}));
+      return [...prev, ...newEntries];
+    });
     setIsDirty(true);
     showToast(`Added ${lines.length} line item${lines.length!==1?"s":""} to quote`, "success");
   };
@@ -9833,7 +9839,11 @@ const STANDARD_TERMS = [
                                 onChange={e=>setPickerLines(prev=>prev.map((l,i)=>i===pli?{...l,price:parseFloat(e.target.value)||0}:l))}
                                 style={{width:68,fontSize:12,fontWeight:700,color:C.text,fontFamily:"monospace",background:"transparent",border:"none",borderBottom:"1px solid "+C.border,outline:"none",textAlign:"right",padding:"1px 2px"}}/>
                             </div>
-                            <button onClick={()=>{setPickerLines(prev=>prev.filter((_,i)=>i!==pli));setUnifiedOrder(null);}}
+                            <button onClick={()=>{
+                              const plToRemove=pl;
+                              setPickerLines(prev=>prev.filter((_,i)=>i!==pli));
+                              setUnifiedOrder(prev=>prev?prev.filter(u=>!(u.type==='picker'&&(u.id||u.label)===(plToRemove.id||plToRemove.label))):null);
+                            }}
                               style={{background:"none",border:"none",color:C.dim,cursor:"pointer",fontSize:12,padding:0,lineHeight:1,textAlign:"center"}} title="Remove line">✕</button>
                           </div>
                         );
