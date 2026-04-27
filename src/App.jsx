@@ -801,20 +801,44 @@ function calcEmiShifts(s){
         ["Positions ("+re101Pos+" pos: 12 sides + "+cables+" cables, 15min ea)",(15*re101Pos)/60/8],
         ...(re101Raw>=1.5&&re101Hrs/8<1.5?[["Floor 1.5 shifts applied",1.5-(re101Hrs/8)]]:[])]};
 
-  // RE102 — shifts and positions per band
-  // Positions: ceil((L+7)/ref) + ceil(W/ref) per band, min 1 each side
-  const p21=Math.max(0.0125,((L+7)/93)*0.0125),p22=Math.max(0.0125,(W/93)*0.0125);
-  const p23=Math.max(0.032,((L+7)/52)*0.032),p24=Math.max(0.032,((W+7)/52)*0.032);
-  const p25=Math.max(0.0073,((L+7)/14)*0.0073),p26=Math.max(0.0073,((W+7)/14)*0.0073);
-  const re102=1.5+(p21+p22)+(p23+p24)+(p25+p26);
+  // RE102 — Radiated Emissions, Electric Field, 10 kHz to 18 GHz
+  // Width-only positions per engineer pricing note ("price assumes width only for E&F")
+  // 461F: 1 sweep all bands. 461G: 1 sweep <30 MHz, 2 sweeps (H+V) ≥30 MHz.
+  // Per-sweep times independently calibrated for F vs G per engineer doc.
+  // Below 1 GHz: 200 MHz-1 GHz uses 50 cm beamwidth (35 cm cable allowance baked in, no +7).
+  // ≥1 GHz bands: width-only with +7 cm cable allowance.
   const re102Pos={
-    sub1GHz: 1, // always 1 below 1 GHz
-    b1_4:    rp((L+7)/93)+rp(W/93),
-    b4_15:   rp((L+7)/52)+rp((W+7)/52),
-    b15_18:  rp((L+7)/14)+rp((W+7)/14),
+    b10k_30M:  1,                          // ≤3m boundary, 1 fixed position
+    b30_200M:  1,                          // ≤3m boundary, 1 fixed position
+    sub1GHz:   rp(W/50),                   // 200 MHz-1 GHz, 50cm beamwidth (cable already accounted)
+    b1_4:      rp((W+7)/93),               // +7cm cable allowance, 93cm beamwidth
+    b4_15:     rp((W+7)/52),               // 52cm beamwidth
+    b15_18:    rp((W+7)/14),               // 14cm beamwidth
   };
+  // Per-sweep times (minutes) — engineer doc 461F & 461G
+  const re102Times = useG
+    ? {b10k_30M:3,    b30_200M:130/60, sub1GHz:340/60, b1_4:307/60, b4_15:307/60, b15_18:55/60}
+    : {b10k_30M:4,    b30_200M:5,      sub1GHz:12,     b1_4:6,      b4_15:15.5,   b15_18:3.5};
+  // Polarization sweeps: 461F=1 all bands; 461G=1 below 30 MHz, 2 above
+  const sweepLow = 1;                  // <30 MHz: vertical only (both revs)
+  const sweepHigh = useG ? 2 : 1;      // ≥30 MHz: F=1 (price assumes width only), G=2 (H+V)
+  const re102Setup = 1.5;              // setup/cal baseline
+  const tLow = (re102Pos.b10k_30M  * re102Times.b10k_30M  * sweepLow ) / 60 / 8;
+  const t30  = (re102Pos.b30_200M  * re102Times.b30_200M  * sweepHigh) / 60 / 8;
+  const tSub = (re102Pos.sub1GHz   * re102Times.sub1GHz   * sweepHigh) / 60 / 8;
+  const tRe1_4 = (re102Pos.b1_4    * re102Times.b1_4      * sweepHigh) / 60 / 8;
+  const tRe4_15= (re102Pos.b4_15   * re102Times.b4_15     * sweepHigh) / 60 / 8;
+  const tRe15_18=(re102Pos.b15_18  * re102Times.b15_18    * sweepHigh) / 60 / 8;
+  const re102 = re102Setup + tLow + t30 + tSub + tRe1_4 + tRe4_15 + tRe15_18;
+  const swLabel = useG ? '2 sweeps H+V' : '1 sweep';
   res.RE102={raw:re102,rounded:ru(re102),pos:re102Pos,
-    bd:[["Cal/Test <=1GHz",1.5],["1-4 GHz",p21+p22],["4-15 GHz",p23+p24],["15-18 GHz",p25+p26]]};
+    bd:[["Setup/Cal",re102Setup],
+        ["10 kHz-30 MHz ("+re102Pos.b10k_30M+" pos x "+re102Times.b10k_30M+"min, V only)",tLow],
+        ["30-200 MHz ("+re102Pos.b30_200M+" pos x "+re102Times.b30_200M.toFixed(2)+"min, "+swLabel+")",t30],
+        ["200 MHz-1 GHz ("+re102Pos.sub1GHz+" pos x "+re102Times.sub1GHz.toFixed(2)+"min, "+swLabel+")",tSub],
+        ["1-4 GHz ("+re102Pos.b1_4+" pos x "+re102Times.b1_4.toFixed(2)+"min, "+swLabel+")",tRe1_4],
+        ["4-15 GHz ("+re102Pos.b4_15+" pos x "+re102Times.b4_15.toFixed(2)+"min, "+swLabel+")",tRe4_15],
+        ["15-18 GHz ("+re102Pos.b15_18+" pos x "+re102Times.b15_18.toFixed(2)+"min, "+swLabel+")",tRe15_18]]};
 
   // RS101 — Radiated Susceptibility, Magnetic Field
   // Engineer: 3 hr setup/cal, 22 min/position, face-area positions + 1 per cable connector
@@ -847,7 +871,7 @@ function calcEmiShifts(s){
   //   200-1G=21min(89.5cm bw), 1-4G=32min(93cm bw), 4-15G=30min(52cm bw), 15-18G=12min(14cm bw)
   // Setup/Field Adj/Antenna baseline: 3.0 shifts (1 hr setup + 2 hr field adj + antenna/amp changes)
   const rs103Pos={
-    b2_30:   2, // fixed per spec (≤3m boundary)
+    b2_30:   Math.max(2, rp((200+W)/188)), // boundary = 2m + unit width; coverage 188cm; min 2
     b30_200: 1, // fixed per spec (≤3m boundary)
     b200_1G: rp(L/89.5)+rp(W/89.5),
     b1_4:    rp(L/93)+rp(W/93),
