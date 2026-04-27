@@ -789,8 +789,17 @@ function calcEmiShifts(s){
   res.CS116={raw:cs116,rounded:ru(cs116),
     sigTests:cables, pwrTests:cs116PwrTests, totalTests:cables+cs116PwrTests,
     bd:[["Setup/Cal/Sweep ("+revLabel+", 3.5hr)",cs116Setup],["Signal cables (70min x "+cables+")",cs116SigTime],["Power cables (70min x "+cs116PwrTests+")",cs116PwrTime]]};
-  const re101=L<50?2.0:2.5;
-  res.RE101={raw:re101,rounded:ru(re101),bd:[["L="+L.toFixed(1)+"cm ("+(L<50?"<":">=")+"50cm)",re101]]};
+  // RE101 — Radiated Emissions, Magnetic Field
+  // Engineer: 60 min cal + 15 min/position. 6 sides x 2 positions/side base + 1 per cable connector.
+  // Floor: never less than 1.5 shifts (12 hr).
+  const re101BasePos=12; // 6 sides × 2 positions
+  const re101Pos=re101BasePos+cables;
+  const re101Hrs=1+(15*re101Pos)/60; // 60 min cal + 15 min/pos
+  const re101Raw=Math.max(1.5,re101Hrs/8);
+  res.RE101={raw:re101Raw,rounded:ru(re101Raw),
+    bd:[["Cal (60min)",1/8],
+        ["Positions ("+re101Pos+" pos: 12 sides + "+cables+" cables, 15min ea)",(15*re101Pos)/60/8],
+        ...(re101Raw>=1.5&&re101Hrs/8<1.5?[["Floor 1.5 shifts applied",1.5-(re101Hrs/8)]]:[])]};
 
   // RE102 — shifts and positions per band
   // Positions: ceil((L+7)/ref) + ceil(W/ref) per band, min 1 each side
@@ -807,16 +816,31 @@ function calcEmiShifts(s){
   res.RE102={raw:re102,rounded:ru(re102),pos:re102Pos,
     bd:[["Cal/Test <=1GHz",1.5],["1-4 GHz",p21+p22],["4-15 GHz",p23+p24],["15-18 GHz",p25+p26]]};
 
-  // RS101 — positions based on face areas (each 30cmx30cm = 1 pos)
-  const rs101=1.0+(((L*W)*2)/900*22)/60/8+(((L*H)*2)/900*22)/60/8+(((W*H)*2)/900*22)/60/8;
-  const rs101Pos={
+  // RS101 — Radiated Susceptibility, Magnetic Field
+  // Engineer: 3 hr setup/cal, 22 min/position, face-area positions + 1 per cable connector
+  // Reduction: any single dim >30 cm → ×0.7 on per-position time only (not setup)
+  const rs101FacePos={
     LW: Math.max(1,Math.ceil((L*W)/900))*2,
     LH: Math.max(1,Math.ceil((L*H)/900))*2,
     WH: Math.max(1,Math.ceil((W*H)/900))*2,
-    get total(){ return this.LW+this.LH+this.WH; }
+  };
+  const rs101FaceTotal=rs101FacePos.LW+rs101FacePos.LH+rs101FacePos.WH;
+  const rs101CableCount=cables;
+  const rs101OverSized=(L>30||W>30||H>30);
+  const rs101Mult=rs101OverSized?0.7:1.0;
+  const rs101Setup=3/8; // 3 hr
+  const rs101FaceHrs=(rs101FaceTotal*22*rs101Mult)/60;
+  const rs101CableHrs=(rs101CableCount*22*rs101Mult)/60;
+  const rs101=rs101Setup + rs101FaceHrs/8 + rs101CableHrs/8;
+  const rs101Pos={
+    ...rs101FacePos,
+    cables: rs101CableCount,
+    get total(){ return this.LW+this.LH+this.WH+this.cables; }
   };
   res.RS101={raw:rs101,rounded:ru(rs101),pos:rs101Pos,
-    bd:[["Cal/Setup",1.0],["LxW sides",+(((L*W)*2)/900*22/60/8).toFixed(4)],["LxH sides",+(((L*H)*2)/900*22/60/8).toFixed(4)],["WxH sides",+(((W*H)*2)/900*22/60/8).toFixed(4)]]};
+    bd:[["Setup/Cal (3hr)",rs101Setup],
+        ["Face positions ("+rs101FaceTotal+" pos: "+rs101FacePos.LW+" LxW + "+rs101FacePos.LH+" LxH + "+rs101FacePos.WH+" WxH, 22min ea"+(rs101OverSized?" x0.7":"")+")",rs101FaceHrs/8],
+        ["Cable connectors ("+rs101CableCount+" pos, 22min ea"+(rs101OverSized?" x0.7":"")+")",rs101CableHrs/8]]};
 
   // RS103 — shifts and positions per band (461F/G times, F=G)
   // Engineer per-position times: 2-30=16min(2 fixed), 30-200=25min(1 fixed),
