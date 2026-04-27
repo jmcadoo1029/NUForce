@@ -5496,15 +5496,8 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
                 </div>
               )}
               <EmiForm s={emiCalc} set={setEmiCalc} ti={ti} setup={setup}/>
-              <div style={{marginTop:6,marginBottom:6,padding:"6px 10px",borderRadius:6,
-                background:"#fff7e6",border:"1px solid #f0c674",fontSize:11,color:"#7a5410"}}>
-                <strong>Suggested Setup:</strong> {suggSetup.shifts} shift{suggSetup.shifts!==1?'s':''} = {money(suggSetup.cost)}
-                <span style={{color:"#9a7530",marginLeft:6,fontSize:10}}>
-                  ({suggSetup.cablesEff} cables, {suggSetup.wt||0} lb{suggSetup.wtNote})
-                </span>
-              </div>
-              <CalcResult setupAmt={emiSetupCost} testAmt={emiTestCost}/>
-              <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>Teardown: {money(emiTdCost)} &nbsp;·&nbsp; Total: {money(emiSetupCost+emiTestCost+emiTdCost)}</div>
+              <CalcResult setupAmt={suggSetup.cost} testAmt={emiTestCost}/>
+              <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>Teardown: {money(emiTdCost)} &nbsp;·&nbsp; Total: {money(suggSetup.cost+emiTestCost+emiTdCost)}</div>
               <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
                 <button onClick={()=>copyToClipboard(EMI_NOTES)}
                   style={{fontSize:11,padding:"5px 12px",borderRadius:6,border:"1px solid #1a5276",background:"#eaf2ff",color:"#1a5276",cursor:"pointer",fontWeight:600}}>
