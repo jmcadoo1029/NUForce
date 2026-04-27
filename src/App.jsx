@@ -4985,11 +4985,11 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
   const TH_PRICES={"0 to 1 Day":1000,"3 Days":1350,"5 Days":1875,"7 Days":2275,"10 Days":2950};
   const NOISE_CHAMBERS={"Speakerbox":1000,"64 Reverb Chamber":1500,"300 Reverb Chamber":2000,"Prog Wave Tube":2750};
 
-  // Weight-based shock testing
+  // Weight-based shock testing — uses mwTesting() for source-of-truth tiers
   const wt = sf(shock.wt||ti?.wt,0);
   const isMW = (shock.cat||"Medium Weight")==="Medium Weight";
   const mwsTestPrice = isMW
-    ? (wt>0?(wt<=200?3975:wt<=500?4575:wt<=1000?5275:5975):sf(shock.testing,4575))
+    ? (wt>0?mwTesting(wt):sf(shock.testing,4575))
     : sf(shock.testing,1450);
 
   // Vib setup for shock discount
@@ -5179,7 +5179,7 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
             const wt=sf(shock.wt||ti?.wt,0);
             const isMW=(shock.cat||"Medium Weight")==="Medium Weight";
             const mwsTestPrice=isMW
-              ?(wt>0?(wt<=200?3975:wt<=500?4575:wt<=1000?5275:5975):sf(shock.testing,4575))
+              ?(wt>0?mwTesting(wt):sf(shock.testing,4575))
               :sf(shock.testing,1450);
             const shockSetup=shock.fromVib?Math.ceil(smartBase(shock.std)*0.75/25)*25:smartBase(shock.std);
             return(
