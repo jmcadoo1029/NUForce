@@ -740,10 +740,24 @@ function calcEmiShifts(s){
   const useG=revG; // G wins when both checked (conservative)
   const revLabel=useG?'461G':'461F';
   const res={};
-  res.CE101={raw:1.0,rounded:1.0,bd:[["Fixed",1.0]]};
-  res.CE102={raw:1.0,rounded:1.0,bd:[["Fixed",1.0]]};
-  res.CS101={raw:1.5,rounded:1.5,bd:[["Fixed",1.5]]};
-  res.CS106={raw:1.5,rounded:1.5,bd:[["Fixed",1.5]]};
+  // CE101 / CE102 — rev × phase lookup
+  // F: 1Ph=4hr, 3Ph=6hr  /  G: 1Ph=6hr, 3Ph=8hr
+  const ce_F={1:4,3:6}, ce_G={1:6,3:8};
+  const ceHrs=(useG?ce_G:ce_F)[phases]||(useG?ce_G[3]:ce_F[3]);
+  const ce=ceHrs/8;
+  res.CE101={raw:ce,rounded:ru(ce),
+    bd:[["Quote time ("+revLabel+", "+phases+"-phase, "+ceHrs+"hr)",ce]]};
+  res.CE102={raw:ce,rounded:ru(ce),
+    bd:[["Quote time ("+revLabel+", "+phases+"-phase, "+ceHrs+"hr)",ce]]};
+  // CS101 — flat 6 hr both revs, both phases
+  const cs101=6/8;
+  res.CS101={raw:cs101,rounded:ru(cs101),
+    bd:[["Quote time (6hr flat)",cs101]]};
+  // CS106 — 461F only (excluded from G test list elsewhere); 1Ph=4hr, 3Ph=3hr
+  const cs106Hrs=phases===1?4:3;
+  const cs106=cs106Hrs/8;
+  res.CS106={raw:cs106,rounded:ru(cs106),
+    bd:[["Quote time (461F only, "+phases+"-phase, "+cs106Hrs+"hr)",cs106]]};
   // CS114 — rev-aware setup/cal, 90 min/test, F/G power test counts
   // F: 1Ph=2, 3Ph=3 power tests; setup/cal = 9 hr (6 cal + 2 setup + 1 add'l 4kHz-1MHz)
   // G: 1Ph=3, 3Ph=4 power tests; setup/cal = 15 hr (6 cal + 2 setup + 1 add'l + 6 verification)
