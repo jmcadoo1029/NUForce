@@ -729,30 +729,49 @@ function calcEmiShifts(s){
   const L=sf(s.dimL)*2.54, W=sf(s.dimW)*2.54, H=sf(s.dimH)*2.54;
   const cables=Math.max(1,sf(s.cables,1));
   const phases=Math.max(1,sf(s.phases||3,3));
-  const pwrCables=phases===1?2:4; // 1ph: hot+neutral=2; 3ph: 3phases+neutral=4
   const ru=x=>x>0?Math.ceil(x):0;
   const rp=x=>Math.max(1,Math.ceil(x)); // round up, minimum 1 position
+  // Rev resolution: G if checked (alone or with F); F if only F or neither
+  const revF=(s.revs||{})['Rev F']||false;
+  const revG=(s.revs||{})['Rev G']||false;
+  const useG=revG; // G wins when both checked (conservative)
+  const revLabel=useG?'461G':'461F';
   const res={};
   res.CE101={raw:1.0,rounded:1.0,bd:[["Fixed",1.0]]};
   res.CE102={raw:1.0,rounded:1.0,bd:[["Fixed",1.0]]};
   res.CS101={raw:1.5,rounded:1.5,bd:[["Fixed",1.5]]};
   res.CS106={raw:1.5,rounded:1.5,bd:[["Fixed",1.5]]};
-  const cs114=1.5+((120*cables)/60)/8+((pwrCables*120)/60)/8;
+  // CS114 — rev-aware setup/cal, 90 min/test, F/G power test counts
+  // F: 1Ph=2, 3Ph=3 power tests; setup/cal = 9 hr (6 cal + 2 setup + 1 add'l 4kHz-1MHz)
+  // G: 1Ph=3, 3Ph=4 power tests; setup/cal = 15 hr (6 cal + 2 setup + 1 add'l + 6 verification)
+  const cs114PwrTests=phases===1?(useG?3:2):(useG?4:3);
+  const cs114SetupHrs=useG?15:9;
+  const cs114Setup=cs114SetupHrs/8;
+  const cs114SigTime=((90*cables)/60)/8;
+  const cs114PwrTime=((90*cs114PwrTests)/60)/8;
+  const cs114=cs114Setup+cs114SigTime+cs114PwrTime;
   res.CS114={raw:cs114,rounded:ru(cs114),
-    sigTests:cables, pwrTests:pwrCables+1, totalTests:cables+(pwrCables+1),
-    bd:[["Setup/Cal",1.5],["Signal cables (120min x "+cables+")",((120*cables)/60)/8],["Power cables ("+pwrCables+"x120min)",((pwrCables*120)/60)/8]]};
+    sigTests:cables, pwrTests:cs114PwrTests, totalTests:cables+cs114PwrTests,
+    bd:[["Setup/Cal ("+revLabel+", "+cs114SetupHrs+"hr)",cs114Setup],["Signal cables (90min x "+cables+")",cs114SigTime],["Power cables (90min x "+cs114PwrTests+")",cs114PwrTime]]};
   // CS109 — Not performed by NU Labs; subcontract only, no shift cost
   res.CS109={raw:0,rounded:0,bd:[["Not performed at NU Labs -- subcontract required",0]]};
   // CS115 — Impulse Excitation; same test count as CS114, 5 min per test, 0.5 shift setup/cal
-  const cs115Total=cables+(pwrCables+1);
+  const cs115Total=cables+cs114PwrTests;
   const cs115=0.5+((5*cs115Total)/60)/8;
   res.CS115={raw:cs115,rounded:ru(cs115),
-    sigTests:cables, pwrTests:pwrCables+1, totalTests:cs115Total,
+    sigTests:cables, pwrTests:cs114PwrTests, totalTests:cs115Total,
     bd:[["Setup/Cal",0.5],["Tests (5min x "+cs115Total+")",((5*cs115Total)/60)/8]]};
-  const cs116=1.0+((90*cables)/60)/8+((pwrCables*120)/60)/8;
+  // CS116 — rev-aware power test counts (mirrors CS114), 70 min/test, 3.5 hr setup
+  // F: 1Ph=2, 3Ph=3 power tests
+  // G: 1Ph=3, 3Ph=4 power tests
+  const cs116PwrTests=phases===1?(useG?3:2):(useG?4:3);
+  const cs116Setup=3.5/8;
+  const cs116SigTime=((70*cables)/60)/8;
+  const cs116PwrTime=((70*cs116PwrTests)/60)/8;
+  const cs116=cs116Setup+cs116SigTime+cs116PwrTime;
   res.CS116={raw:cs116,rounded:ru(cs116),
-    sigTests:cables, pwrTests:pwrCables+1, totalTests:cables+(pwrCables+1),
-    bd:[["Setup/Cal/Sweep",1.0],["Signal cables (90min x "+cables+")",((90*cables)/60)/8],["Power cables",((pwrCables*120)/60)/8]]};
+    sigTests:cables, pwrTests:cs116PwrTests, totalTests:cables+cs116PwrTests,
+    bd:[["Setup/Cal/Sweep ("+revLabel+", 3.5hr)",cs116Setup],["Signal cables (70min x "+cables+")",cs116SigTime],["Power cables (70min x "+cs116PwrTests+")",cs116PwrTime]]};
   const re101=L<50?2.0:2.5;
   res.RE101={raw:re101,rounded:ru(re101),bd:[["L="+L.toFixed(1)+"cm ("+(L<50?"<":">=")+"50cm)",re101]]};
 
@@ -760,7 +779,7 @@ function calcEmiShifts(s){
   // Positions: ceil((L+7)/ref) + ceil(W/ref) per band, min 1 each side
   const p21=Math.max(0.0125,((L+7)/93)*0.0125),p22=Math.max(0.0125,(W/93)*0.0125);
   const p23=Math.max(0.032,((L+7)/52)*0.032),p24=Math.max(0.032,((W+7)/52)*0.032);
-  const p25=Math.max(0.0073,((L+7)/14)*0.0073),p26=Math.max(0.0073,((W+7)/14)*0.1173);
+  const p25=Math.max(0.0073,((L+7)/14)*0.0073),p26=Math.max(0.0073,((W+7)/14)*0.0073);
   const re102=1.5+(p21+p22)+(p23+p24)+(p25+p26);
   const re102Pos={
     sub1GHz: 1, // always 1 below 1 GHz
@@ -782,22 +801,33 @@ function calcEmiShifts(s){
   res.RS101={raw:rs101,rounded:ru(rs101),pos:rs101Pos,
     bd:[["Cal/Setup",1.0],["LxW sides",+(((L*W)*2)/900*22/60/8).toFixed(4)],["LxH sides",+(((L*H)*2)/900*22/60/8).toFixed(4)],["WxH sides",+(((W*H)*2)/900*22/60/8).toFixed(4)]]};
 
-  // RS103 — shifts and positions per band
-  // Positions: ceil((L+7)/ref) + ceil(W/ref) per band
-  const n35=((2*16)/60)/8,n36=(25/60)/8;
-  const p37=Math.max(0.04375,(L/89.5)*0.04375),p38=Math.max(0.04375,(W/89.5)*0.04375);
-  const p39=Math.max(0.154,(L/93)*0.154),p40=Math.max(0.154,(W/93)*0.154);
-  const p41=Math.max(0.052,(L/50)*0.052),p42=Math.max(0.052,(W/50)*0.052);
-  const rs103=3.0+n35+n36+(p37+p38)+(p39+p40)+(p41+p42);
+  // RS103 — shifts and positions per band (461F/G times, F=G)
+  // Engineer per-position times: 2-30=16min(2 fixed), 30-200=25min(1 fixed),
+  //   200-1G=21min(89.5cm bw), 1-4G=32min(93cm bw), 4-15G=30min(52cm bw), 15-18G=12min(14cm bw)
+  // Setup/Field Adj/Antenna baseline: 3.0 shifts (1 hr setup + 2 hr field adj + antenna/amp changes)
   const rs103Pos={
-    b2_30:   2, // fixed per spec
-    b30_200: 1, // fixed per spec
+    b2_30:   2, // fixed per spec (≤3m boundary)
+    b30_200: 1, // fixed per spec (≤3m boundary)
     b200_1G: rp(L/89.5)+rp(W/89.5),
     b1_4:    rp(L/93)+rp(W/93),
-    b4_18:   rp(L/50)+rp(W/50),
+    b4_15:   rp(L/52)+rp(W/52),
+    b15_18:  rp(L/14)+rp(W/14),
   };
+  const t2_30=((rs103Pos.b2_30*16)/60)/8;
+  const t30_200=((rs103Pos.b30_200*25)/60)/8;
+  const t200_1G=((rs103Pos.b200_1G*21)/60)/8;
+  const t1_4=((rs103Pos.b1_4*32)/60)/8;
+  const t4_15=((rs103Pos.b4_15*30)/60)/8;
+  const t15_18=((rs103Pos.b15_18*12)/60)/8;
+  const rs103=3.0+t2_30+t30_200+t200_1G+t1_4+t4_15+t15_18;
   res.RS103={raw:rs103,rounded:ru(rs103),pos:rs103Pos,
-    bd:[["Setup/Field Adj/Antenna",3.0],["2-30 MHz",n35],["30-200 MHz",n36],["200MHz-1GHz",p37+p38],["1-4 GHz",p39+p40],["4-18 GHz",p41+p42]]};
+    bd:[["Setup/Field Adj/Antenna",3.0],
+        ["2-30 MHz ("+rs103Pos.b2_30+" pos x 16min)",t2_30],
+        ["30-200 MHz ("+rs103Pos.b30_200+" pos x 25min)",t30_200],
+        ["200MHz-1GHz ("+rs103Pos.b200_1G+" pos x 21min)",t200_1G],
+        ["1-4 GHz ("+rs103Pos.b1_4+" pos x 32min)",t1_4],
+        ["4-15 GHz ("+rs103Pos.b4_15+" pos x 30min)",t4_15],
+        ["15-18 GHz ("+rs103Pos.b15_18+" pos x 12min)",t15_18]]};
 
   // RS105 fixed
   res.RS105={raw:1.5,rounded:1.5,bd:[["Fixed",1.5]]};
@@ -949,7 +979,7 @@ function EmiForm({s,set,ti}){
   };
 
   // Compute shifts from unit details dimensions
-  const shifts=useMemo(()=>calcEmiShifts({dimL:dispL,dimW:dispW,dimH:dispH,cables:s.cables||"0",phases:dispPhases||"3"}),[dispL,dispW,dispH,s.cables,dispPhases]);
+  const shifts=useMemo(()=>calcEmiShifts({dimL:dispL,dimW:dispW,dimH:dispH,cables:s.cables||"0",phases:dispPhases||"3",revs:s.revs}),[dispL,dispW,dispH,s.cables,dispPhases,s.revs]);
 
   const allSelected=TESTS.every(t=>s.tests?.[t]||false);
   const toggleAll=()=>{
@@ -4930,7 +4960,8 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
     dimH:emiCalc.dimH||ti?.dimH||"0",
     cables:emiCalc.cables||"1",
     phases:emiCalc.phases||ti?.phase||"3",
-  }),[emiCalc.dimL,emiCalc.dimW,emiCalc.dimH,emiCalc.cables,emiCalc.phases,ti?.dimL,ti?.dimW,ti?.dimH,ti?.phase]);
+    revs:emiCalc.revs,
+  }),[emiCalc.dimL,emiCalc.dimW,emiCalc.dimH,emiCalc.cables,emiCalc.phases,emiCalc.revs,ti?.dimL,ti?.dimW,ti?.dimH,ti?.phase]);
 
   const emiRate=sf(emiCalc.rate,EMI_SR);
   const emiSelTests=Object.entries(emiCalc.tests||{}).filter(([,v])=>v).map(([k])=>k);
@@ -7576,7 +7607,8 @@ const STANDARD_TERMS = [
     const emiCalcData = calcEmiShifts({
       dimL:dispL, dimW:dispW, dimH:dispH,
       cables:activeEmi.cables||'0',
-      phases:activeEmi.phases||ti.phase||'3'
+      phases:activeEmi.phases||ti.phase||'3',
+      revs:{'Rev F':true},
     });
     const c114 = emiCalcData.CS114;
     const c116 = emiCalcData.CS116;
@@ -7610,25 +7642,28 @@ const STANDARD_TERMS = [
        desc:"Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RE101-2 from 30 Hz to 100 kHz.",
        note:null},
       {key:"RE102", label:"Radiated Emissions, Electric Field, 10 kHz to 18 GHz",
-       desc:"Tested to MIL-STD-461F Figure RE102-1 for Metallic Ships below deck applications.",
+       desc:"Tested to MIL-STD-461F Figure RE102-1 for Metallic Ships below deck applications. Below 30 MHz, only vertical polarization required. Above 30 MHz, both vertical and horizontal polarization required.",
        positions:[
-         {range:"10 kHz - 1 GHz",    pos:pos(re102p.sub1GHz)},
-         {range:"1 GHz - 4 GHz",     pos:pos(re102p.b1_4)},
-         {range:"4 GHz - 15 GHz",    pos:pos(re102p.b4_15)},
-         {range:"15 GHz - 18 GHz",   pos:pos(re102p.b15_18)},
+         {range:"10 kHz - 30 MHz",   pos:"1 position centered — ETS-3301C active rod, 120 cm element height (vertical only)"},
+         {range:"30 MHz - 200 MHz",  pos:"1 position centered — EM-6912 biconical, 120 cm above floor"},
+         {range:"200 MHz - 1 GHz",   pos:pos(re102p.sub1GHz)+" — EMCO-3106 DRG horn, 120 cm + 60 cm heights, 50 cm beamwidth"},
+         {range:"1 GHz - 4 GHz",     pos:pos(re102p.b1_4)+" — EMCO-3115 DRG horn, 145 cm + 131 cm + 120 cm heights, 93 cm beamwidth"},
+         {range:"4 GHz - 15 GHz",    pos:pos(re102p.b4_15)+" per row — EMCO-3115 DRG horn, 145 cm + 131 cm + 120 cm heights, 52 cm beamwidth"},
+         {range:"15 GHz - 18 GHz",   pos:pos(re102p.b15_18)+" per row — EMCO-3115 DRG horn, 145 cm + 131 cm + 120 cm heights, 14 cm beamwidth"},
        ],
-       note:"Tested at width and cables only. Testing required to 10x the highest operating frequency or 1 GHz (whichever is greater), or if not known, to 18 GHz."},
+       note:"Tested at width and cables only (price assumes width only for 461F). Testing required to 10x the highest operating frequency or 1 GHz (whichever is greater), or if not known, to 18 GHz."},
       {key:"RS101", label:"Radiated Susceptibility, Magnetic Field, 30 Hz to 100 kHz",
        desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RS101-1 from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" LxW + "+rs101p.LH+" LxH + "+rs101p.WH+" WxH).",
        note:"Applicability depends on application."},
       {key:"RS103", label:"Radiated Susceptibility, Electric Field, 2 MHz to 18 GHz",
-       desc:"Tested to MIL-STD-461F Table VII for Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m.",
+       desc:"Tested to MIL-STD-461F Table VII for Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m. Below 30 MHz, only vertical polarization required. Above 30 MHz, both vertical and horizontal polarization required.",
        positions:[
-         {range:"2 MHz - 30 MHz",    pos:pos(rs103p.b2_30)},
-         {range:"30 MHz - 200 MHz",  pos:pos(rs103p.b30_200)},
-         {range:"200 MHz - 1 GHz",   pos:pos(rs103p.b200_1G)},
-         {range:"1 GHz - 4 GHz",     pos:pos(rs103p.b1_4)},
-         {range:"4 GHz - 18 GHz",    pos:pos(rs103p.b4_18)},
+         {range:"2 MHz - 30 MHz",    pos:pos(rs103p.b2_30)+" — AT3000 active rod, 138 cm top + 30 cm bottom element heights, 188 cm horizontal coverage"},
+         {range:"30 MHz - 200 MHz",  pos:pos(rs103p.b30_200)+" — EMCO-3109 biconical, 120 cm horizontal, 150 cm vertical (extended elements up to 80 MHz)"},
+         {range:"200 MHz - 1 GHz",   pos:pos(rs103p.b200_1G)+" — EM-6950 log periodic, 120 cm + 88 cm heights, 89.5 cm beamwidth"},
+         {range:"1 GHz - 4 GHz",     pos:pos(rs103p.b1_4)+" — EMCO-3115 DRG horn, 120 cm + 60 cm heights, 93 cm beamwidth"},
+         {range:"4 GHz - 15 GHz",    pos:pos(rs103p.b4_15)+" per row — EMCO-3115 DRG horn, 104 cm + 37 cm heights, 52 cm beamwidth"},
+         {range:"15 GHz - 18 GHz",   pos:pos(rs103p.b15_18)+" per row — Narda 639 SGH, 113 cm + 70 cm + 30 cm heights, 52 cm beamwidth"},
        ],
        note:null},
     ];
@@ -7811,21 +7846,22 @@ const STANDARD_TERMS = [
     const dispL = activeEmi.dimL||ti.dimL||'0';
     const dispW = activeEmi.dimW||ti.dimW||'0';
     const dispH = activeEmi.dimH||ti.dimH||'0';
-    const emiCalc = calcEmiShifts({
+    const emiCalcG = calcEmiShifts({
       dimL:dispL, dimW:dispW, dimH:dispH,
       cables:activeEmi.cables||'0',
-      phases:activeEmi.phases||ti.phase||'3'
+      phases:activeEmi.phases||ti.phase||'3',
+      revs:{'Rev G':true},
     });
-    const c114 = emiCalcData.CS114;
-    const c116 = emiCalcData.CS116;
-    const re102p = emiCalcData.RE102.pos;
-    const rs101p = emiCalcData.RS101.pos;
-    const rs103p = emiCalcData.RS103.pos;
+    const c114 = emiCalcG.CS114;
+    const c116 = emiCalcG.CS116;
+    const re102p = emiCalcG.RE102.pos;
+    const rs101p = emiCalcG.RS101.pos;
+    const rs103p = emiCalcG.RS103.pos;
     const pos=(n)=>n+' position'+(n!==1?'s':'');
 
     // CS115: same cable structure as CS114 but fewer power tests (bulk + high side only = pwrCables)
-    const cs115 = emiCalc.CS115;
-    const c109  = emiCalc.CS109;
+    const cs115 = emiCalcG.CS115;
+    const c109  = emiCalcG.CS109;
 
     // Full 461G test definitions
     const EMI_461G = [
@@ -7854,26 +7890,28 @@ const STANDARD_TERMS = [
        desc:"Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461G Figure RE101-2 from 30 Hz to 100 kHz.",
        note:null},
       {key:"RE102", label:"Radiated Emissions, Electric Field, 10 kHz to 18 GHz",
-       desc:"Tested to MIL-STD-461G Figure RE102-1 for Metallic Ships below deck applications.",
+       desc:"Tested to MIL-STD-461G Figure RE102-1 for Metallic Ships below deck applications. Below 30 MHz, only vertical polarization required. Above 30 MHz, both vertical and horizontal polarization required.",
        positions:[
-         {range:"10 kHz - 30 MHz",   pos:pos(1)},
-         {range:"30 MHz - 200 MHz",  pos:pos(1)},
-         {range:"200 MHz - 1 GHz",   pos:pos(re102p.b1_4)},
-         {range:"1 GHz - 15 GHz",    pos:pos(re102p.b4_15)},
-         {range:"15 GHz - 18 GHz",   pos:pos(re102p.b15_18)},
+         {range:"10 kHz - 30 MHz",   pos:"1 position centered — ETS-3301C active rod, 120 cm element height (vertical only)"},
+         {range:"30 MHz - 200 MHz",  pos:"1 position centered — EM-6912 biconical, 120 cm above floor"},
+         {range:"200 MHz - 1 GHz",   pos:pos(re102p.sub1GHz)+" — EMCO-3106 DRG horn, 120 cm + 60 cm heights, 50 cm beamwidth (test horizontal and vertical)"},
+         {range:"1 GHz - 4 GHz",     pos:pos(re102p.b1_4)+" — EMCO-3115 DRG horn, 145 cm + 131 cm + 120 cm heights, 93 cm beamwidth (test horizontal and vertical)"},
+         {range:"4 GHz - 15 GHz",    pos:pos(re102p.b4_15)+" per row — EMCO-3115 DRG horn, 145 cm + 131 cm + 120 cm heights, 52 cm beamwidth (test horizontal and vertical)"},
+         {range:"15 GHz - 18 GHz",   pos:pos(re102p.b15_18)+" per row — EMCO-3115 DRG horn, 145 cm + 131 cm + 120 cm heights, 14 cm beamwidth (test horizontal and vertical)"},
        ],
-       note:"Tested at width and cables only. Testing required to 10x the highest operating frequency or 1 GHz (whichever is greater), or if not known, to 18 GHz."},
+       note:"For 461G: tested in both horizontal and vertical polarizations. Testing required to 10x the highest operating frequency or 1 GHz (whichever is greater), or if not known, to 18 GHz."},
       {key:"RS101", label:"Radiated Susceptibility, Magnetic Field, 30 Hz to 100 kHz",
        desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461G Figure RS101-1 from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" LxW + "+rs101p.LH+" LxH + "+rs101p.WH+" WxH).",
        note:"Applicability depends on application. Test not applicable to equipment with an operating sensitivity worse than 1 uV or operating frequency >100 kHz."},
       {key:"RS103", label:"Radiated Susceptibility, Electric Field, 2 MHz to 18 GHz",
-       desc:"Tested to MIL-STD-461G Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m.",
+       desc:"Tested to MIL-STD-461G Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m. Below 30 MHz, only vertical polarization required. Above 30 MHz, both vertical and horizontal polarization required.",
        positions:[
-         {range:"2 MHz - 30 MHz",    pos:pos(rs103p.b2_30)},
-         {range:"30 MHz - 200 MHz",  pos:pos(rs103p.b30_200)},
-         {range:"200 MHz - 1 GHz",   pos:pos(rs103p.b200_1G)},
-         {range:"1 GHz - 15 GHz",    pos:pos(rs103p.b1_4)},
-         {range:"15 GHz - 18 GHz",   pos:pos(rs103p.b4_18)},
+         {range:"2 MHz - 30 MHz",    pos:pos(rs103p.b2_30)+" — AT3000 active rod, 138 cm top + 30 cm bottom element heights, 188 cm horizontal coverage"},
+         {range:"30 MHz - 200 MHz",  pos:pos(rs103p.b30_200)+" — EMCO-3109 biconical, 120 cm horizontal, 150 cm vertical (extended elements up to 80 MHz)"},
+         {range:"200 MHz - 1 GHz",   pos:pos(rs103p.b200_1G)+" — EM-6950 log periodic, 120 cm + 88 cm heights, 89.5 cm beamwidth"},
+         {range:"1 GHz - 4 GHz",     pos:pos(rs103p.b1_4)+" — EMCO-3115 DRG horn, 120 cm + 60 cm heights, 93 cm beamwidth"},
+         {range:"4 GHz - 15 GHz",    pos:pos(rs103p.b4_15)+" per row — EMCO-3115 DRG horn, 104 cm + 37 cm heights, 52 cm beamwidth"},
+         {range:"15 GHz - 18 GHz",   pos:pos(rs103p.b15_18)+" per row — Narda 639 SGH, 113 cm + 70 cm + 30 cm heights, 52 cm beamwidth"},
        ],
        note:null},
     ];
