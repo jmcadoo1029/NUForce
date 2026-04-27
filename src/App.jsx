@@ -4736,10 +4736,12 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     {months.map((m,i)=>{
                       const cx=xCenter(i), cy=lineY(m.total);
                       const label=m.total>=1000?"$"+(m.total/1000).toFixed(1)+"k":"$"+Math.round(m.total);
+                      // White label on current month bar (red on blue is hard to read)
+                      const labelFill=m.isCurrent?"#fff":"#c0392b";
                       return <g key={m.label}>
                         <circle cx={cx} cy={cy} r="3" fill="#c0392b" stroke="#fff" strokeWidth="1.5"/>
                         <text x={cx} y={cy+14} textAnchor="middle" fontSize="9"
-                          fill="#c0392b" fontWeight="600">
+                          fill={labelFill} fontWeight="600">
                           {label}
                         </text>
                       </g>;
