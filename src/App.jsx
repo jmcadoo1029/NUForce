@@ -846,7 +846,7 @@ function EmiForm({s,set,ti,setup}){
   // Use instance value if set, else fall back to ti / setup
   const dispL=s.dimL||autoL; const dispW=s.dimW||autoW; const dispH=s.dimH||autoH;
   const dispWt=s.weight||autoWt; const dispPhases=s.phases||autoPhases;
-  const dispCables=s.cables||autoCables;
+  const dispCables=(s.cables&&s.cables!=="0")?s.cables:autoCables;
   // Rev-aware test list: F has CS106+RS105, G has CS109+CS115
   const isRevF=(s.revs||{})['Rev F']||false;
   const isRevG=(s.revs||{})['Rev G']||false;
@@ -1023,7 +1023,7 @@ function EmiForm({s,set,ti,setup}){
       <Row label="W (in)" mb={0}><Inp value={dispW} onChange={v=>set({...s,dimW:v})} width={60}/>{s.dimW&&<span style={{fontSize:9,color:C.dim,marginLeft:2}}>▲</span>}</Row>
       <Row label="H (in)" mb={0}><Inp value={dispH} onChange={v=>set({...s,dimH:v})} width={60}/>{s.dimH&&<span style={{fontSize:9,color:C.dim,marginLeft:2}}>▲</span>}</Row>
       <Row label="Weight (lbs)" mb={0}><Inp value={dispWt} onChange={v=>set({...s,weight:v})} width={60}/></Row>
-      <Row label="Cables" mb={0}><Inp value={dispCables||"0"} onChange={v=>set({...s,cables:v})} width={60}/>{autoCables&&!s.cables&&<span style={{fontSize:9,color:C.dim,marginLeft:2}}>auto</span>}</Row>
+      <Row label="Cables" mb={0}><Inp value={dispCables||"0"} onChange={v=>set({...s,cables:v})} width={60}/>{autoCables&&(!s.cables||s.cables==="0")&&<span style={{fontSize:9,color:C.dim,marginLeft:2}}>auto</span>}</Row>
       <Row label="Phases" mb={0}><Inp value={dispPhases||"3"} onChange={v=>set({...s,phases:v})} width={60}/>{autoPhases&&!s.phases&&<span style={{fontSize:9,color:C.dim,marginLeft:2}}>auto</span>}</Row>
     </div>
     <Row label="Shift Rate ($)"><Inp value={s.rate} onChange={v=>set({...s,rate:v})} width={80}/></Row>
@@ -2325,7 +2325,7 @@ const newVib=()=>({id:Date.now(),on:false,showSetup:true,cat:"LAB Vibration (MIL
 const newShock=()=>({id:Date.now(),on:false,showSetup:true,cat:"Medium Weight",spec:"",grade:"A",class_:"I",type_:"A",location:"Hull",submarine:false,orientation:"Unrestricted",blows:"",fromVib:false,hydroPre:false,hydroPost:false,hydroPrice:"500",pia:0,testing:"4575",stdSetup:"1500",addlCosts:"0",proc:false,report:false,fixtureFab:{on:false,hours:"0",techRate:"175"}});
 const newNoise=()=>({id:Date.now(),on:false,showSetup:true,spec:"",level:"<=140dB",oaspl:"",chamber:"Speakerbox",durVal:"30",durUnit:"minutes",compBudget:"0",pia:0,testing:"3950",stdSetup:"1000",addlCosts:"0",proc:false,report:false});
 const newEnv=()=>({id:Date.now(),on:false,showSetup:true,spec:"",items:{},thDur:"0 to 1 Day",thType:"Temperature & Humidity",proc:false,report:false});
-const newEmi=()=>({id:Date.now(),on:false,spec:"",rate:"1600",addl:"0",setupShifts:"3.0",tdShifts:"1.0",dimL:"",dimW:"",dimH:"",weight:"",cables:"0",rs103amp:"",plats:{},locs:{},revs:{},pia:0,tests:{},proc:false,report:false});
+const newEmi=()=>({id:Date.now(),on:false,spec:"",rate:"1600",addl:"0",setupShifts:"3.0",tdShifts:"1.0",dimL:"",dimW:"",dimH:"",weight:"",cables:"",rs103amp:"",plats:{},locs:{},revs:{},pia:0,tests:{},proc:false,report:false});
 const newPq=()=>({id:Date.now(),on:false,rate:"1450",setupShifts:"1.5",tdShifts:"1.0",rows:{},pia:0,cw:false,proc:false,report:false});
 const newDcm=()=>({id:Date.now(),on:false,spec:"",rate:"1600",setupShifts:"1.5",testShifts:"3.0",pia:0,proc:false,report:false});
 const newHfv=()=>({id:Date.now(),on:false,showSetup:true,spec:"",dur:"30",pia:0,testing:"1225",stdSetup:"500",addlCosts:"0",proc:false,report:false});
@@ -4944,7 +4944,7 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
   // EMI state
   const [emiCalc,setEmiCalc]=useState({
     spec:"MIL-STD-461",revs:{},plats:{},locs:{},tests:{},
-    dimL:"",dimW:"",dimH:"",cables:"1",phases:"3",
+    dimL:"",dimW:"",dimH:"",cables:"",phases:"3",
     rate:String(EMI_SR),setupShifts:"3",tdShifts:"1",rs103amp:"5000",addl:"0",pia:1,
   });
   // PQ state
