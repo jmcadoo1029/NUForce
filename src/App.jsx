@@ -729,7 +729,7 @@ function calcEmiShifts(s){
   const L=sf(s.dimL)*2.54, W=sf(s.dimW)*2.54, H=sf(s.dimH)*2.54;
   const cables=Math.max(1,sf(s.cables,1));
   const phases=Math.max(1,sf(s.phases||3,3));
-  const pwrCables=phases===1?3:4;
+  const pwrCables=phases===1?2:4; // 1ph: hot+neutral=2; 3ph: 3phases+neutral=4
   const ru=x=>x>0?Math.ceil(x):0;
   const rp=x=>Math.max(1,Math.ceil(x)); // round up, minimum 1 position
   const res={};
@@ -1123,11 +1123,20 @@ function EmiForm({s,set,ti}){
         )}
       </div>;
     })}
-    {selShifts>0&&(
-      <div style={{fontSize:11,color:C.redDim,fontWeight:600,marginTop:6,padding:"6px 8px",background:"#fdf3f2",borderRadius:6}}>
-        {"Testing: "}{selShifts}{" shifts x $"}{rate.toLocaleString()}{" = $"}{r25(Math.round(selShifts*rate)).toLocaleString()}
-      </div>
-    )}
+    {selShifts>0&&(()=>{
+      const selTests=TESTS.filter(t=>s.tests?.[t]);
+      const hasRS103=selTests.includes("RS103");
+      const rs103Amt=hasRS103?sf(s.rs103amp,5000):0;
+      const shiftTotal=r25(Math.round(selShifts*rate));
+      const grandTotal=r25(shiftTotal+rs103Amt);
+      return(
+        <div style={{fontSize:11,color:C.redDim,fontWeight:600,marginTop:6,padding:"6px 8px",background:"#fdf3f2",borderRadius:6}}>
+          <div>{"Testing: "}{selShifts}{" shifts x $"}{rate.toLocaleString()}{" = $"}{shiftTotal.toLocaleString()}</div>
+          {rs103Amt>0&&<div style={{marginTop:3}}>RS103 amplifier budget: +${rs103Amt.toLocaleString()}</div>}
+          {rs103Amt>0&&<div style={{marginTop:3,borderTop:"1px solid #f5c6c6",paddingTop:3}}>Suggested Testing Total: ${grandTotal.toLocaleString()}</div>}
+        </div>
+      );
+    })()}
     <ProcReport s={s} set={set} procPrice={3425} reportPrice={2850} sectionCode="21"/>
   </div>;
 }
@@ -4916,9 +4925,12 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
 
   // EMI shifts computed from calculator state
   const emiShifts=useMemo(()=>calcEmiShifts({
-    dimL:emiCalc.dimL,dimW:emiCalc.dimW,dimH:emiCalc.dimH,
-    cables:emiCalc.cables,phases:emiCalc.phases,
-  }),[emiCalc.dimL,emiCalc.dimW,emiCalc.dimH,emiCalc.cables,emiCalc.phases]);
+    dimL:emiCalc.dimL||ti?.dimL||"0",
+    dimW:emiCalc.dimW||ti?.dimW||"0",
+    dimH:emiCalc.dimH||ti?.dimH||"0",
+    cables:emiCalc.cables||"1",
+    phases:emiCalc.phases||ti?.phase||"3",
+  }),[emiCalc.dimL,emiCalc.dimW,emiCalc.dimH,emiCalc.cables,emiCalc.phases,ti?.dimL,ti?.dimW,ti?.dimH,ti?.phase]);
 
   const emiRate=sf(emiCalc.rate,EMI_SR);
   const emiSelTests=Object.entries(emiCalc.tests||{}).filter(([,v])=>v).map(([k])=>k);
@@ -7571,7 +7583,7 @@ const STANDARD_TERMS = [
     const re102p = emiCalcData.RE102.pos;
     const rs101p = emiCalcData.RS101.pos;
     const rs103p = emiCalcData.RS103.pos;
-    const pwrCables = sf(activeEmi.phases||ti.phase||'3',3)===1?3:4;
+    const pwrCables = sf(activeEmi.phases||ti.phase||'3',3)===1?2:4; // 1ph=2, 3ph=4
     const pos=(n)=>n+' position'+(n!==1?'s':'');
 
     // Full 461F test definitions — only show tests selected by user
