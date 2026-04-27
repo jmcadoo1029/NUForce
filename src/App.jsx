@@ -4988,6 +4988,26 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
   const emiTestShifts=emiSelTests.reduce((a,t)=>a+(emiShifts[t]?.rounded||0),0);
   const rs103Cost=emiSelTests.includes("RS103")?sf(emiCalc.rs103amp,5000):0;
   const emiSetupCost=r25(sf(emiCalc.setupShifts,3)*emiRate*sf(emiCalc.pia,1));
+  // Suggested EMI setup based on cables + weight
+  // Base: 1 shift; +1hr per cable; tier bumps at 6/10/15/20 cables; weight multipliers ≥800lb / ≥1500lb
+  const suggSetup=useMemo(()=>{
+    const cablesEff=Math.max(0,sf(emiCalc.cables,0)>0?sf(emiCalc.cables,0):sf(setup?.cables,0));
+    const wt=sf(emiCalc.weight||ti?.wt,0);
+    const baseHrs=8 + cablesEff*1; // 1 shift + 1 hr per cable
+    let tierBumpShifts=0;
+    if(cablesEff>=6)  tierBumpShifts+=1;
+    if(cablesEff>=10) tierBumpShifts+=1;
+    if(cablesEff>=15) tierBumpShifts+=1;
+    if(cablesEff>=20) tierBumpShifts+=2;
+    let totalHrs=baseHrs + tierBumpShifts*8;
+    let wtMult=1.0, wtNote='';
+    if(wt>=1500){ wtMult=1.20; wtNote=' incl. +20% over 1500 lb'; }
+    else if(wt>=800){ wtMult=1.10; wtNote=' incl. +10% over 800 lb'; }
+    totalHrs *= wtMult;
+    const shifts=Math.ceil(totalHrs/8);
+    const cost=r25(shifts*emiRate*sf(emiCalc.pia,1));
+    return {shifts, cost, cablesEff, wt, wtNote, totalHrs};
+  },[emiCalc.cables,setup?.cables,emiCalc.weight,ti?.wt,emiRate,emiCalc.pia]);
   const emiTestCost=r25((emiTestShifts*emiRate+rs103Cost)*sf(emiCalc.pia,1));
   const emiTdCost=r25(sf(emiCalc.tdShifts,1)*emiRate);
 
@@ -5476,6 +5496,13 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
                 </div>
               )}
               <EmiForm s={emiCalc} set={setEmiCalc} ti={ti} setup={setup}/>
+              <div style={{marginTop:6,marginBottom:6,padding:"6px 10px",borderRadius:6,
+                background:"#fff7e6",border:"1px solid #f0c674",fontSize:11,color:"#7a5410"}}>
+                <strong>Suggested Setup:</strong> {suggSetup.shifts} shift{suggSetup.shifts!==1?'s':''} = {money(suggSetup.cost)}
+                <span style={{color:"#9a7530",marginLeft:6,fontSize:10}}>
+                  ({suggSetup.cablesEff} cables, {suggSetup.wt||0} lb{suggSetup.wtNote})
+                </span>
+              </div>
               <CalcResult setupAmt={emiSetupCost} testAmt={emiTestCost}/>
               <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>Teardown: {money(emiTdCost)} &nbsp;·&nbsp; Total: {money(emiSetupCost+emiTestCost+emiTdCost)}</div>
               <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
