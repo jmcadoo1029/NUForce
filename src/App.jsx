@@ -4963,7 +4963,7 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
     dimL:emiCalc.dimL||ti?.dimL||"0",
     dimW:emiCalc.dimW||ti?.dimW||"0",
     dimH:emiCalc.dimH||ti?.dimH||"0",
-    cables:emiCalc.cables||"1",
+    cables:emiCalc.cables||"0",
     setupCables:setup?.cables||"0",
     phases:emiCalc.phases||ti?.phase||"3",
     revs:emiCalc.revs,
