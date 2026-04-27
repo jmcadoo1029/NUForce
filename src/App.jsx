@@ -3212,6 +3212,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     return()=>document.removeEventListener("mousedown",h);
   },[]);
   const [loading, setLoading] = useState(true);
+  const [privacyMode, setPrivacyMode] = useState(false);
   const [showRecentApproved, setShowRecentApproved] = useState(false);
   const [recentApproved, setRecentApproved] = useState(null);
   const [recentApprovedLoading, setRecentApprovedLoading] = useState(false);
@@ -3679,6 +3680,12 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
             </div>
           </div>
           <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+            {/* Privacy Mode toggle */}
+            <button onClick={()=>setPrivacyMode(v=>!v)}
+              style={{background:privacyMode?"#1a2332":"#fff",border:"1px solid "+(privacyMode?"#1a2332":"#d0d7de"),borderRadius:8,padding:"8px 18px",
+                fontWeight:600,fontSize:12,cursor:"pointer",color:privacyMode?"#fff":"#1a2332",letterSpacing:.2}}>
+              Privacy Mode
+            </button>
             {/* Account lookup */}
             <div ref={acctRef} style={{position:"relative"}}>
               <div style={{display:"flex",gap:0,alignItems:"center",background:"#fff",
@@ -3990,6 +3997,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
           />
         )}
 
+        <div style={{filter:privacyMode?"blur(9px)":"none",transition:"filter 0.2s ease",pointerEvents:privacyMode?"none":"auto",userSelect:privacyMode?"none":"auto"}}>
         {loading?(
           <div style={{textAlign:"center",padding:80,color:"#9aa5b1",fontSize:14}}>Loading…</div>
         ):(
@@ -4887,6 +4895,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
 
           </div>
         )}
+        </div>{/* end privacy-mode wrapper */}
       </div>
     </div>
   );
