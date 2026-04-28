@@ -5276,6 +5276,12 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
             if(compMarkup>0) mathLines.push("Compressor markup ("+compCost.toLocaleString()+" × 1.25): +$"+compMarkup.toLocaleString());
             return(
               <div>
+                <CalcRow2 label="Spec">
+                  <CalcInp value={noise.spec||""} onChange={v=>setNoise(s=>({...s,spec:v}))} width={200}/>
+                </CalcRow2>
+                {!(noise.spec||"").trim()&&(
+                  <div style={{fontSize:10,color:"#c0392b",marginTop:-4,marginBottom:6,marginLeft:120}}>⚠ Spec required for spec suggestion text</div>
+                )}
                 <CalcRow2 label="Chamber">
                   <CalcSel value={noise.chamber} onChange={v=>setNoise(s=>({...s,chamber:v}))}
                     options={Object.keys(NOISE_CHAMBERS)} width={200}/>
@@ -5290,6 +5296,12 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
                   <CalcSel value={lvl} onChange={v=>setNoise(s=>({...s,level:v}))}
                     options={["<=140dB","145dB","150dB","155dB","160dB","165dB","170dB"]} width={120}/>
                 </CalcRow2>
+                <CalcRow2 label="Test OASPL (dB)">
+                  <CalcInp value={noise.testOaspl||""} onChange={v=>setNoise(s=>({...s,testOaspl:v}))} width={70}/>
+                </CalcRow2>
+                {!(noise.testOaspl||"").toString().trim()&&(
+                  <div style={{fontSize:10,color:"#c0392b",marginTop:-4,marginBottom:6,marginLeft:120}}>⚠ Test OASPL required for spec suggestion text</div>
+                )}
                 <CalcRow2 label="Duration">
                   <CalcInp value={noise.durVal||"30"} onChange={v=>setNoise(s=>({...s,durVal:v}))} width={55}/>
                   <CalcSel value={noise.durUnit||"minutes"} onChange={v=>setNoise(s=>({...s,durUnit:v}))}
@@ -5315,11 +5327,16 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
                   </div>
                 )}
                 <SpecSuggestion text={(()=>{
-                  const sc=s=>s?" in accordance with "+s:"";
-                  const oasp=lvl?", "+lvl+" OASPL":"";
+                  const specVal=(noise.spec||"").trim();
+                  const oasplVal=(noise.testOaspl||"").toString().trim();
+                  if(!specVal||!oasplVal)return ""; // hide suggestion until both required fields filled
                   const dur=(noise.durVal&&noise.durUnit)?" for "+noise.durVal+" "+noise.durUnit:"";
-                  return "Noise Susceptibility"+sc(noise.spec||"")+oasp+dur+".";
+                  return "Noise Susceptibility testing in accordance with "+specVal+", "+oasplVal+" dB OASPL"+dur+".";
                 })()}/>
+                <SpecSuggestion text={"Frequencies below 100 Hz are to be performed as a best effort. All cabling connecting to the EUT should be a minimum of 20' long."}/>
+                {lvl==="170dB"&&(
+                  <SpecSuggestion text={"OASPL's above 170dB are to be performed as a best effort"}/>
+                )}
               </div>
             );
           })()}
