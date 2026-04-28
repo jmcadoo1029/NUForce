@@ -3213,6 +3213,8 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   },[]);
   const [loading, setLoading] = useState(true);
   const [privacyMode, setPrivacyMode] = useState(false);
+  const [followUpsCollapsed, setFollowUpsCollapsed] = useState(true);
+  const [quotesThisMonthCollapsed, setQuotesThisMonthCollapsed] = useState(true);
   const [showRecentApproved, setShowRecentApproved] = useState(false);
   const [recentApproved, setRecentApproved] = useState(null);
   const [recentApprovedLoading, setRecentApprovedLoading] = useState(false);
@@ -4554,23 +4556,27 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
             {isFollowUpUser&&(
               <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
                 border:"1px solid #e8ecf0",overflow:"hidden",marginBottom:20}}>
-                <div style={{padding:"14px 24px",borderBottom:"1px solid #e8ecf0",
-                  display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <div>
-                    <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
-                      ✉️ FOLLOW-UPS DUE
-                    </div>
-                    <div style={{fontSize:11,color:"#9aa5b1",marginTop:2}}>
-                      Quotes sent 30+ days ago with no follow-up
+                <div onClick={()=>setFollowUpsCollapsed(v=>!v)}
+                  style={{padding:"14px 24px",borderBottom:followUpsCollapsed?"none":"1px solid #e8ecf0",
+                  display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:11,color:"#9aa5b1"}}>{followUpsCollapsed?"▶":"▼"}</span>
+                    <div>
+                      <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
+                        ✉️ FOLLOW-UPS DUE {!fuLoading&&"("+followUps.length+")"}
+                      </div>
+                      <div style={{fontSize:11,color:"#9aa5b1",marginTop:2}}>
+                        Quotes sent 30+ days ago with no follow-up
+                      </div>
                     </div>
                   </div>
-                  <button onClick={loadFollowUps}
+                  <button onClick={e=>{e.stopPropagation();loadFollowUps();}}
                     style={{background:"none",border:"1px solid #d0d7de",borderRadius:6,
                       padding:"4px 12px",fontSize:11,cursor:"pointer",color:"#6b7a8d"}}>
                     ↻ Refresh
                   </button>
                 </div>
-                {fuLoading?(
+                {!followUpsCollapsed&&(fuLoading?(
                   <div style={{padding:24,textAlign:"center",color:"#9aa5b1",fontSize:12}}>Loading…</div>
                 ):followUps.length===0?(
                   <div style={{padding:24,textAlign:"center",color:"#9aa5b1",fontSize:12}}>
@@ -4660,7 +4666,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                       );
                     })}
                   </div>
-                )}
+                ))}
               </div>
             )}
 
@@ -4763,11 +4769,14 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
             {/* ── Quotes this month table ── */}
             <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
               border:"1px solid #e8ecf0",overflow:"hidden"}}>
-              <div style={{padding:"16px 24px",borderBottom:"1px solid #e8ecf0",
-                fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
-                ALL QUOTES THIS MONTH
+              <div onClick={()=>setQuotesThisMonthCollapsed(v=>!v)}
+                style={{padding:"16px 24px",borderBottom:quotesThisMonthCollapsed?"none":"1px solid #e8ecf0",
+                fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",
+                display:"flex",alignItems:"center",gap:8,cursor:"pointer",userSelect:"none"}}>
+                <span style={{fontSize:11,color:"#9aa5b1"}}>{quotesThisMonthCollapsed?"▶":"▼"}</span>
+                ALL QUOTES THIS MONTH ({data.created.length})
               </div>
-              {data.created.length===0?(
+              {!quotesThisMonthCollapsed&&(data.created.length===0?(
                 <div style={{padding:32,textAlign:"center",color:"#9aa5b1",fontSize:13}}>No quotes created this month yet</div>
               ):(
                 <>
@@ -4813,7 +4822,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     </div>
                   </div>
                 </>
-              )}
+              ))}
             </div>
             {/* ── Top codes + Top accounts ── */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
