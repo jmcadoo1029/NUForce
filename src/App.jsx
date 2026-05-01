@@ -3303,6 +3303,134 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     setCampaigns(prev => prev.filter(x => x.id !== id));
     if (selectedCampaignId === id) setSelectedCampaignId(null);
   };
+
+  // ── Stage 2: campaign contacts ──
+  const [campaignContacts, setCampaignContacts] = useState([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactsHasPhone, setContactsHasPhone] = useState(true); // optimistic; flips false if column doesn't exist
+  const [contactSearchTerm, setContactSearchTerm] = useState("");
+  const [contactSearchResults, setContactSearchResults] = useState([]);
+  const [contactSearchOpen, setContactSearchOpen] = useState(false);
+  const contactSearchTimer = useRef(null);
+
+  // Build contact select string based on whether phone column exists
+  const contactSelect = () => contactsHasPhone
+    ? "id, first_name, last_name, email, phone, client_id, clients(name)"
+    : "id, first_name, last_name, email, client_id, clients(name)";
+
+  // Load contacts in selected campaign (joined with contact details + client name)
+  const loadCampaignContacts = async (campaignId) => {
+    if (!campaignId) { setCampaignContacts([]); return; }
+    setContactsLoading(true);
+    let q = await supabase
+      .from("campaign_contacts")
+      .select("contact_id, added_at, contacts(" + contactSelect() + ")")
+      .eq("campaign_id", campaignId);
+    // If phone column doesn't exist, the inner query may fail. Detect & retry.
+    if (q.error && contactsHasPhone && /phone/i.test(q.error.message || "")) {
+      setContactsHasPhone(false);
+      q = await supabase
+        .from("campaign_contacts")
+        .select("contact_id, added_at, contacts(id, first_name, last_name, email, client_id, clients(name))")
+        .eq("campaign_id", campaignId);
+    }
+    if (q.error) {
+      console.error("Load campaign contacts error:", q.error);
+      setCampaignContacts([]);
+      setContactsLoading(false);
+      return;
+    }
+    const flat = (q.data || []).map(r => ({
+      contact_id: r.contact_id,
+      added_at: r.added_at,
+      ...r.contacts,
+      company: r.contacts?.clients?.name || "",
+    })).sort((a,b) => (a.last_name||"").localeCompare(b.last_name||""));
+    setCampaignContacts(flat);
+    setContactsLoading(false);
+  };
+
+  // Auto-load contacts when selectedCampaignId changes
+  useEffect(() => {
+    loadCampaignContacts(selectedCampaignId);
+    // Clear add-search state on campaign switch
+    setContactSearchTerm("");
+    setContactSearchResults([]);
+    setContactSearchOpen(false);
+  }, [selectedCampaignId]);
+
+  // Debounced contact search across name+email — excludes already-in-campaign contacts
+  useEffect(() => {
+    clearTimeout(contactSearchTimer.current);
+    if (!contactSearchTerm.trim() || !selectedCampaignId) {
+      setContactSearchResults([]);
+      return;
+    }
+    contactSearchTimer.current = setTimeout(async () => {
+      const term = contactSearchTerm.trim();
+      // Search by first/last name OR email (ilike on each, OR'd via supabase or syntax)
+      // Use the .or filter for multi-column ilike
+      let q = await supabase
+        .from("contacts")
+        .select(contactSelect())
+        .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%`)
+        .order("last_name")
+        .limit(20);
+      if (q.error && contactsHasPhone && /phone/i.test(q.error.message || "")) {
+        setContactsHasPhone(false);
+        q = await supabase
+          .from("contacts")
+          .select("id, first_name, last_name, email, client_id, clients(name)")
+          .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%`)
+          .order("last_name")
+          .limit(20);
+      }
+      if (q.error) {
+        console.error("Contact search error:", q.error);
+        setContactSearchResults([]);
+        return;
+      }
+      // Filter out contacts already in the campaign
+      const existing = new Set(campaignContacts.map(c => c.id));
+      const filtered = (q.data || []).filter(c => !existing.has(c.id));
+      setContactSearchResults(filtered);
+    }, 250);
+    return () => clearTimeout(contactSearchTimer.current);
+  }, [contactSearchTerm, selectedCampaignId, campaignContacts, contactsHasPhone]);
+
+  // Add a contact to selected campaign
+  const addContactToCampaign = async (contact) => {
+    if (!selectedCampaignId) return;
+    const { error } = await supabase
+      .from("campaign_contacts")
+      .insert([{ campaign_id: selectedCampaignId, contact_id: contact.id }]);
+    if (error) {
+      // Likely duplicate key — silently re-load
+      console.error("Add contact error:", error);
+    }
+    setContactSearchTerm("");
+    setContactSearchResults([]);
+    setContactSearchOpen(false);
+    loadCampaignContacts(selectedCampaignId);
+  };
+
+  // Remove a contact from the selected campaign
+  const removeContactFromCampaign = async (contactId) => {
+    if (!selectedCampaignId) return;
+    const c = campaignContacts.find(x => x.id === contactId);
+    const name = c ? ((c.first_name||"") + " " + (c.last_name||"")).trim() || c.email || "this contact" : "this contact";
+    if (!confirm(`Remove ${name} from this campaign? (The contact record itself is not deleted.)`)) return;
+    const { error } = await supabase
+      .from("campaign_contacts")
+      .delete()
+      .eq("campaign_id", selectedCampaignId)
+      .eq("contact_id", contactId);
+    if (error) {
+      alert("Could not remove: " + error.message);
+      return;
+    }
+    setCampaignContacts(prev => prev.filter(x => x.id !== contactId));
+  };
   const [followUpsCollapsed, setFollowUpsCollapsed] = useState(true);
   const [quotesThisMonthCollapsed, setQuotesThisMonthCollapsed] = useState(true);
   const [showRecentApproved, setShowRecentApproved] = useState(false);
@@ -5093,6 +5221,9 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                           <div>
                             <div style={{fontSize:18,fontWeight:700,color:"#1a2332",marginBottom:4}}>{c.name}</div>
                             {c.description&&<div style={{fontSize:11,color:"#6b7a8d"}}>{c.description}</div>}
+                            <div style={{fontSize:11,color:"#9aa5b1",marginTop:4}}>
+                              {contactsLoading?"Loading…":`${campaignContacts.length} contact${campaignContacts.length!==1?'s':''}`}
+                            </div>
                           </div>
                           <button onClick={()=>deleteCampaign(c.id)}
                             style={{background:"#fff",color:"#c0392b",border:"1px solid #f5b7b1",borderRadius:6,
@@ -5100,10 +5231,85 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                             Delete Campaign
                           </button>
                         </div>
-                        <div style={{padding:"20px 0",color:"#9aa5b1",fontSize:12,fontStyle:"italic",textAlign:"center",
-                          border:"1px dashed #e0e4ea",borderRadius:8}}>
-                          Contact management coming in next stage.
+
+                        {/* Add contact autocomplete */}
+                        <div style={{position:"relative",marginBottom:14}}>
+                          <input value={contactSearchTerm}
+                            onChange={e=>{setContactSearchTerm(e.target.value);setContactSearchOpen(true);}}
+                            onFocus={()=>setContactSearchOpen(true)}
+                            placeholder="+ Add contact — type name or email"
+                            style={{width:"100%",fontSize:12,padding:"8px 12px",borderRadius:6,
+                              border:"1px solid #d0d7de",boxSizing:"border-box"}}/>
+                          {contactSearchOpen&&contactSearchTerm.trim()&&(
+                            <div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:2,
+                              background:"#fff",border:"1px solid #d0d7de",borderRadius:6,
+                              boxShadow:"0 4px 12px rgba(0,0,0,0.1)",maxHeight:280,overflow:"auto",zIndex:10}}>
+                              {contactSearchResults.length===0?(
+                                <div style={{padding:"10px 12px",fontSize:11,color:"#9aa5b1",fontStyle:"italic"}}>
+                                  No matching contacts found.
+                                </div>
+                              ):(
+                                contactSearchResults.map(ct=>{
+                                  const name=((ct.first_name||"")+" "+(ct.last_name||"")).trim();
+                                  const company=ct.clients?.name||"";
+                                  return(
+                                    <div key={ct.id} onClick={()=>addContactToCampaign(ct)}
+                                      style={{padding:"7px 12px",borderBottom:"1px solid #f0f2f5",cursor:"pointer"}}
+                                      onMouseEnter={e=>e.currentTarget.style.background="#f8f9fb"}
+                                      onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                                      <div style={{fontSize:12,fontWeight:600,color:"#1a2332"}}>{name||"(no name)"}</div>
+                                      <div style={{fontSize:10,color:"#6b7a8d",marginTop:1}}>
+                                        {company&&<span>{company}</span>}
+                                        {company&&ct.email&&<span> · </span>}
+                                        {ct.email&&<span>{ct.email}</span>}
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          )}
                         </div>
+
+                        {/* Contacts table */}
+                        {contactsLoading?(
+                          <div style={{padding:"20px 0",color:"#9aa5b1",fontSize:12,textAlign:"center"}}>Loading contacts…</div>
+                        ):campaignContacts.length===0?(
+                          <div style={{padding:"24px 0",color:"#9aa5b1",fontSize:12,fontStyle:"italic",textAlign:"center",
+                            border:"1px dashed #e0e4ea",borderRadius:8}}>
+                            No contacts in this campaign yet. Use the search above to add some.
+                          </div>
+                        ):(
+                          <div style={{border:"1px solid #e8ecf0",borderRadius:8,overflow:"hidden"}}>
+                            <div style={{display:"grid",gridTemplateColumns:"1.5fr 1.5fr 1fr 1.5fr 60px",
+                              padding:"8px 12px",background:"#f8f9fb",fontSize:9,fontWeight:700,
+                              letterSpacing:.8,color:"#9aa5b1"}}>
+                              <div>NAME</div>
+                              <div>COMPANY</div>
+                              <div>PHONE</div>
+                              <div>EMAIL</div>
+                              <div></div>
+                            </div>
+                            {campaignContacts.map(ct=>{
+                              const name=((ct.first_name||"")+" "+(ct.last_name||"")).trim()||"(no name)";
+                              return(
+                                <div key={ct.id} style={{display:"grid",gridTemplateColumns:"1.5fr 1.5fr 1fr 1.5fr 60px",
+                                  padding:"8px 12px",borderTop:"1px solid #f0f2f5",fontSize:11,alignItems:"center"}}>
+                                  <div style={{color:"#1a2332",fontWeight:500}}>{name}</div>
+                                  <div style={{color:"#6b7a8d"}}>{ct.company||"—"}</div>
+                                  <div style={{color:"#6b7a8d",fontFamily:"monospace",fontSize:10}}>{ct.phone||"—"}</div>
+                                  <div style={{color:"#6b7a8d",fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ct.email||"—"}</div>
+                                  <div style={{textAlign:"right"}}>
+                                    <button onClick={()=>removeContactFromCampaign(ct.id)}
+                                      title="Remove from campaign"
+                                      style={{background:"none",border:"none",color:"#c0392b",cursor:"pointer",
+                                        fontSize:14,padding:"2px 6px"}}>×</button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
