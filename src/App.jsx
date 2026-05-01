@@ -9435,7 +9435,10 @@ const STANDARD_TERMS = [
               </button>
             )}
             {qi.stage==="Closed Won"&&wonApproval.status==="none"&&(
-              <button onClick={handleSubmitWonApproval}
+              <button onClick={()=>{
+                if(window.confirm("Submit this quote for Closed Won approval?\n\nThis will lock the quote and send it to the approval queue."))
+                  handleSubmitWonApproval();
+              }}
                 style={{background:"#1e8449",border:"none",borderRadius:6,padding:"4px 12px",
                   color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",letterSpacing:.5}}>
                 🏆 SUBMIT WON
