@@ -3258,15 +3258,16 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     const { data, error } = await supabase
       .from("campaigns")
       .select("id, name, description, created_at")
-      .order("name");
+      .order("created_at", { ascending: false });
     if (error) console.error("Load campaigns error:", error);
     setCampaigns(data || []);
     setCampaignsLoading(false);
   };
 
-  // Open modal & load
+  // Open modal & load — always starts unselected
   const openCampaignsModal = () => {
     setCampaignsOpen(true);
+    setSelectedCampaignId(null);
     loadCampaigns();
   };
 
@@ -3283,7 +3284,8 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       alert("Could not create campaign: " + error.message);
       return;
     }
-    setCampaigns(prev => [...prev, data].sort((a,b)=>a.name.localeCompare(b.name)));
+    // Newest at top
+    setCampaigns(prev => [data, ...prev]);
     setNewCampaignName("");
     setNewCampaignDesc("");
     setShowNewCampaignForm(false);
