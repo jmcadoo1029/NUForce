@@ -5214,7 +5214,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                             background:selectedCampaignId===c.id?"#eaf2ff":"#fff",
                             borderLeft:"3px solid "+(selectedCampaignId===c.id?"#1a5276":"transparent")}}>
                           <div style={{fontSize:12,fontWeight:600,color:"#1a2332"}}>{c.name}</div>
-                          {c.description&&<div style={{fontSize:10,color:"#9aa5b1",marginTop:2}}>{c.description}</div>}
                         </div>
                       ))
                     )}
@@ -5234,7 +5233,11 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                         <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14}}>
                           <div>
                             <div style={{fontSize:18,fontWeight:700,color:"#1a2332",marginBottom:4}}>{c.name}</div>
-                            {c.description&&<div style={{fontSize:11,color:"#6b7a8d"}}>{c.description}</div>}
+                            {c.created_at&&(
+                              <div style={{fontSize:11,color:"#6b7a8d"}}>
+                                Created {new Date(c.created_at).toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"})}
+                              </div>
+                            )}
                             <div style={{fontSize:11,color:"#9aa5b1",marginTop:4}}>
                               {contactsLoading?"Loading…":`${campaignContacts.length} contact${campaignContacts.length!==1?'s':''}`}
                             </div>
