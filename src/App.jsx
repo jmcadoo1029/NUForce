@@ -5146,7 +5146,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
               zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
             <div onClick={e=>e.stopPropagation()}
               style={{background:"#fff",borderRadius:12,boxShadow:"0 8px 40px rgba(0,0,0,0.2)",
-                width:"100%",maxWidth:1300,maxHeight:"calc(100vh - 48px)",display:"flex",flexDirection:"column",
+                width:"100%",maxWidth:1500,height:"calc(100vh - 48px)",display:"flex",flexDirection:"column",
                 overflow:"hidden"}}>
               {/* Modal header */}
               <div style={{padding:"16px 24px",borderBottom:"1px solid #e8ecf0",
@@ -5255,7 +5255,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                           {contactSearchOpen&&contactSearchTerm.trim()&&(
                             <div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:2,
                               background:"#fff",border:"1px solid #d0d7de",borderRadius:6,
-                              boxShadow:"0 4px 12px rgba(0,0,0,0.1)",maxHeight:280,overflow:"auto",zIndex:10}}>
+                              boxShadow:"0 4px 12px rgba(0,0,0,0.1)",maxHeight:400,overflow:"auto",zIndex:10}}>
                               {contactSearchResults.length===0?(
                                 <div style={{padding:"10px 12px",fontSize:11,color:"#9aa5b1",fontStyle:"italic"}}>
                                   No matching contacts found.
