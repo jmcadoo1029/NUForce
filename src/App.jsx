@@ -1168,6 +1168,24 @@ function EmiForm({s,set,ti,setup}){
                 style={{...inp,width:60,fontSize:10,padding:"2px 5px"}}/>
             </div>
           )}
+          {/* CE101/CE102 Power Source Rental — only when 440V AC, attached to CE101 if both selected */}
+          {(()=>{
+            const is440AC=sf(ti?.volt,0)>=440&&(ti?.pwrType||"AC")==="AC";
+            if(!is440AC||!on)return null;
+            const ce101On=s.tests?.["CE101"]||false;
+            const ce102On=s.tests?.["CE102"]||false;
+            // Show on CE101 if it's selected; else show on CE102 if only it's selected
+            const showHere=(t==="CE101"&&ce101On)||(t==="CE102"&&ce102On&&!ce101On);
+            if(!showHere)return null;
+            return(
+              <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:4}}>
+                <span style={{fontSize:10,color:C.warn,flexShrink:0}}>Pwr Src $</span>
+                <input type="text" value={s.ce101pwrSrc||"5000"}
+                  onChange={e=>set({...s,ce101pwrSrc:e.target.value})}
+                  style={{...inp,width:60,fontSize:10,padding:"2px 5px"}}/>
+              </div>
+            );
+          })()}
           {sh&&sh.bd&&<button onClick={()=>setExpanded({...expanded,[t]:!isExp})}
             style={{background:"none",border:"none",color:C.accent,cursor:"pointer",fontSize:11,padding:"0 4px"}}>
             {isExp?"▲":"▼"}
@@ -1224,13 +1242,19 @@ function EmiForm({s,set,ti,setup}){
       const selTests=TESTS.filter(t=>s.tests?.[t]);
       const hasRS103=selTests.includes("RS103");
       const rs103Amt=hasRS103?sf(s.rs103amp,5000):0;
+      // CE101/CE102 Power Source Rental — 440V AC, charged once
+      const has440AC=sf(ti?.volt,0)>=440&&(ti?.pwrType||"AC")==="AC";
+      const hasCE=selTests.includes("CE101")||selTests.includes("CE102");
+      const ce101Amt=(has440AC&&hasCE)?sf(s.ce101pwrSrc,5000):0;
+      const ce101Label=selTests.includes("CE101")?"CE101":"CE102";
       const shiftTotal=r25(Math.round(selShifts*rate));
-      const grandTotal=r25(shiftTotal+rs103Amt);
+      const grandTotal=r25(shiftTotal+rs103Amt+ce101Amt);
       return(
         <div style={{fontSize:11,color:C.redDim,fontWeight:600,marginTop:6,padding:"6px 8px",background:"#fdf3f2",borderRadius:6}}>
           <div>{"Testing: "}{selShifts}{" shifts x $"}{rate.toLocaleString()}{" = $"}{shiftTotal.toLocaleString()}</div>
           {rs103Amt>0&&<div style={{marginTop:3}}>RS103 amplifier budget: +${rs103Amt.toLocaleString()}</div>}
-          {rs103Amt>0&&<div style={{marginTop:3,borderTop:"1px solid #f5c6c6",paddingTop:3}}>Suggested Testing Total: ${grandTotal.toLocaleString()}</div>}
+          {ce101Amt>0&&<div style={{marginTop:3}}>{ce101Label} power source rental (440V AC): +${ce101Amt.toLocaleString()}</div>}
+          {(rs103Amt>0||ce101Amt>0)&&<div style={{marginTop:3,borderTop:"1px solid #f5c6c6",paddingTop:3}}>Suggested Testing Total: ${grandTotal.toLocaleString()}</div>}
         </div>
       );
     })()}
@@ -1301,19 +1325,29 @@ function PqForm({s,set,ti}){
         {rows.map((r,i)=>{
           const checked=s.rows?.[r.key]||false;
           const sh=getShifts(r);
+          const isCwRow=(r.key==="5.3.7"||r.key==="B5.3.7");
+          const showCwNote=isCwRow&&checked&&(s.cw||false);
           return(
-            <div key={r.key} style={{display:"grid",gridTemplateColumns:"20px 80px 1fr 60px",
-              padding:"5px 8px",gap:6,alignItems:"center",
-              background:checked?"#f0fdf4":i%2===0?C.card:C.panel,
-              borderTop:"1px solid "+(checked?"#86efac":C.border)}}>
-              <input type="checkbox" checked={checked}
-                onChange={e=>{const rows={...s.rows};rows[r.key]=e.target.checked;set({...s,rows});}}
-                style={{accentColor:"#166534",width:12,height:12}}/>
-              <span style={{fontSize:10,fontWeight:600,color:checked?"#166534":C.accent}}>{r.key.replace("B","")}</span>
-              <span style={{fontSize:10,color:checked?"#15803d":C.text}}>{r.label}</span>
-              <span style={{fontSize:10,color:C.muted,textAlign:"right",fontFamily:"monospace"}}>
-                {sh}{sh!==r.sh&&" *"}
-              </span>
+            <div key={r.key}>
+              <div style={{display:"grid",gridTemplateColumns:"20px 80px 1fr 60px",
+                padding:"5px 8px",gap:6,alignItems:"center",
+                background:checked?"#f0fdf4":i%2===0?C.card:C.panel,
+                borderTop:"1px solid "+(checked?"#86efac":C.border)}}>
+                <input type="checkbox" checked={checked}
+                  onChange={e=>{const rows={...s.rows};rows[r.key]=e.target.checked;set({...s,rows});}}
+                  style={{accentColor:"#166534",width:12,height:12}}/>
+                <span style={{fontSize:10,fontWeight:600,color:checked?"#166534":C.accent}}>{r.key.replace("B","")}</span>
+                <span style={{fontSize:10,color:checked?"#15803d":C.text}}>{r.label}</span>
+                <span style={{fontSize:10,color:C.muted,textAlign:"right",fontFamily:"monospace"}}>
+                  {sh}{sh!==r.sh&&" *"}
+                </span>
+              </div>
+              {showCwNote&&(
+                <div style={{padding:"3px 8px 5px 38px",background:checked?"#f0fdf4":i%2===0?C.card:C.panel,
+                  fontSize:9,fontStyle:"italic",color:"#7b4f12",borderTop:"none"}}>
+                  ↳ Current Waveform testing performed using facility power.
+                </div>
+              )}
             </div>
           );
         })}
@@ -1332,9 +1366,6 @@ function PqForm({s,set,ti}){
     <Row label="Teardown Shifts"><Inp value={s.tdShifts} onChange={v=>set({...s,tdShifts:v})} width={60}/></Row>
     <Pia s={s} set={set}/>
     <Toggle small checked={s.cw||false} onChange={v=>set({...s,cw:v})} label="Current Waveform (facility power)"/>
-    {sf(s.rate,PQ_SR)>=440&&(
-      <div style={{fontSize:11,color:C.warn,marginBottom:4}}>⚠ 440 VAC — source rental required.</div>
-    )}
     {(()=>{
       const eutAmps=sf(ti?.amps||'0',0);
       const numPhases=sf(s.phases||autoPhase||'3',3);
@@ -5050,6 +5081,11 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
   const emiSelTests=Object.entries(emiCalc.tests||{}).filter(([,v])=>v).map(([k])=>k);
   const emiTestShifts=emiSelTests.reduce((a,t)=>a+(emiShifts[t]?.rounded||0),0);
   const rs103Cost=emiSelTests.includes("RS103")?sf(emiCalc.rs103amp,5000):0;
+  // CE101/CE102 Power Source Rental — 440V AC, charged once, attributed to CE101 if both selected
+  const has440AC=sf(ti?.volt,0)>=440&&(ti?.pwrType||"AC")==="AC";
+  const hasCe101or102=emiSelTests.includes("CE101")||emiSelTests.includes("CE102");
+  const ce101PwrCost=(has440AC&&hasCe101or102)?sf(emiCalc.ce101pwrSrc,5000):0;
+  const ce101PwrAttribTo=emiSelTests.includes("CE101")?"CE101":"CE102";
   const emiSetupCost=r25(sf(emiCalc.setupShifts,3)*emiRate*sf(emiCalc.pia,1));
   // Suggested EMI setup based on cables + weight
   // Base: 1 shift; +1hr per cable; tier bumps at 6/10/15/20 cables; weight multipliers ≥800lb / ≥1500lb
@@ -5071,7 +5107,7 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
     const cost=r25(shifts*emiRate*sf(emiCalc.pia,1));
     return {shifts, cost, cablesEff, wt, wtNote, totalHrs};
   },[emiCalc.cables,setup?.cables,emiCalc.weight,ti?.wt,emiRate,emiCalc.pia]);
-  const emiTestCost=r25((emiTestShifts*emiRate+rs103Cost)*sf(emiCalc.pia,1));
+  const emiTestCost=r25((emiTestShifts*emiRate+rs103Cost+ce101PwrCost)*sf(emiCalc.pia,1));
   const emiTdCost=r25(sf(emiCalc.tdShifts,1)*emiRate);
 
   // PQ computed
@@ -5101,7 +5137,7 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
     {key:"B5.3.10.1",label:"Equipment insulation resistance test",sh:0.5,sh3p:null},
     {key:"B5.3.10.2",label:"Active ground detection test",sh:0.5,sh3p:null},
   ];
-  const pqIs3ph=sf(pqCalc.phases||3,3)>=3;
+  const pqIs3ph=sf(pqCalc.phases||ti?.phase||3,3)>=3;
   const getShifts=r=>pqIs3ph&&r.sh3p!=null?r.sh3p:r.sh;
   const pqRate=sf(pqCalc.rate,PQ_SR);
   const p1Shifts=PQ_P1.reduce((a,r)=>a+(pqCalc.rows?.[r.key]?getShifts(r):0),0);
@@ -5617,6 +5653,12 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
               )}
               <PqForm s={pqCalc} set={setPqCalc} ti={ti}/>
               <CalcResult setupAmt={pqSetupCost} testAmt={pqTestCost}/>
+              {sf(ti?.volt,0)>=440&&(ti?.pwrType||"AC")==="AC"&&(
+                <div style={{marginTop:6,padding:"6px 10px",background:"#fffbeb",border:"1px solid #b7791f",
+                  borderRadius:6,fontSize:11,color:"#7b4f12",fontWeight:600}}>
+                  ⚠ 440 VAC — power source rental required (not included in suggested price above).
+                </div>
+              )}
               <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>Teardown: {money(pqTdCost)} &nbsp;·&nbsp; Total: {money(pqSetupCost+pqTestCost+pqTdCost)}</div>
               <div style={{marginTop:8,display:"flex",gap:8,flexWrap:"wrap"}}>
                 {pqCalc.rows&&Object.entries(pqCalc.rows).some(([k,v])=>v&&k.startsWith("B"))&&onExportPq300b&&(
