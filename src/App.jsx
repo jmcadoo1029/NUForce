@@ -3359,7 +3359,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     setContactSearchOpen(false);
   }, [selectedCampaignId]);
 
-  // Debounced contact search across name+email — excludes already-in-campaign contacts
+  // Debounced contact search across name+email — multi-word support; flags already-added
   useEffect(() => {
     clearTimeout(contactSearchTimer.current);
     if (!contactSearchTerm.trim() || !selectedCampaignId) {
@@ -3368,32 +3368,44 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     }
     contactSearchTimer.current = setTimeout(async () => {
       const term = contactSearchTerm.trim();
-      // Search by first/last name OR email (ilike on each, OR'd via supabase or syntax)
-      // Use the .or filter for multi-column ilike
+      const tokens = term.split(/\s+/).filter(Boolean);
+      const firstToken = tokens[0];
+      // Server-side: match the FIRST token against any of first_name/last_name/email
+      // Then client-side filter requires ALL tokens to appear somewhere in (first_name + " " + last_name + " " + email)
       let q = await supabase
         .from("contacts")
         .select(contactSelect())
-        .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%`)
+        .or(`first_name.ilike.%${firstToken}%,last_name.ilike.%${firstToken}%,email.ilike.%${firstToken}%`)
         .order("last_name")
-        .limit(20);
+        .limit(50);
       if (q.error && contactsHasPhone && /phone/i.test(q.error.message || "")) {
         setContactsHasPhone(false);
         q = await supabase
           .from("contacts")
           .select("id, first_name, last_name, email, client_id, clients(name)")
-          .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%`)
+          .or(`first_name.ilike.%${firstToken}%,last_name.ilike.%${firstToken}%,email.ilike.%${firstToken}%`)
           .order("last_name")
-          .limit(20);
+          .limit(50);
       }
       if (q.error) {
         console.error("Contact search error:", q.error);
         setContactSearchResults([]);
         return;
       }
-      // Filter out contacts already in the campaign
+      // Client-side: every token must appear in (first + last + email + company)
+      const matches = (q.data || []).filter(c => {
+        const haystack = ((c.first_name||"")+" "+(c.last_name||"")+" "+(c.email||"")+" "+(c.clients?.name||"")).toLowerCase();
+        return tokens.every(t => haystack.includes(t.toLowerCase()));
+      });
+      // Mark already-in-campaign contacts so the dropdown can show a tag
       const existing = new Set(campaignContacts.map(c => c.id));
-      const filtered = (q.data || []).filter(c => !existing.has(c.id));
-      setContactSearchResults(filtered);
+      const annotated = matches.map(c => ({ ...c, _alreadyInCampaign: existing.has(c.id) }));
+      // Sort: not-yet-added first, then already-added
+      annotated.sort((a,b) => {
+        if (a._alreadyInCampaign !== b._alreadyInCampaign) return a._alreadyInCampaign ? 1 : -1;
+        return (a.last_name||"").localeCompare(b.last_name||"");
+      });
+      setContactSearchResults(annotated.slice(0, 25));
     }, 250);
     return () => clearTimeout(contactSearchTimer.current);
   }, [contactSearchTerm, selectedCampaignId, campaignContacts, contactsHasPhone]);
@@ -5134,7 +5146,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
               zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
             <div onClick={e=>e.stopPropagation()}
               style={{background:"#fff",borderRadius:12,boxShadow:"0 8px 40px rgba(0,0,0,0.2)",
-                width:"100%",maxWidth:1000,maxHeight:"calc(100vh - 48px)",display:"flex",flexDirection:"column",
+                width:"100%",maxWidth:1300,maxHeight:"calc(100vh - 48px)",display:"flex",flexDirection:"column",
                 overflow:"hidden"}}>
               {/* Modal header */}
               <div style={{padding:"16px 24px",borderBottom:"1px solid #e8ecf0",
@@ -5252,17 +5264,34 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                                 contactSearchResults.map(ct=>{
                                   const name=((ct.first_name||"")+" "+(ct.last_name||"")).trim();
                                   const company=ct.clients?.name||"";
+                                  const inCampaign=ct._alreadyInCampaign;
                                   return(
-                                    <div key={ct.id} onClick={()=>addContactToCampaign(ct)}
-                                      style={{padding:"7px 12px",borderBottom:"1px solid #f0f2f5",cursor:"pointer"}}
+                                    <div key={ct.id}
+                                      onClick={()=>{
+                                        if(inCampaign){
+                                          alert(`${name||"This contact"} is already in this campaign.`);
+                                        }else{
+                                          addContactToCampaign(ct);
+                                        }
+                                      }}
+                                      style={{padding:"7px 12px",borderBottom:"1px solid #f0f2f5",cursor:"pointer",
+                                        opacity:inCampaign?0.6:1,
+                                        display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}
                                       onMouseEnter={e=>e.currentTarget.style.background="#f8f9fb"}
                                       onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
-                                      <div style={{fontSize:12,fontWeight:600,color:"#1a2332"}}>{name||"(no name)"}</div>
-                                      <div style={{fontSize:10,color:"#6b7a8d",marginTop:1}}>
-                                        {company&&<span>{company}</span>}
-                                        {company&&ct.email&&<span> · </span>}
-                                        {ct.email&&<span>{ct.email}</span>}
+                                      <div style={{flex:1,minWidth:0}}>
+                                        <div style={{fontSize:12,fontWeight:600,color:"#1a2332"}}>{name||"(no name)"}</div>
+                                        <div style={{fontSize:10,color:"#6b7a8d",marginTop:1}}>
+                                          {company&&<span>{company}</span>}
+                                          {company&&ct.email&&<span> · </span>}
+                                          {ct.email&&<span>{ct.email}</span>}
+                                        </div>
                                       </div>
+                                      {inCampaign&&(
+                                        <span style={{fontSize:9,fontWeight:700,letterSpacing:.5,color:"#15803d",
+                                          background:"#f0fdf4",border:"1px solid #86efac",borderRadius:4,
+                                          padding:"2px 6px",flexShrink:0}}>IN CAMPAIGN</span>
+                                      )}
                                     </div>
                                   );
                                 })
