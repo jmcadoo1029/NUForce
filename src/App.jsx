@@ -3244,6 +3244,65 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   },[]);
   const [loading, setLoading] = useState(true);
   const [privacyMode, setPrivacyMode] = useState(false);
+  const [campaignsOpen, setCampaignsOpen] = useState(false);
+  const [campaigns, setCampaigns] = useState([]);
+  const [campaignsLoading, setCampaignsLoading] = useState(false);
+  const [selectedCampaignId, setSelectedCampaignId] = useState(null);
+  const [newCampaignName, setNewCampaignName] = useState("");
+  const [newCampaignDesc, setNewCampaignDesc] = useState("");
+  const [showNewCampaignForm, setShowNewCampaignForm] = useState(false);
+
+  // Load campaigns list
+  const loadCampaigns = async () => {
+    setCampaignsLoading(true);
+    const { data, error } = await supabase
+      .from("campaigns")
+      .select("id, name, description, created_at")
+      .order("name");
+    if (error) console.error("Load campaigns error:", error);
+    setCampaigns(data || []);
+    setCampaignsLoading(false);
+  };
+
+  // Open modal & load
+  const openCampaignsModal = () => {
+    setCampaignsOpen(true);
+    loadCampaigns();
+  };
+
+  // Create campaign
+  const createCampaign = async () => {
+    const name = newCampaignName.trim();
+    if (!name) return;
+    const { data, error } = await supabase
+      .from("campaigns")
+      .insert([{ name, description: newCampaignDesc.trim() || null }])
+      .select()
+      .single();
+    if (error) {
+      alert("Could not create campaign: " + error.message);
+      return;
+    }
+    setCampaigns(prev => [...prev, data].sort((a,b)=>a.name.localeCompare(b.name)));
+    setNewCampaignName("");
+    setNewCampaignDesc("");
+    setShowNewCampaignForm(false);
+    setSelectedCampaignId(data.id);
+  };
+
+  // Delete campaign (memberships cascade)
+  const deleteCampaign = async (id) => {
+    const c = campaigns.find(x => x.id === id);
+    if (!c) return;
+    if (!confirm(`Delete campaign "${c.name}"? Contacts themselves won't be deleted, only their membership in this campaign.`)) return;
+    const { error } = await supabase.from("campaigns").delete().eq("id", id);
+    if (error) {
+      alert("Could not delete: " + error.message);
+      return;
+    }
+    setCampaigns(prev => prev.filter(x => x.id !== id));
+    if (selectedCampaignId === id) setSelectedCampaignId(null);
+  };
   const [followUpsCollapsed, setFollowUpsCollapsed] = useState(true);
   const [quotesThisMonthCollapsed, setQuotesThisMonthCollapsed] = useState(true);
   const [showRecentApproved, setShowRecentApproved] = useState(false);
@@ -3713,6 +3772,12 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
             </div>
           </div>
           <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+            {/* Campaigns button */}
+            <button onClick={openCampaignsModal}
+              style={{background:"#fff",border:"1px solid #d0d7de",borderRadius:8,padding:"8px 18px",
+                fontWeight:600,fontSize:12,cursor:"pointer",color:"#1a2332",letterSpacing:.2}}>
+              Campaigns
+            </button>
             {/* Privacy Mode toggle */}
             <button onClick={()=>setPrivacyMode(v=>!v)}
               style={{background:privacyMode?"#1a2332":"#fff",border:"1px solid "+(privacyMode?"#1a2332":"#d0d7de"),borderRadius:8,padding:"8px 18px",
@@ -4933,6 +4998,121 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
           </div>
         )}
         </div>{/* end privacy-mode wrapper */}
+
+        {/* ── Campaigns Modal ── */}
+        {campaignsOpen&&(
+          <div onClick={()=>setCampaignsOpen(false)}
+            style={{position:"fixed",inset:0,background:"rgba(26,35,50,0.55)",
+              zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+            <div onClick={e=>e.stopPropagation()}
+              style={{background:"#fff",borderRadius:12,boxShadow:"0 8px 40px rgba(0,0,0,0.2)",
+                width:"100%",maxWidth:1000,maxHeight:"calc(100vh - 48px)",display:"flex",flexDirection:"column",
+                overflow:"hidden"}}>
+              {/* Modal header */}
+              <div style={{padding:"16px 24px",borderBottom:"1px solid #e8ecf0",
+                display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div style={{fontSize:14,fontWeight:700,color:"#1a2332",letterSpacing:.3}}>
+                  CAMPAIGNS
+                </div>
+                <button onClick={()=>setCampaignsOpen(false)}
+                  style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#9aa5b1",
+                    padding:"0 4px",lineHeight:1}}>×</button>
+              </div>
+              {/* Modal body — sidebar + detail */}
+              <div style={{display:"flex",flex:1,minHeight:0}}>
+                {/* Left: campaigns list */}
+                <div style={{width:280,borderRight:"1px solid #e8ecf0",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                  <div style={{padding:"12px 16px",borderBottom:"1px solid #e8ecf0"}}>
+                    {!showNewCampaignForm?(
+                      <button onClick={()=>setShowNewCampaignForm(true)}
+                        style={{width:"100%",background:"#1a5276",color:"#fff",border:"none",
+                          borderRadius:6,padding:"7px 12px",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                        + New Campaign
+                      </button>
+                    ):(
+                      <div>
+                        <input value={newCampaignName} autoFocus
+                          onChange={e=>setNewCampaignName(e.target.value)}
+                          onKeyDown={e=>{if(e.key==="Enter")createCampaign();if(e.key==="Escape"){setShowNewCampaignForm(false);setNewCampaignName("");setNewCampaignDesc("");}}}
+                          placeholder="Campaign name"
+                          style={{width:"100%",fontSize:11,padding:"5px 8px",borderRadius:5,
+                            border:"1px solid #d0d7de",marginBottom:5,boxSizing:"border-box"}}/>
+                        <input value={newCampaignDesc}
+                          onChange={e=>setNewCampaignDesc(e.target.value)}
+                          onKeyDown={e=>{if(e.key==="Enter")createCampaign();}}
+                          placeholder="Description (optional)"
+                          style={{width:"100%",fontSize:11,padding:"5px 8px",borderRadius:5,
+                            border:"1px solid #d0d7de",marginBottom:5,boxSizing:"border-box"}}/>
+                        <div style={{display:"flex",gap:5}}>
+                          <button onClick={createCampaign}
+                            style={{flex:1,background:"#1a5276",color:"#fff",border:"none",
+                              borderRadius:5,padding:"5px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                            Create
+                          </button>
+                          <button onClick={()=>{setShowNewCampaignForm(false);setNewCampaignName("");setNewCampaignDesc("");}}
+                            style={{flex:1,background:"#fff",color:"#6b7a8d",border:"1px solid #d0d7de",
+                              borderRadius:5,padding:"5px 10px",fontSize:11,cursor:"pointer"}}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{overflow:"auto",flex:1}}>
+                    {campaignsLoading?(
+                      <div style={{padding:16,fontSize:11,color:"#9aa5b1",textAlign:"center"}}>Loading…</div>
+                    ):campaigns.length===0?(
+                      <div style={{padding:16,fontSize:11,color:"#9aa5b1",textAlign:"center",fontStyle:"italic"}}>
+                        No campaigns yet. Click "+ New Campaign" above.
+                      </div>
+                    ):(
+                      campaigns.map(c=>(
+                        <div key={c.id} onClick={()=>setSelectedCampaignId(c.id)}
+                          style={{padding:"10px 16px",borderBottom:"1px solid #f0f2f5",cursor:"pointer",
+                            background:selectedCampaignId===c.id?"#eaf2ff":"#fff",
+                            borderLeft:"3px solid "+(selectedCampaignId===c.id?"#1a5276":"transparent")}}>
+                          <div style={{fontSize:12,fontWeight:600,color:"#1a2332"}}>{c.name}</div>
+                          {c.description&&<div style={{fontSize:10,color:"#9aa5b1",marginTop:2}}>{c.description}</div>}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+                {/* Right: detail */}
+                <div style={{flex:1,padding:24,overflow:"auto"}}>
+                  {!selectedCampaignId?(
+                    <div style={{color:"#9aa5b1",fontSize:13,fontStyle:"italic",marginTop:40,textAlign:"center"}}>
+                      Select a campaign on the left to view its contacts.
+                    </div>
+                  ):(()=>{
+                    const c=campaigns.find(x=>x.id===selectedCampaignId);
+                    if(!c)return null;
+                    return(
+                      <div>
+                        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14}}>
+                          <div>
+                            <div style={{fontSize:18,fontWeight:700,color:"#1a2332",marginBottom:4}}>{c.name}</div>
+                            {c.description&&<div style={{fontSize:11,color:"#6b7a8d"}}>{c.description}</div>}
+                          </div>
+                          <button onClick={()=>deleteCampaign(c.id)}
+                            style={{background:"#fff",color:"#c0392b",border:"1px solid #f5b7b1",borderRadius:6,
+                              padding:"5px 12px",fontSize:11,cursor:"pointer",fontWeight:600}}>
+                            Delete Campaign
+                          </button>
+                        </div>
+                        <div style={{padding:"20px 0",color:"#9aa5b1",fontSize:12,fontStyle:"italic",textAlign:"center",
+                          border:"1px dashed #e0e4ea",borderRadius:8}}>
+                          Contact management coming in next stage.
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
