@@ -1831,9 +1831,10 @@ async function savePdfAs(doc, suggestedName) {
   setTimeout(()=>URL.revokeObjectURL(url), 1000);
 }
 
-async function saveQuoteToSupabase(quote, autoSpecs, autoNotes) {
+async function saveQuoteToSupabase(quote, autoSpecs, autoNotes, opts) {
+  const forceInsert = opts && opts.forceInsert;
   const row = {
-    id: quote.id || undefined,
+    id: forceInsert ? undefined : (quote.id || undefined),
     opportunity:      quote.qi?.opp    || quote.opp    || null,
     customer:         quote.qi?.account|| quote.customer|| null,
     rfq:              quote.qi?.rfq    || quote.rfq    || null,
@@ -3796,7 +3797,24 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
         .gte("won_date", thisMonth.start.slice(0,10))
         .lt("won_date",  thisMonth.end.slice(0,10)),
     ]);
-    const created = createdRaw || [];
+    const createdAll = createdRaw || [];
+    // Dedupe: show only the latest revision per opportunity.
+    // "Latest" = highest revision letter (blank < A < B < C ...).
+    const revRank = (r) => {
+      const s = (r || "").toString().trim().toUpperCase();
+      return s.length === 0 ? -1 : s.charCodeAt(0) - 64; // blank → -1, A → 1, B → 2, ...
+    };
+    const byOpp = new Map();
+    for (const q of createdAll) {
+      const opp = q.opportunity || ("__no_opp_" + q.id);
+      const cur = byOpp.get(opp);
+      if (!cur || revRank(q.revision) > revRank(cur.revision)) {
+        byOpp.set(opp, q);
+      }
+    }
+    const created = Array.from(byOpp.values()).sort((a, b) =>
+      (a.opportunity || "").localeCompare(b.opportunity || "", undefined, { numeric: true })
+    );
 
     // ── Also catch Closed Won quotes where won_date column is null but wonInfo has a date this month ──
     // This covers quotes where won details were saved but won_date column wasn't written (e.g. pre-fix SF imports)
@@ -6554,6 +6572,12 @@ export default function App({onLogout,currentUser}){
   const [showFollowUpPopover,setShowFollowUpPopover]=useState(false);
   const [showProductPicker,setShowProductPicker]=useState(false);
   const [pickerDragIdx,setPickerDragIdx]=useState(null);
+  // Revision history modal
+  const [showRevHistory,setShowRevHistory]=useState(false);
+  const [revHistoryList,setRevHistoryList]=useState([]); // all rows for current opportunity
+  const [revHistoryLoading,setRevHistoryLoading]=useState(false);
+  const [revCompareFromId,setRevCompareFromId]=useState(null); // older revision id
+  const [revCompareToId,setRevCompareToId]=useState(null);     // newer revision id (defaults to current)
   const [advancedModeOpen,setAdvancedModeOpen]=useState(false);
   const [pickerLines,setPickerLines]=useState([]); // lines added via product picker
   const [quoteFlag,setQuoteFlag]=useState(null);
@@ -7455,6 +7479,39 @@ export default function App({onLogout,currentUser}){
     window.scrollTo({top:0,behavior:"smooth"});
   };
 
+  // Open revision history modal for current opportunity
+  const openRevHistory = async () => {
+    if (!qi.opp) {
+      showToast("Save the quote first to view revision history", "warn");
+      return;
+    }
+    setShowRevHistory(true);
+    setRevHistoryLoading(true);
+    const { data, error } = await supabase
+      .from("quotes")
+      .select("id, opportunity, revision, total, updated_at, created_at, data")
+      .eq("opportunity", qi.opp);
+    if (error) {
+      console.error("Rev history load error:", error);
+      setRevHistoryList([]);
+      setRevHistoryLoading(false);
+      return;
+    }
+    // Sort: highest revision letter first (blank < A < B < C ...)
+    const revRank = (r) => {
+      const s = (r || "").toString().trim().toUpperCase();
+      return s.length === 0 ? -1 : s.charCodeAt(0) - 64;
+    };
+    const list = (data || []).slice().sort((a, b) => revRank(b.revision) - revRank(a.revision));
+    setRevHistoryList(list);
+    // Default: compare current (newest) to the one immediately prior
+    if (list.length > 0) {
+      setRevCompareToId(list[0].id);
+      setRevCompareFromId(list[1] ? list[1].id : null);
+    }
+    setRevHistoryLoading(false);
+  };
+
   // Save quote to Supabase
   const handleSave=async()=>{
     recentSaveRef.current=Date.now();
@@ -7473,8 +7530,48 @@ export default function App({onLogout,currentUser}){
     };
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,snapshot:savedSnapshot};
-    const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+
+    // Detect revision letter change on existing quotes — prompt user for save mode
+    let saveOpts;
+    if (currentQuoteId) {
+      // Look up the currently-saved rev letter for this row
+      const { data: existing } = await supabase
+        .from("quotes")
+        .select("revision")
+        .eq("id", currentQuoteId)
+        .single();
+      const oldRev = (existing?.revision || "").toString().trim();
+      const newRev = (qi.rev || "").toString().trim();
+      if (existing && oldRev !== newRev) {
+        // Rev changed — ask user how to handle
+        const oldLabel = oldRev || "(original)";
+        const newLabel = newRev || "(original)";
+        const choice = window.prompt(
+          `Revision letter changed from "${oldLabel}" to "${newLabel}".\n\n` +
+          `• Type "new" to save as a NEW REVISION (keeps the old one in history)\n` +
+          `• Type "overwrite" to replace the existing revision (no history kept)\n` +
+          `• Cancel to abort save`,
+          "new"
+        );
+        if (choice === null) {
+          showToast("Save cancelled", "warn");
+          return;
+        }
+        const c = choice.trim().toLowerCase();
+        if (c === "new" || c === "n") {
+          saveOpts = { forceInsert: true };
+        } else if (c === "overwrite" || c === "o") {
+          saveOpts = undefined;
+        } else {
+          showToast("Save cancelled — unrecognized choice", "warn");
+          return;
+        }
+      }
+    }
+
+    const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes,saveOpts);
     if(newId){
+      // If we forced an insert, this is a new row — update currentQuoteId so subsequent saves edit this rev
       setCurrentQuoteId(newId);
       setSnapshot(savedSnapshot);
       setIsDirty(false); // quote is now clean — snapshot is current
@@ -10034,12 +10131,26 @@ const STANDARD_TERMS = [
                     </div>
                   </div>
                   <div>
-                    {[["Opportunity #","opp"],["Prepared By","prepby"],["Quote Revision","rev"],["Related Opps","relatedOpps"]].map(([l,k])=>(
+                    {[["Opportunity #","opp"],["Prepared By","prepby"]].map(([l,k])=>(
                       <div key={k} style={{marginBottom:6}}>
                         <div style={{fontSize:9,color:C.dim,marginBottom:2}}>{l}</div>
                         <input value={qi[k]||""} onChange={e=>setQi({...qi,[k]:e.target.value})} style={{...inp,width:"100%"}}/>
                       </div>
                     ))}
+                    <div style={{marginBottom:6}}>
+                      <div style={{fontSize:9,color:C.dim,marginBottom:2,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <span>Quote Revision</span>
+                        <span onClick={openRevHistory}
+                          style={{fontSize:9,color:C.accent,cursor:"pointer",textDecoration:"underline"}}>
+                          View History
+                        </span>
+                      </div>
+                      <input value={qi.rev||""} onChange={e=>setQi({...qi,rev:e.target.value})} style={{...inp,width:"100%"}}/>
+                    </div>
+                    <div style={{marginBottom:6}}>
+                      <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Related Opps</div>
+                      <input value={qi.relatedOpps||""} onChange={e=>setQi({...qi,relatedOpps:e.target.value})} style={{...inp,width:"100%"}}/>
+                    </div>
                     <div style={{marginBottom:6,pointerEvents:"auto",opacity:1}}>
                       <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Stage</div>
                       <select value={qi.stage} onChange={e=>{
@@ -10703,6 +10814,224 @@ const STANDARD_TERMS = [
           hfvs={hfvs}
           summary={summary}
         />
+      )}
+
+      {/* ── Revision History Modal ── */}
+      {showRevHistory&&(
+        <div onClick={()=>setShowRevHistory(false)}
+          style={{position:"fixed",inset:0,background:"rgba(26,35,50,0.55)",zIndex:1200,
+            display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:"#fff",borderRadius:12,boxShadow:"0 8px 40px rgba(0,0,0,0.2)",
+              width:"100%",maxWidth:1200,height:"calc(100vh - 48px)",
+              display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            {/* Header */}
+            <div style={{padding:"14px 20px",borderBottom:"1px solid #e8ecf0",
+              display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:"#1a2332",letterSpacing:.3}}>
+                  REVISION HISTORY — {qi.opp||"(unsaved)"}
+                </div>
+                <div style={{fontSize:10,color:"#9aa5b1",marginTop:2}}>
+                  {revHistoryList.length} revision{revHistoryList.length!==1?"s":""} found
+                </div>
+              </div>
+              <button onClick={()=>setShowRevHistory(false)}
+                style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#9aa5b1",padding:"0 4px",lineHeight:1}}>×</button>
+            </div>
+            {/* Body */}
+            <div style={{display:"flex",flex:1,minHeight:0}}>
+              {/* Left: revision list */}
+              <div style={{width:240,borderRight:"1px solid #e8ecf0",overflow:"auto"}}>
+                {revHistoryLoading?(
+                  <div style={{padding:16,fontSize:11,color:"#9aa5b1",textAlign:"center"}}>Loading…</div>
+                ):revHistoryList.length===0?(
+                  <div style={{padding:16,fontSize:11,color:"#9aa5b1",textAlign:"center",fontStyle:"italic"}}>
+                    No revisions found.
+                  </div>
+                ):revHistoryList.map((r,i)=>{
+                  const isFrom=r.id===revCompareFromId, isTo=r.id===revCompareToId;
+                  const lbl=r.revision?`Rev ${r.revision}`:"Original";
+                  const dt=new Date(r.updated_at||r.created_at).toLocaleDateString();
+                  return(
+                    <div key={r.id} style={{padding:"10px 14px",borderBottom:"1px solid #f0f2f5",
+                      background:isTo?"#dbeafe":isFrom?"#fef3c7":"#fff"}}>
+                      <div style={{fontSize:12,fontWeight:600,color:"#1a2332"}}>{lbl}{i===0&&" (latest)"}</div>
+                      <div style={{fontSize:10,color:"#6b7a8d",marginTop:2}}>{dt}</div>
+                      <div style={{fontSize:11,color:"#1a5276",marginTop:2,fontWeight:600}}>{money(r.total||0)}</div>
+                      <div style={{display:"flex",gap:4,marginTop:6}}>
+                        <button onClick={()=>setRevCompareFromId(r.id)}
+                          style={{flex:1,fontSize:9,padding:"3px 6px",borderRadius:4,
+                            border:"1px solid "+(isFrom?"#b7791f":"#d0d7de"),
+                            background:isFrom?"#fef3c7":"#fff",color:isFrom?"#7b4f12":"#6b7a8d",cursor:"pointer"}}>
+                          {isFrom?"From ✓":"Set From"}
+                        </button>
+                        <button onClick={()=>setRevCompareToId(r.id)}
+                          style={{flex:1,fontSize:9,padding:"3px 6px",borderRadius:4,
+                            border:"1px solid "+(isTo?"#1d4ed8":"#d0d7de"),
+                            background:isTo?"#dbeafe":"#fff",color:isTo?"#1e40af":"#6b7a8d",cursor:"pointer"}}>
+                          {isTo?"To ✓":"Set To"}
+                        </button>
+                      </div>
+                      {isApprover&&i>0&&(
+                        <button onClick={()=>{
+                          if(!confirm(`Load ${lbl} into the editor as a draft? You'll need to save to commit it as a new revision.`))return;
+                          if(r.data)handleLoad({...r.data,id:currentQuoteId});
+                          setShowRevHistory(false);
+                          showToast(`Loaded ${lbl} — review and save as new revision`,"success");
+                        }}
+                          style={{width:"100%",marginTop:4,fontSize:9,padding:"3px 6px",borderRadius:4,
+                            border:"1px solid #f5b7b1",background:"#fff",color:"#c0392b",cursor:"pointer",fontWeight:600}}>
+                          Load this revision
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Right: diff view */}
+              <div style={{flex:1,padding:20,overflow:"auto"}}>
+                {(()=>{
+                  if(revHistoryLoading)return null;
+                  const fromRow=revHistoryList.find(r=>r.id===revCompareFromId);
+                  const toRow=revHistoryList.find(r=>r.id===revCompareToId);
+                  if(!toRow)return <div style={{color:"#9aa5b1",fontSize:12,fontStyle:"italic",textAlign:"center",marginTop:40}}>Pick a "To" revision on the left to see changes.</div>;
+                  if(!fromRow)return <div style={{color:"#9aa5b1",fontSize:12,fontStyle:"italic",textAlign:"center",marginTop:40}}>This is the only revision — nothing to compare against.</div>;
+                  // ── Build diff ──
+                  const fromQ=fromRow.data||{}, toQ=toRow.data||{};
+                  const fromLbl=fromRow.revision?`Rev ${fromRow.revision}`:"Original";
+                  const toLbl=toRow.revision?`Rev ${toRow.revision}`:"Original";
+                  // Metadata fields to compare
+                  const META=[
+                    ["Opportunity","qi.opp"],
+                    ["Customer","qi.account"],
+                    ["RFQ","qi.rfq"],
+                    ["Stage","qi.stage"],
+                    ["Type","qi.type"],
+                    ["Contact","qi.contact"],
+                    ["Email","qi.email"],
+                    ["Test Item","ti.item"],
+                    ["Drawing","ti.drawing"],
+                    ["Size L","ti.dimL"],
+                    ["Size W","ti.dimW"],
+                    ["Size H","ti.dimH"],
+                    ["Weight","ti.wt"],
+                    ["Voltage","ti.volt"],
+                    ["Phase","ti.phase"],
+                    ["Hz","ti.hz"],
+                    ["Amps","ti.amps"],
+                  ];
+                  const get=(o,p)=>{const parts=p.split(".");let v=o;for(const k of parts){v=v?.[k];if(v===undefined)break;}return v??"";};
+                  const metaChanges=META.map(([lbl,p])=>({lbl,from:String(get(fromQ,p)||""),to:String(get(toQ,p)||"")})).filter(c=>c.from!==c.to);
+                  // Specs/Notes
+                  const fromSpecs=(fromQ.ti?.tiSpecs||"").trim(), toSpecs=(toQ.ti?.tiSpecs||"").trim();
+                  const fromNotes=(fromQ.ti?.tiNotes||"").trim(), toNotes=(toQ.ti?.tiNotes||"").trim();
+                  // Line items (from snapshot if available, else from summary)
+                  const linesOf=q=>(q.snapshot?.lines||q.summary?.lines||[]).map(l=>({label:l.label||"",val:l.val||0,code:l.code||""}));
+                  const fromLines=linesOf(fromQ), toLines=linesOf(toQ);
+                  // Map by label for diff
+                  const fromMap=new Map(); fromLines.forEach((l,i)=>fromMap.set(l.label+"|"+i,l));
+                  const toMap=new Map(); toLines.forEach((l,i)=>toMap.set(l.label+"|"+i,l));
+                  // Simpler diff: match by label only (collisions get later instances)
+                  const fromByLabel=new Map(); fromLines.forEach(l=>{if(!fromByLabel.has(l.label))fromByLabel.set(l.label,l);});
+                  const toByLabel=new Map(); toLines.forEach(l=>{if(!toByLabel.has(l.label))toByLabel.set(l.label,l);});
+                  const allLabels=new Set([...fromByLabel.keys(),...toByLabel.keys()]);
+                  const lineChanges=[];
+                  for(const lbl of allLabels){
+                    const f=fromByLabel.get(lbl), t=toByLabel.get(lbl);
+                    if(!f&&t)lineChanges.push({type:"added",label:lbl,toVal:t.val});
+                    else if(f&&!t)lineChanges.push({type:"removed",label:lbl,fromVal:f.val});
+                    else if(f&&t&&f.val!==t.val)lineChanges.push({type:"changed",label:lbl,fromVal:f.val,toVal:t.val});
+                  }
+                  const totalDiff=(toQ.total||0)-(fromQ.total||0);
+                  const allClean=metaChanges.length===0&&fromSpecs===toSpecs&&fromNotes===toNotes&&lineChanges.length===0&&totalDiff===0;
+                  // ── Render ──
+                  return(
+                    <div>
+                      <div style={{padding:"8px 12px",background:"#f8f9fb",borderRadius:6,marginBottom:14,
+                        display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <div style={{fontSize:11,color:"#6b7a8d"}}>
+                          Comparing <strong style={{color:"#7b4f12"}}>{fromLbl}</strong> → <strong style={{color:"#1e40af"}}>{toLbl}</strong>
+                        </div>
+                        <div style={{fontSize:13,fontWeight:700,color:totalDiff>0?"#15803d":totalDiff<0?"#c0392b":"#6b7a8d"}}>
+                          {money(fromRow.total||0)} → {money(toRow.total||0)}
+                          {totalDiff!==0&&<span style={{marginLeft:8,fontSize:11}}>({totalDiff>0?"+":""}{money(totalDiff)})</span>}
+                        </div>
+                      </div>
+                      {allClean&&(
+                        <div style={{padding:30,textAlign:"center",color:"#9aa5b1",fontSize:12,fontStyle:"italic"}}>
+                          No differences detected between these revisions.
+                        </div>
+                      )}
+                      {metaChanges.length>0&&(
+                        <div style={{marginBottom:16}}>
+                          <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,color:"#9aa5b1",marginBottom:6}}>METADATA CHANGES</div>
+                          {metaChanges.map((c,i)=>(
+                            <div key={i} style={{fontSize:11,padding:"4px 8px",background:"#fef3c7",borderRadius:4,marginBottom:3}}>
+                              <strong style={{color:"#7b4f12"}}>{c.lbl}:</strong>
+                              <span style={{color:"#c0392b",textDecoration:"line-through",marginLeft:6}}>{c.from||"(empty)"}</span>
+                              <span style={{color:"#15803d",marginLeft:6}}>→ {c.to||"(empty)"}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {lineChanges.length>0&&(
+                        <div style={{marginBottom:16}}>
+                          <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,color:"#9aa5b1",marginBottom:6}}>LINE ITEM CHANGES</div>
+                          {lineChanges.map((c,i)=>(
+                            <div key={i} style={{fontSize:11,padding:"5px 10px",borderRadius:4,marginBottom:3,
+                              background:c.type==="added"?"#f0fdf4":c.type==="removed"?"#fdf3f2":"#fef3c7",
+                              borderLeft:"3px solid "+(c.type==="added"?"#15803d":c.type==="removed"?"#c0392b":"#b7791f")}}>
+                              <span style={{fontWeight:700,color:c.type==="added"?"#15803d":c.type==="removed"?"#c0392b":"#7b4f12",marginRight:6}}>
+                                {c.type==="added"?"+ ADDED":c.type==="removed"?"- REMOVED":"~ CHANGED"}
+                              </span>
+                              <span style={{color:"#1a2332"}}>{c.label}</span>
+                              <span style={{float:"right",fontFamily:"monospace",color:"#6b7a8d"}}>
+                                {c.type==="changed"?
+                                  (<><span style={{color:"#c0392b",textDecoration:"line-through"}}>{money(c.fromVal)}</span> → <span style={{color:"#15803d"}}>{money(c.toVal)}</span></>):
+                                  c.type==="added"?money(c.toVal):money(c.fromVal)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {fromSpecs!==toSpecs&&(
+                        <div style={{marginBottom:16}}>
+                          <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,color:"#9aa5b1",marginBottom:6}}>SPECIFICATIONS CHANGED</div>
+                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                            <div style={{padding:8,background:"#fdf3f2",borderLeft:"3px solid #c0392b",borderRadius:4,fontSize:10,whiteSpace:"pre-wrap"}}>
+                              <div style={{fontSize:9,fontWeight:700,color:"#c0392b",marginBottom:4}}>{fromLbl}</div>
+                              {fromSpecs||"(empty)"}
+                            </div>
+                            <div style={{padding:8,background:"#f0fdf4",borderLeft:"3px solid #15803d",borderRadius:4,fontSize:10,whiteSpace:"pre-wrap"}}>
+                              <div style={{fontSize:9,fontWeight:700,color:"#15803d",marginBottom:4}}>{toLbl}</div>
+                              {toSpecs||"(empty)"}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {fromNotes!==toNotes&&(
+                        <div style={{marginBottom:16}}>
+                          <div style={{fontSize:10,fontWeight:700,letterSpacing:.8,color:"#9aa5b1",marginBottom:6}}>NOTES CHANGED</div>
+                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                            <div style={{padding:8,background:"#fdf3f2",borderLeft:"3px solid #c0392b",borderRadius:4,fontSize:10,whiteSpace:"pre-wrap"}}>
+                              <div style={{fontSize:9,fontWeight:700,color:"#c0392b",marginBottom:4}}>{fromLbl}</div>
+                              {fromNotes||"(empty)"}
+                            </div>
+                            <div style={{padding:8,background:"#f0fdf4",borderLeft:"3px solid #15803d",borderRadius:4,fontSize:10,whiteSpace:"pre-wrap"}}>
+                              <div style={{fontSize:9,fontWeight:700,color:"#15803d",marginBottom:4}}>{toLbl}</div>
+                              {toNotes||"(empty)"}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Chatter panel ── */}
