@@ -6592,6 +6592,9 @@ export default function App({onLogout,currentUser}){
   const [chatterSaving,setChatterSaving]=useState(false);
   const [wonInfo,setWonInfo]=useState({wonDate:"",jobNum:"",poNum:""});
   const [wonLocked,setWonLocked]=useState(false);
+  // True after stage transitions TO Closed Won in this session — wonDate must be Confirmed before save.
+  // Already-Closed-Won quotes loaded from DB skip this (no friction on routine edits).
+  const [wonDatePending,setWonDatePending]=useState(false);
   const [showWonModal,setShowWonModal]=useState(false);
   const [showCloneModal,setShowCloneModal]=useState(false);
   const [cloneOppInput,setCloneOppInput]=useState("");
@@ -7115,7 +7118,7 @@ export default function App({onLogout,currentUser}){
         setGlobalPR({procs:[],reps:[],coc:false,cocPrice:"250"});
         setNotes("");setLineOverrides({});setLineOrder(null);setPickerLines([]);userEditedSpecs.current=false;userEditedNotes.current=false;
         setModalAnalysis({on:false,price:"6750"});setFixtureDrawing({on:false,price:"2950"});setInStockModal({on:false,targetProc:""});
-        setWonInfo({wonDate:"",jobNum:"",poNum:""});setWonLocked(false);
+        setWonInfo({wonDate:"",jobNum:"",poNum:""});setWonLocked(false);setWonDatePending(false);
         setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
         setChatterEntries([]);setChatterInput("");
         setLocked(false);setCurrentQuoteId(null);setCurrentQuoteSource("vibrato");
@@ -7433,6 +7436,7 @@ export default function App({onLogout,currentUser}){
     setQi(q=>({...q,opp:newOpp,rfq:"",rev:"",revDate:"",date:new Date().toLocaleDateString("en-US"),stage:"Proposal/Price Quote"}));
     setWonInfo({wonDate:"",jobNum:"",poNum:""});
     setWonLocked(false);
+    setWonDatePending(false);
     setCurrentQuoteId(null);
     setLineOrder(null);
     setLineOverrides({});
@@ -7469,7 +7473,7 @@ export default function App({onLogout,currentUser}){
     setGlobalPR({procs:[],reps:[],coc:false,cocPrice:"250"});
     setNotes(""); setLineOverrides({}); setLineOrder(null); setPickerLines([]); setUnifiedOrder(null);
     setModalAnalysis({on:false,price:"6750"}); setFixtureDrawing({on:false,price:"2950"}); setInStockModal({on:false,targetProc:""});
-    setWonInfo({wonDate:"",jobNum:"",poNum:""}); setWonLocked(false);
+    setWonInfo({wonDate:"",jobNum:"",poNum:""}); setWonLocked(false);setWonDatePending(false);
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("vibrato");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
@@ -7514,6 +7518,11 @@ export default function App({onLogout,currentUser}){
 
   // Save quote to Supabase
   const handleSave=async()=>{
+    // Block save if Closed Won and wonDate hasn't been confirmed this session
+    if(qi.stage==="Closed Won"&&wonDatePending){
+      showToast("Confirm the Won Date first","warn",4000);
+      return;
+    }
     recentSaveRef.current=Date.now();
     // Build price snapshot — frozen at save time, immune to future formula changes
     const snapshotLines=(summary.lines||[]).map((l,i)=>{
@@ -7678,6 +7687,7 @@ export default function App({onLogout,currentUser}){
     if(q.approval)setApproval(q.approval); else setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     if(q.wonApproval)setWonApproval(q.wonApproval); else setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
     if(q.wonInfo)setWonInfo(q.wonInfo); else setWonInfo({wonDate:"",jobNum:"",poNum:""});
+    setWonDatePending(false); // Loaded quotes are already trusted; no re-confirmation needed
     setChatterEntries(q.chatterEntries||[]);
     if(q.lineOrder!==undefined)setLineOrder(q.lineOrder); else setLineOrder(null);
     {const wd=q.wonInfo?.wonDate||"";const validDate=wd&&!isNaN(new Date(wd))&&!/^\d+$/.test(wd.trim());setWonLocked(!!(validDate||q.wonInfo?.jobNum?.trim()||q.wonInfo?.poNum?.trim()));}
@@ -9938,20 +9948,42 @@ const STANDARD_TERMS = [
                   ["Won Date","wonDate","e.g. 3/18/2026"],
                   ["Job #","jobNum","e.g. J-2025-042"],
                   ["PO #","poNum","e.g. PO-98765"],
-                ].map(([label,key,placeholder])=>(
-                  <div key={key} style={{marginBottom:14}}>
-                    <div style={{fontSize:9,color:"#6b7a8d",fontWeight:700,marginBottom:4}}>{label}</div>
-                    <input
-                      value={wonInfo[key]||""}
-                      onChange={e=>!wonLocked&&setWonInfo({...wonInfo,[key]:e.target.value})}
-                      readOnly={wonLocked}
-                      placeholder={placeholder}
-                      style={{width:"100%",fontSize:12,borderRadius:7,border:"1px solid #d0d7de",padding:"7px 10px",
-                        outline:"none",fontFamily:"inherit",boxSizing:"border-box",
-                        background:wonLocked?"#f0f2f5":"#fff",color:wonLocked?"#6b7a8d":"#1a2332",
-                        cursor:wonLocked?"not-allowed":"text"}}/>
-                  </div>
-                ))}
+                ].map(([label,key,placeholder])=>{
+                  const isPending=key==="wonDate"&&wonDatePending;
+                  return(
+                    <div key={key} style={{marginBottom:14}}>
+                      <div style={{fontSize:9,color:"#6b7a8d",fontWeight:700,marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
+                        <span>{label}</span>
+                        {isPending&&(
+                          <span style={{fontSize:9,fontWeight:700,letterSpacing:.4,color:"#7b4f12",
+                            background:"#fef3c7",border:"1px solid #b7791f",borderRadius:4,padding:"1px 6px"}}>
+                            ⚠ PENDING CONFIRMATION
+                          </span>
+                        )}
+                      </div>
+                      <div style={{display:"flex",gap:6,alignItems:"stretch"}}>
+                        <input
+                          value={wonInfo[key]||""}
+                          onChange={e=>!wonLocked&&setWonInfo({...wonInfo,[key]:e.target.value})}
+                          readOnly={wonLocked}
+                          placeholder={placeholder}
+                          style={{flex:1,fontSize:12,borderRadius:7,
+                            border:"1px solid "+(isPending?"#b7791f":"#d0d7de"),
+                            padding:"7px 10px",outline:"none",fontFamily:"inherit",boxSizing:"border-box",
+                            background:wonLocked?"#f0f2f5":isPending?"#fffbeb":"#fff",
+                            color:wonLocked?"#6b7a8d":"#1a2332",cursor:wonLocked?"not-allowed":"text"}}/>
+                        {isPending&&!wonLocked&&(
+                          <button onClick={()=>setWonDatePending(false)}
+                            title="Confirm the Won Date — unlocks Save"
+                            style={{background:"#b7791f",color:"#fff",border:"none",borderRadius:7,
+                              padding:"0 12px",fontSize:11,fontWeight:700,cursor:"pointer",letterSpacing:.3,whiteSpace:"nowrap"}}>
+                            ✓ Confirm Date
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6}}>
                   <button onClick={()=>setShowCreateProjectAlert("new")}
                     style={{background:"#1a5276",border:"none",borderRadius:7,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",gap:5,flex:1}}>
@@ -10158,15 +10190,24 @@ const STANDARD_TERMS = [
                       <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Stage</div>
                       <select value={qi.stage} onChange={e=>{
                         const s=e.target.value;
+                        const wasNotWon=qi.stage!=="Closed Won";
                         setQi({...qi,stage:s});
-                        if(s==="Closed Won"&&!wonInfo.wonDate)
+                        // On transition TO Closed Won: refresh wonDate to today and require confirmation
+                        if(s==="Closed Won"&&wasNotWon){
                           setWonInfo(w=>({...w,wonDate:new Date().toLocaleDateString("en-US")}));
+                          setWonDatePending(true);
+                        }
                         // Prompt to submit for won approval when changing to Closed Won
                         if(s==="Closed Won"&&wonApproval.status==="none"){
                           setTimeout(()=>{
                             const submit=window.confirm("Submit this quote for Closed Won approval?\n\nClick OK to submit, or Cancel to set the stage without submitting.");
                             if(submit)handleSubmitWonApproval(s);
                             else{
+                              // Block silent save when wonDate is pending confirmation
+                              if(wasNotWon){
+                                showToast("Stage set to Closed Won — confirm Won Date and save manually","warn",5000);
+                                return;
+                              }
                               const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
                                 qi:{...qi,stage:s},ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
                               saveQuoteToSupabase(q,autoSpecs,autoNotes).then(newId=>{
