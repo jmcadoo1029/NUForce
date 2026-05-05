@@ -6345,9 +6345,9 @@ function ProductPicker({onAdd, onClose, setup, ti, vibs, hfvs, summary}){
     {key:"modal_analysis",cat:"Procedures & Reports",label:"Modal Analysis",code:"67",price:6750},
     {key:"fixture_drawing",cat:"Procedures & Reports",label:"Test Fixture Drawings",code:"42",price:2950},
     // High Speed Video
-    {key:"shock_inst",cat:"Instrumentation",label:"Shock Instrumentation",code:"33",price:525},
+    {key:"shock_inst",cat:"Instrumentation",label:"Instrumentation (Shock)",code:"33",price:525},
     {key:"cm_shock",cat:"Instrumentation",label:"Contact Monitoring (Shock)",code:"33",price:350},
-    {key:"vib_ch",cat:"Instrumentation",label:"Vib Additional Channels",code:"33",price:325},
+    {key:"vib_ch",cat:"Instrumentation",label:"Instrumentation (Vibration)",code:"33",price:325},
     {key:"cm_vib",cat:"Instrumentation",label:"Contact Monitoring (Vibe)",code:"33",price:750},
     {key:"hsv",cat:"Instrumentation",label:"High Speed Video",code:"32",price:1950},
     // Tear Down
