@@ -6247,6 +6247,7 @@ function InstrumentationCalculator(){
 function ProductPicker({onAdd, onClose, setup, ti, vibs, hfvs, summary}){
   const [selected, setSelected] = useState({}); // {productKey: qty}
   const [thDur, setThDur] = useState("0 to 1 Day");
+  const [sortMode, setSortMode] = useState("code"); // "code" | "name"
 
 
   // Smart pricing helpers
@@ -6371,12 +6372,16 @@ function ProductPicker({onAdd, onClose, setup, ti, vibs, hfvs, summary}){
     {key:"dcm_rep",cat:"DC Magnetics",label:"DC Mag Report",code:"43",price:1500},
     // Subcontracting
     {key:"sub_item",cat:"Other",label:"Subcontracting",code:"98",price:0,custom:true},
-    // Custom
-    {key:"custom_item",cat:"Other",label:"Custom Line Item",code:"94",price:0,custom:true},
   ];
 
-  // Sort products by code number then label
+  // Sort products — by code (numeric, then label) or by label
   const sortedProducts = [...PRODUCTS].sort((a,b)=>{
+    if(sortMode==="name"){
+      const cmp = a.label.localeCompare(b.label);
+      if(cmp!==0) return cmp;
+      // tiebreak by code
+      return (parseInt(a.code)||0)-(parseInt(b.code)||0);
+    }
     const codeA = parseInt(a.code)||0;
     const codeB = parseInt(b.code)||0;
     if(codeA!==codeB) return codeA-codeB;
@@ -6417,7 +6422,26 @@ function ProductPicker({onAdd, onClose, setup, ti, vibs, hfvs, summary}){
         {/* Header */}
         <div style={{padding:"16px 20px",borderBottom:"1px solid #e8ecf0",display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1a2332",borderRadius:"12px 12px 0 0"}}>
           <div style={{color:"#fff",fontWeight:700,fontSize:15,letterSpacing:.3}}>+ Add Line Items</div>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,0.7)",fontSize:18,cursor:"pointer",padding:"0 4px"}}>✕</button>
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{color:"rgba(255,255,255,0.6)",fontSize:10,fontWeight:600,letterSpacing:.5}}>SORT:</span>
+              <div style={{display:"flex",borderRadius:5,overflow:"hidden",border:"1px solid rgba(255,255,255,0.2)"}}>
+                <button onClick={()=>setSortMode("code")}
+                  style={{background:sortMode==="code"?"#fff":"transparent",
+                    color:sortMode==="code"?"#1a2332":"rgba(255,255,255,0.7)",
+                    border:"none",padding:"4px 10px",fontSize:10,fontWeight:600,cursor:"pointer",letterSpacing:.3}}>
+                  CODE
+                </button>
+                <button onClick={()=>setSortMode("name")}
+                  style={{background:sortMode==="name"?"#fff":"transparent",
+                    color:sortMode==="name"?"#1a2332":"rgba(255,255,255,0.7)",
+                    border:"none",padding:"4px 10px",fontSize:10,fontWeight:600,cursor:"pointer",letterSpacing:.3}}>
+                  NAME
+                </button>
+              </div>
+            </div>
+            <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,0.7)",fontSize:18,cursor:"pointer",padding:"0 4px"}}>✕</button>
+          </div>
         </div>
 
         {/* T&H duration selector — shown when T&H items selected */}
