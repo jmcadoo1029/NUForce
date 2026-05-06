@@ -3448,6 +3448,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   };
   const [followUpsCollapsed, setFollowUpsCollapsed] = useState(true);
   const [quotesThisMonthCollapsed, setQuotesThisMonthCollapsed] = useState(true);
+  const [quotesThisMonthFilter, setQuotesThisMonthFilter] = useState("all"); // "all" | "new" | "revisions"
   const [showRecentApproved, setShowRecentApproved] = useState(false);
   const [recentApproved, setRecentApproved] = useState(null);
   const [recentApprovedLoading, setRecentApprovedLoading] = useState(false);
@@ -3798,9 +3799,11 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
         .lt("won_date",  thisMonth.end.slice(0,10)),
     ]);
     const createdAll = createdRaw || [];
-    // Dedupe: show only the latest revision per opportunity.
-    // Opportunity numbers carry the rev letter as a suffix (e.g. "24-173" → "24-173A" → "24-173B"),
-    // so we group by the BASE opp (with the trailing letter stripped) and keep the highest rev.
+    // Group by base opportunity (strip trailing rev letter).
+    // For each group:
+    //   - "New" if ANY row in this group is the blank-rev original (means the original was created this month)
+    //   - "Revision" otherwise (the original is older; only rev rows landed this month)
+    // Display: keep the highest-rev row per group.
     const revRank = (r) => {
       const s = (r || "").toString().trim().toUpperCase();
       return s.length === 0 ? -1 : s.charCodeAt(0) - 64; // blank → -1, A → 1, B → 2, ...
@@ -3810,17 +3813,19 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       const m = opp.match(/^(.+?)([A-Z])?$/);
       return m ? m[1] : opp;
     };
-    const byOpp = new Map();
+    const groupMap = new Map(); // baseKey → { rows: [], hasBlank: bool, latest: row }
     for (const q of createdAll) {
       const baseKey = baseOppOf(q.opportunity) || ("__no_opp_" + q.id);
-      const cur = byOpp.get(baseKey);
-      if (!cur || revRank(q.revision) > revRank(cur.revision)) {
-        byOpp.set(baseKey, q);
-      }
+      let g = groupMap.get(baseKey);
+      if (!g) { g = { rows: [], hasBlank: false, latest: null }; groupMap.set(baseKey, g); }
+      g.rows.push(q);
+      if (!q.revision || q.revision.toString().trim() === "") g.hasBlank = true;
+      if (!g.latest || revRank(q.revision) > revRank(g.latest.revision)) g.latest = q;
     }
-    const created = Array.from(byOpp.values()).sort((a, b) =>
-      (a.opportunity || "").localeCompare(b.opportunity || "", undefined, { numeric: true })
-    );
+    // Annotate each "latest" row with bucket info, then build the displayed list
+    const created = Array.from(groupMap.values())
+      .map(g => ({ ...g.latest, _bucket: g.hasBlank ? "new" : "revision" }))
+      .sort((a, b) => (a.opportunity || "").localeCompare(b.opportunity || "", undefined, { numeric: true }));
 
     // ── Also catch Closed Won quotes where won_date column is null but wonInfo has a date this month ──
     // This covers quotes where won details were saved but won_date column wasn't written (e.g. pre-fix SF imports)
@@ -4449,6 +4454,98 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
               );
             })()}
 
+            {/* ── Quotes this month table ── */}
+            {(()=>{
+              const filtered=(data.created||[]).filter(q=>{
+                if(quotesThisMonthFilter==="new")return q._bucket==="new";
+                if(quotesThisMonthFilter==="revisions")return q._bucket==="revision";
+                return true;
+              });
+              const newCount=(data.created||[]).filter(q=>q._bucket==="new").length;
+              const revCount=(data.created||[]).filter(q=>q._bucket==="revision").length;
+              const allCount=(data.created||[]).length;
+              return(
+                <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
+                  border:"1px solid #e8ecf0",overflow:"hidden",marginBottom:20}}>
+                  <div onClick={()=>setQuotesThisMonthCollapsed(v=>!v)}
+                    style={{padding:"16px 24px",borderBottom:quotesThisMonthCollapsed?"none":"1px solid #e8ecf0",
+                    fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",
+                    display:"flex",alignItems:"center",gap:8,cursor:"pointer",userSelect:"none"}}>
+                    <span style={{fontSize:11,color:"#9aa5b1"}}>{quotesThisMonthCollapsed?"▶":"▼"}</span>
+                    ALL QUOTES THIS MONTH ({filtered.length})
+                  </div>
+                  {!quotesThisMonthCollapsed&&(
+                    <div>
+                      {/* Filter pills */}
+                      <div style={{display:"flex",gap:6,padding:"10px 24px",borderBottom:"1px solid #f0f2f5",alignItems:"center"}}>
+                        {[["all","All",allCount],["new","New",newCount],["revisions","Revisions",revCount]].map(([key,label,count])=>{
+                          const active=quotesThisMonthFilter===key;
+                          return(
+                            <button key={key} onClick={()=>setQuotesThisMonthFilter(key)}
+                              style={{background:active?"#1a5276":"#f0f2f5",color:active?"#fff":"#6b7a8d",
+                                border:"none",borderRadius:14,padding:"4px 12px",fontSize:11,fontWeight:600,cursor:"pointer",letterSpacing:.3}}>
+                              {label} ({count})
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {filtered.length===0?(
+                        <div style={{padding:32,textAlign:"center",color:"#9aa5b1",fontSize:13}}>
+                          {quotesThisMonthFilter==="all"?"No quotes created this month yet":
+                            quotesThisMonthFilter==="new"?"No new quotes this month":
+                            "No revisions this month"}
+                        </div>
+                      ):(
+                        <>
+                          <div style={{display:"grid",gridTemplateColumns:"2fr 2fr 1fr",
+                            padding:"8px 24px",background:"#f8f9fb",
+                            fontSize:9,fontWeight:700,letterSpacing:.8,color:"#9aa5b1"}}>
+                            <div>OPPORTUNITY</div><div>ACCOUNT</div><div style={{textAlign:"right"}}>TOTAL</div>
+                          </div>
+                          {filtered.map(q=>(
+                            <div key={q.id} style={{display:"grid",gridTemplateColumns:"2fr 2fr 1fr",
+                              padding:"10px 24px",borderTop:"1px solid #f0f2f5",fontSize:12}}>
+                              <div
+                                onClick={()=>{
+                                  if(!onLoadQuote)return;
+                                  // Hydrate the raw dashboard row into a full quote object for handleLoad
+                                  const blob=q.data||{};
+                                  onLoadQuote({
+                                    ...blob,
+                                    id:q.id,
+                                    opp:q.opportunity||blob.opp,
+                                    rev:q.revision||blob.qi?.rev||blob.rev||"",
+                                    customer:q.customer||blob.customer,
+                                    total:q.total||blob.total,
+                                    source:blob.source||"vibrato",
+                                    savedAt:q.created_at,
+                                  });
+                                }}
+                                style={{fontWeight:600,color:"#1a5276",cursor:"pointer",
+                                  textDecoration:"underline",textDecorationColor:"rgba(26,82,118,0.4)"}}>
+                                {q.opportunity||"—"}
+                              </div>
+                              <div style={{color:"#6b7a8d"}}>{q.customer||"—"}</div>
+                              <div style={{textAlign:"right",fontWeight:600,color:"#1a5276"}}>{money(q.total||0)}</div>
+                            </div>
+                          ))}
+                          <div style={{display:"grid",gridTemplateColumns:"2fr 2fr 1fr",
+                            padding:"10px 24px",borderTop:"2px solid #e8ecf0",
+                            fontSize:12,fontWeight:700,background:"#f8f9fb"}}>
+                            <div style={{color:"#1a2332"}}>Total</div>
+                            <div/>
+                            <div style={{textAlign:"right",color:"#1a5276"}}>
+                              {money(filtered.reduce((a,q)=>a+(q.total||0),0))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* ── 3-Month Running Averages ── */}
             {(()=>{
               const months=data.monthCounts;
@@ -5028,64 +5125,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
               );
             })()}
 
-            {/* ── Quotes this month table ── */}
-            <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
-              border:"1px solid #e8ecf0",overflow:"hidden"}}>
-              <div onClick={()=>setQuotesThisMonthCollapsed(v=>!v)}
-                style={{padding:"16px 24px",borderBottom:quotesThisMonthCollapsed?"none":"1px solid #e8ecf0",
-                fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",
-                display:"flex",alignItems:"center",gap:8,cursor:"pointer",userSelect:"none"}}>
-                <span style={{fontSize:11,color:"#9aa5b1"}}>{quotesThisMonthCollapsed?"▶":"▼"}</span>
-                ALL QUOTES THIS MONTH ({data.created.length})
-              </div>
-              {!quotesThisMonthCollapsed&&(data.created.length===0?(
-                <div style={{padding:32,textAlign:"center",color:"#9aa5b1",fontSize:13}}>No quotes created this month yet</div>
-              ):(
-                <>
-                  <div style={{display:"grid",gridTemplateColumns:"2fr 2fr 1fr",
-                    padding:"8px 24px",background:"#f8f9fb",
-                    fontSize:9,fontWeight:700,letterSpacing:.8,color:"#9aa5b1"}}>
-                    <div>OPPORTUNITY</div><div>ACCOUNT</div><div style={{textAlign:"right"}}>TOTAL</div>
-                  </div>
-                  {data.created.map(q=>(
-                    <div key={q.id} style={{display:"grid",gridTemplateColumns:"2fr 2fr 1fr",
-                      padding:"10px 24px",borderTop:"1px solid #f0f2f5",fontSize:12}}>
-                      <div
-                        onClick={()=>{
-                          if(!onLoadQuote)return;
-                          // Hydrate the raw dashboard row into a full quote object for handleLoad
-                          const blob=q.data||{};
-                          onLoadQuote({
-                            ...blob,
-                            id:q.id,
-                            opp:q.opportunity||blob.opp,
-                            rev:q.revision||blob.qi?.rev||blob.rev||"",
-                            customer:q.customer||blob.customer,
-                            total:q.total||blob.total,
-                            source:blob.source||"vibrato",
-                            savedAt:q.created_at,
-                          });
-                        }}
-                        style={{fontWeight:600,color:"#1a5276",cursor:"pointer",
-                          textDecoration:"underline",textDecorationColor:"rgba(26,82,118,0.4)"}}>
-                        {q.opportunity||"—"}
-                      </div>
-                      <div style={{color:"#6b7a8d"}}>{q.customer||"—"}</div>
-                      <div style={{textAlign:"right",fontWeight:600,color:"#1a5276"}}>{money(q.total||0)}</div>
-                    </div>
-                  ))}
-                  <div style={{display:"grid",gridTemplateColumns:"2fr 2fr 1fr",
-                    padding:"10px 24px",borderTop:"2px solid #e8ecf0",
-                    fontSize:12,fontWeight:700,background:"#f8f9fb"}}>
-                    <div style={{color:"#1a2332"}}>Total</div>
-                    <div/>
-                    <div style={{textAlign:"right",color:"#1a5276"}}>
-                      {money(data.created.reduce((a,q)=>a+(q.total||0),0))}
-                    </div>
-                  </div>
-                </>
-              ))}
-            </div>
             {/* ── Top codes + Top accounts ── */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
 
