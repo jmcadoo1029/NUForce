@@ -3799,17 +3799,23 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     ]);
     const createdAll = createdRaw || [];
     // Dedupe: show only the latest revision per opportunity.
-    // "Latest" = highest revision letter (blank < A < B < C ...).
+    // Opportunity numbers carry the rev letter as a suffix (e.g. "24-173" → "24-173A" → "24-173B"),
+    // so we group by the BASE opp (with the trailing letter stripped) and keep the highest rev.
     const revRank = (r) => {
       const s = (r || "").toString().trim().toUpperCase();
       return s.length === 0 ? -1 : s.charCodeAt(0) - 64; // blank → -1, A → 1, B → 2, ...
     };
+    const baseOppOf = (opp) => {
+      if (!opp) return "";
+      const m = opp.match(/^(.+?)([A-Z])?$/);
+      return m ? m[1] : opp;
+    };
     const byOpp = new Map();
     for (const q of createdAll) {
-      const opp = q.opportunity || ("__no_opp_" + q.id);
-      const cur = byOpp.get(opp);
+      const baseKey = baseOppOf(q.opportunity) || ("__no_opp_" + q.id);
+      const cur = byOpp.get(baseKey);
       if (!cur || revRank(q.revision) > revRank(cur.revision)) {
-        byOpp.set(opp, q);
+        byOpp.set(baseKey, q);
       }
     }
     const created = Array.from(byOpp.values()).sort((a, b) =>
@@ -7515,22 +7521,36 @@ export default function App({onLogout,currentUser}){
     }
     setShowRevHistory(true);
     setRevHistoryLoading(true);
+    // Parse out the base opportunity by stripping a single trailing letter (revision marker)
+    // Examples: "24-173"→"24-173", "24-173A"→"24-173", "26-096B"→"26-096"
+    const oppMatch = qi.opp.match(/^(.+?)([A-Z])?$/);
+    const baseOpp = oppMatch ? oppMatch[1] : qi.opp;
+    // Query for the base + any single-letter rev variants. Use ilike with a wildcard,
+    // then client-side filter to ensure suffix is either empty or exactly one A-Z.
     const { data, error } = await supabase
       .from("quotes")
       .select("id, opportunity, revision, total, updated_at, created_at, data")
-      .eq("opportunity", qi.opp);
+      .ilike("opportunity", baseOpp + "%");
     if (error) {
       console.error("Rev history load error:", error);
       setRevHistoryList([]);
       setRevHistoryLoading(false);
       return;
     }
+    // Filter out unrelated matches (e.g. "24-1730" when querying "24-173")
+    const filtered = (data || []).filter(row => {
+      const opp = (row.opportunity || "").toUpperCase();
+      const base = baseOpp.toUpperCase();
+      if (opp === base) return true;
+      if (opp.length === base.length + 1 && opp.startsWith(base) && /[A-Z]/.test(opp.slice(-1))) return true;
+      return false;
+    });
     // Sort: highest revision letter first (blank < A < B < C ...)
     const revRank = (r) => {
       const s = (r || "").toString().trim().toUpperCase();
       return s.length === 0 ? -1 : s.charCodeAt(0) - 64;
     };
-    const list = (data || []).slice().sort((a, b) => revRank(b.revision) - revRank(a.revision));
+    const list = filtered.slice().sort((a, b) => revRank(b.revision) - revRank(a.revision));
     setRevHistoryList(list);
     // Default: compare current (newest) to the one immediately prior
     if (list.length > 0) {
