@@ -2182,6 +2182,182 @@ function ClientContactPicker({qi, setQi, resetKey}){
   );
 }
 
+function RelatedContactsField({qi, setQi}){
+  // qi.relatedContacts is an array of {name, email, contactId?}
+  const rcs = Array.isArray(qi.relatedContacts) ? qi.relatedContacts : [];
+  // Ensure there's always at least one input row visible
+  const displayRows = rcs.length > 0 ? rcs : [{name:"", email:"", contactId:null}];
+  const MAX = 10;
+
+  const setRow = (idx, updates) => {
+    const next = [...displayRows];
+    next[idx] = {...next[idx], ...updates};
+    // Persist; if the array is the placeholder single empty row, only save once user types
+    setQi(q => ({...q, relatedContacts: next}));
+  };
+  const removeRow = (idx) => {
+    const next = displayRows.filter((_, i) => i !== idx);
+    setQi(q => ({...q, relatedContacts: next}));
+  };
+  const addRow = () => {
+    if (displayRows.length >= MAX) return;
+    const next = [...displayRows, {name:"", email:"", contactId:null}];
+    setQi(q => ({...q, relatedContacts: next}));
+  };
+
+  return(
+    <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid "+C.border}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+        <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:1.5}}>RELATED CONTACTS</div>
+        <span style={{fontSize:9,color:C.muted}}>{displayRows.filter(r=>r.name||r.email).length} / {MAX}</span>
+      </div>
+      {displayRows.map((row, idx) => (
+        <RelatedContactRow key={idx}
+          row={row}
+          existingIds={displayRows.filter((_,i)=>i!==idx).map(r=>r.contactId).filter(Boolean)}
+          accountName={qi.account||""}
+          onChange={updates => setRow(idx, updates)}
+          onRemove={displayRows.length > 1 ? () => removeRow(idx) : null}/>
+      ))}
+      {displayRows.length < MAX && (
+        <div onClick={addRow}
+          style={{display:"inline-block",marginTop:4,fontSize:10,color:C.accent,cursor:"pointer",fontWeight:600}}>
+          + Add Contact
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RelatedContactRow({row, existingIds, accountName, onChange, onRemove}){
+  const [search, setSearch] = useState(row.name || "");
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [hasPhone, setHasPhone] = useState(true);
+  const wrapRef = useRef(null);
+  const timer = useRef(null);
+
+  // Keep input synced with external row changes (e.g. on row delete/clear)
+  useEffect(() => { setSearch(row.name || ""); }, [row.name]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Debounced search
+  useEffect(() => {
+    clearTimeout(timer.current);
+    const term = search.trim();
+    if (!term) { setResults([]); return; }
+    timer.current = setTimeout(async () => {
+      const tokens = term.split(/\s+/).filter(Boolean);
+      const firstToken = tokens[0];
+      const select = hasPhone
+        ? "id, first_name, last_name, email, phone, client_id, clients(name)"
+        : "id, first_name, last_name, email, client_id, clients(name)";
+      let q = await supabase
+        .from("contacts")
+        .select(select)
+        .or(`first_name.ilike.%${firstToken}%,last_name.ilike.%${firstToken}%,email.ilike.%${firstToken}%`)
+        .order("last_name")
+        .limit(50);
+      if (q.error && hasPhone && /phone/i.test(q.error.message || "")) {
+        setHasPhone(false);
+        q = await supabase
+          .from("contacts")
+          .select("id, first_name, last_name, email, client_id, clients(name)")
+          .or(`first_name.ilike.%${firstToken}%,last_name.ilike.%${firstToken}%,email.ilike.%${firstToken}%`)
+          .order("last_name")
+          .limit(50);
+      }
+      if (q.error) { console.error("Related contacts search error:", q.error); setResults([]); return; }
+      // Client-side multi-word filter
+      const matches = (q.data || []).filter(c => {
+        const hay = ((c.first_name||"")+" "+(c.last_name||"")+" "+(c.email||"")+" "+(c.clients?.name||"")).toLowerCase();
+        return tokens.every(t => hay.includes(t.toLowerCase()));
+      });
+      // Exclude already-added contacts
+      const excludeSet = new Set(existingIds);
+      const filtered = matches.filter(c => !excludeSet.has(c.id));
+      // Bias account contacts to top
+      const acctLower = (accountName||"").toLowerCase().trim();
+      filtered.sort((a, b) => {
+        const aIs = (a.clients?.name||"").toLowerCase() === acctLower;
+        const bIs = (b.clients?.name||"").toLowerCase() === acctLower;
+        if (aIs !== bIs) return aIs ? -1 : 1;
+        return (a.last_name||"").localeCompare(b.last_name||"");
+      });
+      setResults(filtered.slice(0, 20));
+    }, 250);
+    return () => clearTimeout(timer.current);
+  }, [search, accountName, hasPhone, existingIds.join(",")]);
+
+  const pickContact = (ct) => {
+    const name = ((ct.first_name||"")+" "+(ct.last_name||"")).trim();
+    setSearch(name);
+    setOpen(false);
+    onChange({name, email: ct.email||"", contactId: ct.id});
+  };
+
+  return(
+    <div ref={wrapRef} style={{position:"relative",marginBottom:5,display:"flex",gap:4,alignItems:"flex-start"}}>
+      <input
+        value={search}
+        onChange={e => {
+          setSearch(e.target.value);
+          setOpen(true);
+          // If user clears or edits past the saved name, clear the contactId binding
+          if (row.contactId && e.target.value !== row.name) {
+            onChange({name: e.target.value, email: "", contactId: null});
+          } else {
+            onChange({name: e.target.value});
+          }
+        }}
+        onFocus={() => setOpen(true)}
+        placeholder="Search name or email…"
+        style={{...inp,flex:1.3}}/>
+      <input
+        value={row.email||""}
+        onChange={e => onChange({email: e.target.value})}
+        placeholder="Email"
+        style={{...inp,flex:1,fontSize:11}}/>
+      {onRemove && (
+        <button onClick={onRemove}
+          title="Remove this contact"
+          style={{background:"none",border:"1px solid "+C.border,borderRadius:5,
+            color:C.muted,fontSize:14,cursor:"pointer",padding:"2px 8px",lineHeight:1}}>×</button>
+      )}
+      {open && search.trim() && results.length > 0 && (
+        <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:2000,
+          background:"#fff",border:"1px solid "+C.border,borderRadius:7,
+          boxShadow:"0 4px 16px rgba(0,0,0,0.12)",maxHeight:240,overflowY:"auto",marginTop:2}}>
+          {results.map(ct => {
+            const name = ((ct.first_name||"")+" "+(ct.last_name||"")).trim();
+            const company = ct.clients?.name||"";
+            return(
+              <div key={ct.id}
+                onMouseDown={() => pickContact(ct)}
+                style={{padding:"7px 12px",cursor:"pointer",borderBottom:"1px solid #f0f2f5",fontSize:11}}
+                onMouseEnter={e => e.currentTarget.style.background=C.panel}
+                onMouseLeave={e => e.currentTarget.style.background="transparent"}>
+                <div style={{fontWeight:600,color:C.text}}>{name||"(no name)"}</div>
+                <div style={{fontSize:10,color:C.muted,marginTop:1}}>
+                  {company && <span>{company}</span>}
+                  {company && ct.email && <span> · </span>}
+                  {ct.email && <span>{ct.email}</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function QuoteSearch({onLoad}){
   const [search,setSearch]=useState("");
   const [results,setResults]=useState([]);
@@ -10317,6 +10493,8 @@ const STANDARD_TERMS = [
                     </div>
                   </div>
                 </div>
+                {/* Related Contacts — additional contacts beyond the primary one above */}
+                <RelatedContactsField qi={qi} setQi={setQi}/>
               </div>
 
               {/* Test Item Description */}
