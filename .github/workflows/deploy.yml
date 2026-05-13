@@ -1,4 +1,4 @@
-name: Deploy Vibrato to GitHub Pages
+name: Deploy NUForce to GitHub Pages
 
 on:
   push:
