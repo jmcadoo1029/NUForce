@@ -9316,8 +9316,7 @@ const STANDARD_TERMS = [
           setF('normal', 9, DARK);
           specsText.split('\n').forEach(line=>{
             if(!line.trim()){y+=4;return;}
-            const bullet = line.startsWith('•') ? '' : '';
-            const w = doc.splitTextToSize('• '+line.replace(/^•s*/,''), TW-14);
+            const w = doc.splitTextToSize(line.replace(/^•\s*/,''), TW-14);
             checkY(w.length*12+3);
             doc.text(w, ML+8, y); y += w.length*12+3;
           });
@@ -9330,7 +9329,7 @@ const STANDARD_TERMS = [
             if(!line.trim()){y+=4;return;}
             const isSubBullet = line.startsWith('  ') || line.startsWith('\t');
             const indent = isSubBullet ? 20 : 8;
-            const w = doc.splitTextToSize('• '+line.replace(/^•s*/,'').replace(/^\s+/,''), TW-indent-6);
+            const w = doc.splitTextToSize(line.replace(/^•\s*/,'').replace(/^\s+/,''), TW-indent-6);
             checkY(w.length*12+3);
             doc.text(w, ML+indent, y); y += w.length*12+3;
           });
