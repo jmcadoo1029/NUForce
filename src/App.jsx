@@ -1901,6 +1901,9 @@ async function saveQuoteToSupabase(quote, autoSpecs, autoNotes, opts) {
   return data.id;
 }
 
+// DEPRECATED — caused statement timeouts on growing databases (full 2-year scan with `data` blob).
+// All callers were replaced with loadPendingQuotes(). Kept here in case something we missed depends on it.
+// Safe to delete after confirming the app works without it for a session or two.
 async function loadQuotesFromSupabase() {
   // Load recent quotes (last 2 years) for approval queue badge — search handles full history
   const cutoff = new Date();
@@ -6989,9 +6992,12 @@ export default function App({onLogout,currentUser}){
   },[]);
 
   // ── Load saved quotes on startup + Supabase Realtime sync ──────────────────
+  // Note: we only need pending-approval quotes in savedQuotes state (used by the
+  // approval queue). loadPendingQuotes is bounded and fast; loadQuotesFromSupabase
+  // (2-year scan) was timing out on the free-tier DB and isn't needed for any
+  // active feature.
   useEffect(()=>{
-    loadQuotesFromSupabase().then(q=>setSavedQuotes(q));
-    loadPendingQuotes().then(q=>setSavedQuotes(prev=>({...prev,...q})));
+    loadPendingQuotes().then(q=>setSavedQuotes(q));
 
     const channel=supabase
       .channel("quotes-realtime")
@@ -7008,7 +7014,6 @@ export default function App({onLogout,currentUser}){
               return {...cleaned,...fresh};
             });
           });
-          loadQuotesFromSupabase().then(q=>setSavedQuotes(prev=>({...prev,...q})));
           setDashboardNeedsRefresh(prev=>prev||true);
           setCurrentQuoteId(prevId=>{
             if(prevId&&String(payload.new?.id)===String(prevId)){
@@ -7259,8 +7264,8 @@ export default function App({onLogout,currentUser}){
         }
       }
     }
-    // Reload from Supabase to ensure UI is fully in sync
-    const refreshed=await loadQuotesFromSupabase();
+    // Reload from Supabase to ensure UI is fully in sync (pending only — see comment in useEffect)
+    const refreshed=await loadPendingQuotes();
     setSavedQuotes(refreshed);
     setQueueSelected(new Set());
     setQueueComments("");
