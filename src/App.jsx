@@ -3859,14 +3859,19 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     const topAccounts=Object.values(acctMap).sort((a,b)=>b.total-a.total).slice(0,5);
 
     // Top product codes
+    // Sources (additive): pickerLines (current standard), summary.lines (legacy),
+    // custom.rows (edge case). Different field names per source.
     const pcodeMap = {};
+    const addLine=(code,amount)=>{
+      if(!code||!amount)return;
+      if(!pcodeMap[code])pcodeMap[code]={code,total:0,count:0};
+      pcodeMap[code].total+=amount;
+      pcodeMap[code].count+=1;
+    };
     created.forEach(q=>{
-      (q.data?.summary?.lines||[]).forEach(l=>{
-        if(!l.code||!l.val)return;
-        if(!pcodeMap[l.code])pcodeMap[l.code]={code:l.code,total:0,count:0};
-        pcodeMap[l.code].total+=l.val;
-        pcodeMap[l.code].count+=1;
-      });
+      (q.data?.pickerLines||[]).forEach(l=>addLine(l.code,sf(l.price)));
+      (q.data?.summary?.lines||[]).forEach(l=>addLine(l.code,sf(l.val)));
+      (q.data?.custom?.rows||[]).forEach(l=>addLine(l.pcode||l.code,sf(l.price)));
     });
     const topCodes=Object.values(pcodeMap).sort((a,b)=>b.total-a.total).slice(0,8);
 
@@ -4029,15 +4034,19 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     wonNullFiltered.forEach(q=>{ if(!wonRawIds.has(q.id)) wonRawMerged.push(q); });
 
     // ── Top 10 product codes this month ──
+    // Sources (additive): pickerLines (current standard), summary.lines (legacy),
+    // custom.rows (edge case). Different field names per source.
     const pcodeMap = {};
+    const addLine = (code, amount) => {
+      if(!code || !amount) return;
+      if(!pcodeMap[code]) pcodeMap[code] = {code, total:0, count:0};
+      pcodeMap[code].total += amount;
+      pcodeMap[code].count += 1;
+    };
     created.forEach(q => {
-      const lines = q.data?.summary?.lines || [];
-      lines.forEach(l => {
-        if(!l.code||!l.val) return;
-        if(!pcodeMap[l.code]) pcodeMap[l.code] = {code:l.code, total:0, count:0};
-        pcodeMap[l.code].total += l.val;
-        pcodeMap[l.code].count += 1;
-      });
+      (q.data?.pickerLines || []).forEach(l => addLine(l.code, sf(l.price)));
+      (q.data?.summary?.lines || []).forEach(l => addLine(l.code, sf(l.val)));
+      (q.data?.custom?.rows || []).forEach(l => addLine(l.pcode || l.code, sf(l.price)));
     });
     const topCodes = Object.values(pcodeMap)
       .sort((a,b) => b.total - a.total)
