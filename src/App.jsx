@@ -4065,15 +4065,18 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       .slice(0, 5);
 
     // ── Net Total Value: revision deltas for revs APPROVED this month ──
-    // Trigger: approval.decidedAt within this month + status==='approved'
-    // Only counts revs whose ORIGINAL was created in a PRIOR month
-    // (same-month revs are already bundled into Total Value via latest-per-group grouping)
-    // Delta = (this rev's total) - (immediately preceding rev letter's total)
-    // Prior rev found by opportunity-string substitution; uses its total regardless
-    // of approval status (handles legacy pre-approval-tracking quotes).
+    // Includes a revision only when ALL three hold:
+    //   1. approval.status === "approved" and decidedAt is within this month
+    //   2. The family's original (blank-rev base) was created in a PRIOR month
+    //      (same-month families are already bundled into Total Value)
+    //   3. The immediately preceding revision exists in the DB
+    //      (orphan revs from legacy SF imports get skipped — no meaningful delta)
+    // Delta = (this rev's total) - (immediately preceding revision's total)
+    // Prior rev letter is derived from the `revision` column, NOT the trailing letter
+    // of the opportunity string (the two can disagree on legacy SF-imported rows).
     let revisionDelta = 0;
     try {
-      // Pull all approved-status revs (have a rev letter) — filter decidedAt client-side
+      // Pull all approved-status revs (have a non-empty rev letter)
       const { data: approvedRevs } = await supabase
         .from("quotes")
         .select("id, opportunity, revision, total, created_at, data")
@@ -4082,8 +4085,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
         .neq("revision","");
       const monthStartMs = new Date(thisMonth.start).getTime();
       const monthEndMs   = new Date(thisMonth.end).getTime();
-      // First filter: just by decidedAt in this month. Rule #2 (original-before-month)
-      // applied below after we look up each rev's family lineage.
       const revsDecidedThisMonth = (approvedRevs||[]).filter(r=>{
         const d = r.data?.approval?.decidedAt;
         if(!d) return false;
@@ -4091,32 +4092,27 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
         return !isNaN(t) && t>=monthStartMs && t<monthEndMs;
       });
       if(revsDecidedThisMonth.length>0){
-        // Helper to derive prior rev's opportunity string
-        const priorRevOf = (opp,rev)=>{
-          // rev "A" → blank original (strip the A)
-          // rev "B" → opp ending in "A", etc.
-          const letter = (rev||"").toString().trim().toUpperCase();
-          if(!letter) return null;
-          const base = opp.endsWith(letter) ? opp.slice(0,-1) : opp;
-          if(letter==="A") return base;             // prior is the blank original
-          const prevLetter = String.fromCharCode(letter.charCodeAt(0)-1);
-          return base + prevLetter;
-        };
-        // Find the BASE opp string (strip all rev letters) for each rev, to look up
-        // the original quote's created_at for the rule-#2 filter
+        // Strip ANY trailing letter from opportunity to get the family base.
+        // Then build prior-rev opp string by appending one-less-letter from `revision` col.
+        // (rev "A" → blank base; rev "B" → base+"A"; rev "C" → base+"B"; etc.)
         const baseOppOf = (opp)=>{
           if(!opp) return "";
           const m = opp.match(/^(.+?)([A-Z])?$/);
           return m ? m[1] : opp;
         };
-        // Collect all opp strings we need totals/dates for:
-        // - prior rev (for delta math)
-        // - base opp (for rule #2 lineage created_at)
+        const priorRevOppOf = (opp, revColValue)=>{
+          const letter = (revColValue||"").toString().trim().toUpperCase();
+          if(!letter || !/^[A-Z]$/.test(letter)) return null;
+          const base = baseOppOf(opp);
+          if(letter==="A") return base;                                   // prior is blank original
+          return base + String.fromCharCode(letter.charCodeAt(0)-1);      // prior letter
+        };
+        // Collect lookups: prior-rev opp (for delta) + base opp (for rule #2 origin date)
         const lookupOppStrings = new Set();
         revsDecidedThisMonth.forEach(r=>{
-          const prior = priorRevOf(r.opportunity, r.revision);
+          const prior = priorRevOppOf(r.opportunity, r.revision);
           if(prior) lookupOppStrings.add(prior);
-          lookupOppStrings.add(baseOppOf(r.opportunity)); // blank-rev base
+          lookupOppStrings.add(baseOppOf(r.opportunity));
         });
         const { data: lookupRows } = await supabase
           .from("quotes")
@@ -4125,31 +4121,20 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
         const rowByOpp = {};
         (lookupRows||[]).forEach(p=>{ rowByOpp[p.opportunity] = p; });
         revsDecidedThisMonth.forEach(r=>{
-          // Rule #2: skip if the family's original (blank-rev base) was created this month
+          // Rule #3: skip if prior rev doesn't exist in DB (orphan)
+          const priorOpp = priorRevOppOf(r.opportunity, r.revision);
+          const priorRow = priorOpp ? rowByOpp[priorOpp] : null;
+          if(!priorRow) return;
+          // Rule #2: skip if the family's original was created this month
+          // Use the blank-rev base if it exists; otherwise use the prior rev's row as
+          // a proxy for "family origin" (for legacy families with no blank in DB).
           const base = baseOppOf(r.opportunity);
           const baseRow = rowByOpp[base];
-          // If we can't find the blank-rev base in DB, fall back to using earliest-letter
-          // row's created_at (e.g. legacy 24-228 family where blank base doesn't exist —
-          // use rev A's created_at). For the 24-228 case, A is from 2024 so still passes.
-          let originCreatedMs;
-          if(baseRow){
-            originCreatedMs = new Date(baseRow.created_at).getTime();
-          } else {
-            // Pick the earliest letter we can find (rev A, then B, etc.) excluding this rev
-            const letter = (r.revision||"").toString().trim().toUpperCase();
-            let probeLetter = "A";
-            let probeRow = null;
-            while(probeLetter<letter){
-              probeRow = rowByOpp[base+probeLetter];
-              if(probeRow) break;
-              probeLetter = String.fromCharCode(probeLetter.charCodeAt(0)+1);
-            }
-            originCreatedMs = probeRow ? new Date(probeRow.created_at).getTime() : new Date(r.created_at).getTime();
-          }
-          if(isNaN(originCreatedMs) || originCreatedMs >= monthStartMs) return; // skip same-month families
-          const prior = priorRevOf(r.opportunity, r.revision);
-          const priorTotal = prior && rowByOpp[prior] ? (rowByOpp[prior].total||0) : 0;
-          revisionDelta += (r.total||0) - priorTotal;
+          const originRow = baseRow || priorRow;
+          const originCreatedMs = new Date(originRow.created_at).getTime();
+          if(isNaN(originCreatedMs) || originCreatedMs >= monthStartMs) return;
+          // Compute delta
+          revisionDelta += (r.total||0) - (priorRow.total||0);
         });
       }
     } catch(e) { console.warn("revisionDelta calc failed:", e); }
