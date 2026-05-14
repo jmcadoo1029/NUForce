@@ -9817,7 +9817,7 @@ const STANDARD_TERMS = [
                 📋 {approval.status==="approved"&&!locked?"RE-SUBMIT":"SUBMIT"}
               </button>
             )}
-            {qi.stage==="Closed Won"&&wonApproval.status==="none"&&(
+            {qi.stage==="Closed Won"&&wonApproval.status==="none"&&!wonInfo?.wonDate&&!wonInfo?.poNum&&(
               <button onClick={()=>{
                 if(window.confirm("Submit this quote for Closed Won approval?\n\nThis will lock the quote and send it to the approval queue."))
                   handleSubmitWonApproval();
@@ -10369,9 +10369,12 @@ const STANDARD_TERMS = [
                   <button onClick={()=>{
                       setWonLocked(true);
                       setShowWonModal(false);
-                      if(!wonApproval||wonApproval.status==="none"||!wonApproval.status){
+                      const isHistoricallyWon = !!(wonInfo?.wonDate||wonInfo?.poNum);
+                      if((!wonApproval||wonApproval.status==="none"||!wonApproval.status)&&!isHistoricallyWon){
+                        // Fresh win: no prior approval and no historical win data — submit for approval
                         handleSubmitWonApproval(qi.stage);
                       } else {
+                        // Historically won (e.g. SF import) OR already through approval — just save
                         handleSave();
                       }
                     }}
