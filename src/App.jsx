@@ -9828,14 +9828,14 @@ const STANDARD_TERMS = [
               </button>
             )}
             {qi.stage==="Closed Won"&&wonApproval.status==="pending_won"&&(
-              <div style={{background:"rgba(30,132,73,0.15)",borderRadius:5,padding:"3px 10px",
-                fontSize:11,fontWeight:700,color:"#145a32"}}>
+              <div style={{background:"#b7791f",borderRadius:5,padding:"3px 10px",
+                fontSize:11,fontWeight:700,color:"#fff",letterSpacing:.5}}>
                 🏆 WON PENDING
               </div>
             )}
             {qi.stage==="Closed Won"&&wonApproval.status==="won_approved"&&(
-              <div style={{background:"rgba(30,132,73,0.15)",borderRadius:5,padding:"3px 10px",
-                fontSize:11,fontWeight:700,color:"#145a32"}}>
+              <div style={{background:"#1e8449",borderRadius:5,padding:"3px 10px",
+                fontSize:11,fontWeight:700,color:"#fff",letterSpacing:.5}}>
                 ✅ WON APPROVED
               </div>
             )}
