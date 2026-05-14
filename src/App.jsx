@@ -4064,6 +4064,96 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       .sort((a,b) => b.total - a.total)
       .slice(0, 5);
 
+    // ── Net Total Value: revision deltas for revs APPROVED this month ──
+    // Trigger: approval.decidedAt within this month + status==='approved'
+    // Only counts revs whose ORIGINAL was created in a PRIOR month
+    // (same-month revs are already bundled into Total Value via latest-per-group grouping)
+    // Delta = (this rev's total) - (immediately preceding rev letter's total)
+    // Prior rev found by opportunity-string substitution; uses its total regardless
+    // of approval status (handles legacy pre-approval-tracking quotes).
+    let revisionDelta = 0;
+    try {
+      // Pull all approved-status revs (have a rev letter) — filter decidedAt client-side
+      const { data: approvedRevs } = await supabase
+        .from("quotes")
+        .select("id, opportunity, revision, total, created_at, data")
+        .eq("approval_status","approved")
+        .not("revision","is",null)
+        .neq("revision","");
+      const monthStartMs = new Date(thisMonth.start).getTime();
+      const monthEndMs   = new Date(thisMonth.end).getTime();
+      // First filter: just by decidedAt in this month. Rule #2 (original-before-month)
+      // applied below after we look up each rev's family lineage.
+      const revsDecidedThisMonth = (approvedRevs||[]).filter(r=>{
+        const d = r.data?.approval?.decidedAt;
+        if(!d) return false;
+        const t = new Date(d).getTime();
+        return !isNaN(t) && t>=monthStartMs && t<monthEndMs;
+      });
+      if(revsDecidedThisMonth.length>0){
+        // Helper to derive prior rev's opportunity string
+        const priorRevOf = (opp,rev)=>{
+          // rev "A" → blank original (strip the A)
+          // rev "B" → opp ending in "A", etc.
+          const letter = (rev||"").toString().trim().toUpperCase();
+          if(!letter) return null;
+          const base = opp.endsWith(letter) ? opp.slice(0,-1) : opp;
+          if(letter==="A") return base;             // prior is the blank original
+          const prevLetter = String.fromCharCode(letter.charCodeAt(0)-1);
+          return base + prevLetter;
+        };
+        // Find the BASE opp string (strip all rev letters) for each rev, to look up
+        // the original quote's created_at for the rule-#2 filter
+        const baseOppOf = (opp)=>{
+          if(!opp) return "";
+          const m = opp.match(/^(.+?)([A-Z])?$/);
+          return m ? m[1] : opp;
+        };
+        // Collect all opp strings we need totals/dates for:
+        // - prior rev (for delta math)
+        // - base opp (for rule #2 lineage created_at)
+        const lookupOppStrings = new Set();
+        revsDecidedThisMonth.forEach(r=>{
+          const prior = priorRevOf(r.opportunity, r.revision);
+          if(prior) lookupOppStrings.add(prior);
+          lookupOppStrings.add(baseOppOf(r.opportunity)); // blank-rev base
+        });
+        const { data: lookupRows } = await supabase
+          .from("quotes")
+          .select("opportunity, total, created_at")
+          .in("opportunity", Array.from(lookupOppStrings));
+        const rowByOpp = {};
+        (lookupRows||[]).forEach(p=>{ rowByOpp[p.opportunity] = p; });
+        revsDecidedThisMonth.forEach(r=>{
+          // Rule #2: skip if the family's original (blank-rev base) was created this month
+          const base = baseOppOf(r.opportunity);
+          const baseRow = rowByOpp[base];
+          // If we can't find the blank-rev base in DB, fall back to using earliest-letter
+          // row's created_at (e.g. legacy 24-228 family where blank base doesn't exist —
+          // use rev A's created_at). For the 24-228 case, A is from 2024 so still passes.
+          let originCreatedMs;
+          if(baseRow){
+            originCreatedMs = new Date(baseRow.created_at).getTime();
+          } else {
+            // Pick the earliest letter we can find (rev A, then B, etc.) excluding this rev
+            const letter = (r.revision||"").toString().trim().toUpperCase();
+            let probeLetter = "A";
+            let probeRow = null;
+            while(probeLetter<letter){
+              probeRow = rowByOpp[base+probeLetter];
+              if(probeRow) break;
+              probeLetter = String.fromCharCode(probeLetter.charCodeAt(0)+1);
+            }
+            originCreatedMs = probeRow ? new Date(probeRow.created_at).getTime() : new Date(r.created_at).getTime();
+          }
+          if(isNaN(originCreatedMs) || originCreatedMs >= monthStartMs) return; // skip same-month families
+          const prior = priorRevOf(r.opportunity, r.revision);
+          const priorTotal = prior && rowByOpp[prior] ? (rowByOpp[prior].total||0) : 0;
+          revisionDelta += (r.total||0) - priorTotal;
+        });
+      }
+    } catch(e) { console.warn("revisionDelta calc failed:", e); }
+
     // ── Month-over-month quote counts + totals (source=nuforce) ──
     const monthCounts = await Promise.all(months.map(async m => {
       const { data: mRows } = await supabase
@@ -4106,7 +4196,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     const ytdWonNewTotal = ytdWonNew.reduce((a,q) => a + (q.total||0), 0);
     const ytdWonExTotal  = ytdWonExisting.reduce((a,q) => a + (q.total||0), 0);
     const ytdWonTotal    = ytdWonNewTotal + ytdWonExTotal;
-    setData({ created, monthCounts, won, wonNew, wonExisting, wonTotal, topCodes, topAccounts,
+    setData({ created, monthCounts, won, wonNew, wonExisting, wonTotal, topCodes, topAccounts, revisionDelta,
       ytdQuoteCount: ytdCreated.length, ytdQuoteTotal, ytdWonNewTotal, ytdWonExTotal, ytdWonTotal, yrPrefix });
     setLoading(false);
   };
@@ -4467,6 +4557,22 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                 <div style={{fontSize:12,color:"#6b7a8d",marginTop:6}}>
                   Total value: <span style={{fontWeight:700,color:"#1a5276"}}>{money(data.created.reduce((a,q)=>a+(q.total||0),0))}</span>
                 </div>
+                {(()=>{
+                  const totalVal = data.created.reduce((a,q)=>a+(q.total||0),0);
+                  const delta = data.revisionDelta||0;
+                  if(delta===0) return null;
+                  const net = totalVal + delta;
+                  const deltaColor = delta>0?"#1e8449":"#c0392b";
+                  const deltaSign  = delta>0?"+":"−";
+                  return (
+                    <div style={{fontSize:12,color:"#6b7a8d",marginTop:3}}>
+                      Net total value: <span style={{fontWeight:700,color:"#1a5276"}}>{money(net)}</span>
+                      <span style={{marginLeft:6,fontSize:11,color:deltaColor,fontWeight:600}}>
+                        ({deltaSign}{money(Math.abs(delta))} rev.)
+                      </span>
+                    </div>
+                  );
+                })()}
                 {(()=>{
                   const createdCount=data.created.length;
                   const wonCount=data.won.length;
