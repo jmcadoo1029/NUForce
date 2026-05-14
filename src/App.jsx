@@ -4552,44 +4552,51 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
             {/* ── Top stat cards — 2 cols: Quotes | Won+Target ── */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:16,marginBottom:20}}>
               <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0"}}>
-                <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:8}}>QUOTES THIS MONTH</div>
-                <div style={{fontSize:36,fontWeight:800,color:"#1a2332",lineHeight:1}}>{data.created.length}</div>
-                <div style={{fontSize:12,color:"#6b7a8d",marginTop:6}}>
-                  Total value: <span style={{fontWeight:700,color:"#1a5276"}}>{money(data.created.reduce((a,q)=>a+(q.total||0),0))}</span>
-                </div>
                 {(()=>{
-                  const totalVal = data.created.reduce((a,q)=>a+(q.total||0),0);
+                  // "New families this month" = quotes whose blank-rev original was created this month.
+                  // _bucket==="new" already encodes this (set in load() at created-array build time).
+                  // Orphan-letter rows (SF imports with letter but no blank in DB) are correctly tagged "revision".
+                  const newFamilies = (data.created||[]).filter(q=>q._bucket==="new");
+                  const createdCount = newFamilies.length;
+                  const totalVal = newFamilies.reduce((a,q)=>a+(q.total||0),0);
                   const delta = data.revisionDelta||0;
-                  if(delta===0) return null;
-                  const net = totalVal + delta;
-                  const deltaColor = delta>0?"#1e8449":"#c0392b";
-                  const deltaSign  = delta>0?"+":"−";
+                  const wonCount = data.won.length;
+                  const capPct = createdCount>0?Math.round((wonCount/createdCount)*100):0;
+                  const capColor = capPct>=50?"#1e8449":capPct>=25?"#b7791f":"#c0392b";
                   return (
-                    <div style={{fontSize:12,color:"#6b7a8d",marginTop:3}}>
-                      Net total value: <span style={{fontWeight:700,color:"#1a5276"}}>{money(net)}</span>
-                      <span style={{marginLeft:6,fontSize:11,color:deltaColor,fontWeight:600}}>
-                        ({deltaSign}{money(Math.abs(delta))} rev.)
-                      </span>
-                    </div>
+                    <>
+                      <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1",marginBottom:8}}>QUOTES THIS MONTH</div>
+                      <div style={{fontSize:36,fontWeight:800,color:"#1a2332",lineHeight:1}}>{createdCount}</div>
+                      <div style={{fontSize:12,color:"#6b7a8d",marginTop:6}}>
+                        Total value: <span style={{fontWeight:700,color:"#1a5276"}}>{money(totalVal)}</span>
+                      </div>
+                      {delta!==0 && (()=>{
+                        const net = totalVal + delta;
+                        const deltaColor = delta>0?"#1e8449":"#c0392b";
+                        const deltaSign  = delta>0?"+":"−";
+                        return (
+                          <div style={{fontSize:12,color:"#6b7a8d",marginTop:3}}>
+                            Net total value: <span style={{fontWeight:700,color:"#1a5276"}}>{money(net)}</span>
+                            <span style={{marginLeft:6,fontSize:11,color:deltaColor,fontWeight:600}}>
+                              ({deltaSign}{money(Math.abs(delta))} rev.)
+                            </span>
+                          </div>
+                        );
+                      })()}
+                      {createdCount>0 && (
+                        <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f0f2f5"}}>
+                          <div style={{fontSize:10,fontWeight:700,letterSpacing:1,color:"#9aa5b1",marginBottom:4}}>CAPTURE RATE</div>
+                          <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+                            <span style={{fontSize:24,fontWeight:800,color:capColor}}>{capPct}%</span>
+                            <span style={{fontSize:11,color:"#6b7a8d"}}>{wonCount} won / {createdCount} quoted</span>
+                          </div>
+                          <div style={{marginTop:6,height:6,background:"#e8ecf0",borderRadius:4,overflow:"hidden"}}>
+                            <div style={{height:"100%",width:capPct+"%",background:capColor,borderRadius:4,transition:"width 0.6s ease"}}/>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   );
-                })()}
-                {(()=>{
-                  const createdCount=data.created.length;
-                  const wonCount=data.won.length;
-                  const capPct=createdCount>0?Math.round((wonCount/createdCount)*100):0;
-                  const capColor=capPct>=50?"#1e8449":capPct>=25?"#b7791f":"#c0392b";
-                  return createdCount>0?(
-                    <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid #f0f2f5"}}>
-                      <div style={{fontSize:10,fontWeight:700,letterSpacing:1,color:"#9aa5b1",marginBottom:4}}>CAPTURE RATE</div>
-                      <div style={{display:"flex",alignItems:"baseline",gap:6}}>
-                        <span style={{fontSize:24,fontWeight:800,color:capColor}}>{capPct}%</span>
-                        <span style={{fontSize:11,color:"#6b7a8d"}}>{wonCount} won / {createdCount} quoted</span>
-                      </div>
-                      <div style={{marginTop:6,height:6,background:"#e8ecf0",borderRadius:4,overflow:"hidden"}}>
-                        <div style={{height:"100%",width:capPct+"%",background:capColor,borderRadius:4,transition:"width 0.6s ease"}}/>
-                      </div>
-                    </div>
-                  ):null;
                 })()}
               </div>
               {(()=>{
