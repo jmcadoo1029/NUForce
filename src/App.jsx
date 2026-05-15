@@ -9378,14 +9378,51 @@ const STANDARD_TERMS = [
       // ── QUOTE INFORMATION ────────────────────────────────────────────────
       sectionHdr('Quote Information');
       y += 4;
-      [['Opportunity', qi.opp],
-       ['Stage', qi.stage],
-       ['Type', qi.type],
-       ['Date', qi.revDate||qi.date],
-       qi.account&&['Account', qi.account],
-       qi.contact&&['Contact', qi.contact],
-       qi.rfq&&['RFQ', qi.rfq],
-      ].filter(Boolean).filter(r=>r[1]).forEach(([l,v])=>kvRow(l,v));
+      // Two-column layout: left = quote meta, right = customer info
+      // Each row uses a bold label and normal value, half-width per column
+      const colW = TW / 2;
+      const labelW = 60;          // label column width within each side
+      const leftLabelX  = ML;
+      const leftValueX  = ML + labelW;
+      const rightLabelX = ML + colW;
+      const rightValueX = ML + colW + labelW;
+      const leftCol  = [
+        ['Opportunity', qi.opp],
+        ['Stage',       qi.stage],
+        ['Type',        qi.type],
+        ['Date',        qi.revDate||qi.date],
+        ['RFQ',         qi.rfq],
+      ].filter(r=>r[1]);
+      const rightCol = [
+        ['Account', qi.account],
+        ['Address', qi.billTo],
+        ['',        qi.billToCity],   // blank label = continuation line of Address
+        ['Contact', qi.contact],
+        ['Email',   qi.email],
+      ].filter(r=>r[1]);
+      const rowH = 13;
+      const blockH = Math.max(leftCol.length, rightCol.length) * rowH;
+      checkY(blockH + 4);
+      const startY = y;
+      leftCol.forEach((r,i)=>{
+        const ry = startY + i*rowH;
+        setF('bold', 9.5, DARK);
+        doc.text(String(r[0]), leftLabelX, ry);
+        setF('normal', 9.5, DARK);
+        const vlines = doc.splitTextToSize(String(r[1]), colW - labelW - 8);
+        doc.text(vlines, leftValueX, ry);
+      });
+      rightCol.forEach((r,i)=>{
+        const ry = startY + i*rowH;
+        if(r[0]){
+          setF('bold', 9.5, DARK);
+          doc.text(String(r[0]), rightLabelX, ry);
+        }
+        setF('normal', 9.5, DARK);
+        const vlines = doc.splitTextToSize(String(r[1]), colW - labelW - 8);
+        doc.text(vlines, rightValueX, ry);
+      });
+      y = startY + blockH + 4;
       y += 6;
 
       // ── TEST ITEM DESCRIPTION ────────────────────────────────────────────
