@@ -35,7 +35,7 @@ export default function Login({ onLogin }) {
     // used the local USERS array). Show the same message regardless — better
     // security practice (don't reveal email existence) and adequate for a
     // manual-reset workflow.
-    setForgotMsg("Password reset requests must be handled by your system administrator. Please contact Russ McAdoo at russmcadoo@nulabs.com.");
+    setForgotMsg("Password reset requests must be handled by your system administrator. Please contact Russ to have your password reset.");
   };
 
   const inpStyle = {
