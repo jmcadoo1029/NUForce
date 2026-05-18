@@ -3628,7 +3628,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   };
   const [followUpsCollapsed, setFollowUpsCollapsed] = useState(true);
   const [quotesThisMonthCollapsed, setQuotesThisMonthCollapsed] = useState(true);
-  const [quotesThisMonthFilter, setQuotesThisMonthFilter] = useState("all"); // "all" | "new" | "revisions"
+  const [quotesThisMonthFilter, setQuotesThisMonthFilter] = useState("new"); // "all" | "new" | "revisions"
   const [showRecentApproved, setShowRecentApproved] = useState(false);
   const [recentApproved, setRecentApproved] = useState(null);
   const [recentApprovedLoading, setRecentApprovedLoading] = useState(false);
