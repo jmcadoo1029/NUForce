@@ -4139,16 +4139,115 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       }
     } catch(e) { console.warn("revisionDelta calc failed:", e); }
 
-    // ── Month-over-month quote counts + totals (source=nuforce) ──
+    // ── Month-over-month quote counts + totals ──
+    // Each month produces 4 metrics matching the Quotes This Month widget:
+    //   newCount  = families whose blank-rev original was created that month
+    //   allCount  = newCount + revision rows of prior-month families that landed that month
+    //   newTotal  = sum of those new families' totals (latest rev per group, like dashboard `created`)
+    //   netTotal  = newTotal + sum of revision deltas APPROVED that month for prior-month families
     const monthCounts = await Promise.all(months.map(async m => {
-      const { data: mRows } = await supabase
+      // 1) Pull all rows whose created_at is in this month
+      const { data: monthRowsRaw } = await supabase
         .from("quotes")
-        .select("total")
+        .select("id, opportunity, revision, total, created_at")
         .gte("created_at", m.start)
         .lt("created_at",  m.end);
-      const rows = mRows || [];
-      const total = rows.reduce((a,r) => a + (r.total||0), 0);
-      return { label: m.label, count: rows.length, total, isCurrent: m.isCurrent };
+      const monthRows = monthRowsRaw || [];
+
+      // 2) Compute base opp for each row, then determine which families have a
+      //    blank-rev member in this month (those are the "new" families).
+      const baseOf = (opp)=>{
+        if(!opp) return "";
+        const x = opp.match(/^(.+?)([A-Z])?$/);
+        return x ? x[1] : opp;
+      };
+      const baseHasBlank = new Set();
+      monthRows.forEach(r => {
+        if(!r.revision || r.revision === "") baseHasBlank.add(baseOf(r.opportunity));
+      });
+      // Group by base; keep latest rev per group (same pattern as `created` array)
+      const groups = new Map();
+      monthRows.forEach(r => {
+        const b = baseOf(r.opportunity);
+        const g = groups.get(b) || { rows: [], latest: null };
+        g.rows.push(r);
+        if(!g.latest || (r.revision||"") > (g.latest.revision||"")) g.latest = r;
+        groups.set(b, g);
+      });
+      // newCount = groups whose base has a blank-rev member this month
+      // allCount = total groups this month (new + prior-month-family revisions)
+      let newCount = 0, allCount = 0, newTotal = 0;
+      for(const [b, g] of groups){
+        allCount += 1;
+        if(baseHasBlank.has(b)){
+          newCount += 1;
+          newTotal += (g.latest.total || 0);
+        }
+      }
+
+      // 3) Revision delta for this month: approved revs whose decidedAt is in this
+      //    month AND family base was created in a prior month. Same logic as the
+      //    revisionDelta calc above, but scoped to this loop's month.
+      let monthRevDelta = 0;
+      try {
+        const { data: approvedRevs } = await supabase
+          .from("quotes")
+          .select("id, opportunity, revision, total, data")
+          .eq("approval_status","approved")
+          .not("revision","is",null)
+          .neq("revision","");
+        const mStartMs = new Date(m.start).getTime();
+        const mEndMs   = new Date(m.end).getTime();
+        const revsDecidedHere = (approvedRevs||[]).filter(r => {
+          const d = r.data?.approval?.decidedAt;
+          if(!d) return false;
+          const t = new Date(d).getTime();
+          return !isNaN(t) && t>=mStartMs && t<mEndMs;
+        });
+        if(revsDecidedHere.length > 0){
+          const priorRevOppOf = (opp, rev) => {
+            const letter = (rev||"").toString().trim().toUpperCase();
+            if(!letter || !/^[A-Z]$/.test(letter)) return null;
+            const base = baseOf(opp);
+            if(letter === "A") return base;
+            return base + String.fromCharCode(letter.charCodeAt(0)-1);
+          };
+          const lookupOpps = new Set();
+          revsDecidedHere.forEach(r => {
+            const p = priorRevOppOf(r.opportunity, r.revision);
+            if(p) lookupOpps.add(p);
+            lookupOpps.add(baseOf(r.opportunity));
+          });
+          const { data: lookupRows } = await supabase
+            .from("quotes")
+            .select("opportunity, total, created_at")
+            .in("opportunity", Array.from(lookupOpps));
+          const rowByOpp = {};
+          (lookupRows||[]).forEach(p => { rowByOpp[p.opportunity] = p; });
+          revsDecidedHere.forEach(r => {
+            const priorOpp = priorRevOppOf(r.opportunity, r.revision);
+            const priorRow = priorOpp ? rowByOpp[priorOpp] : null;
+            if(!priorRow) return;                          // orphan: skip
+            const base = baseOf(r.opportunity);
+            const baseRow = rowByOpp[base];
+            const originRow = baseRow || priorRow;
+            const originCreatedMs = new Date(originRow.created_at).getTime();
+            if(isNaN(originCreatedMs) || originCreatedMs >= mStartMs) return;  // same-month: skip
+            monthRevDelta += (r.total||0) - (priorRow.total||0);
+          });
+        }
+      } catch(e) { console.warn("monthRevDelta calc failed for "+m.label+":", e); }
+
+      const netTotal = newTotal + monthRevDelta;
+      return {
+        label: m.label,
+        // Back-compat keys (old code reads .count/.total — leave them mapped to "all" semantics for now)
+        count: allCount,
+        total: newTotal + monthRevDelta,
+        // New explicit keys for the redesigned chart
+        newCount, allCount, newTotal, netTotal,
+        isCurrent: m.isCurrent,
+      };
     }));
 
     const sortByOpp = arr => [...arr].sort((a,b) => {
@@ -5319,31 +5418,45 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
             {/* ── Month over month combo chart ── */}
             {(()=>{
               const months = data.monthCounts;
-              const maxCount = Math.max(...months.map(m=>m.count), 1);
-              const maxTotal = Math.max(...months.map(m=>m.total), 1);
+              // Bars: overlay design — "allCount" bar in the back (lighter), "newCount" bar in front (darker).
+              // Lines: newTotal (solid) + netTotal (dashed).
+              const maxCount = Math.max(...months.map(m=>m.allCount||m.count), 1);
+              const maxTotal = Math.max(
+                ...months.map(m=>Math.max(m.newTotal||0, m.netTotal||0)),
+                1
+              );
               const W=560, H=160, PAD={t:24,r:60,b:32,l:44};
               const chartW=W-PAD.l-PAD.r, chartH=H-PAD.t-PAD.b;
               const barW=chartW/months.length*0.45;
               const xCenter=i=>PAD.l+(i+0.5)*(chartW/months.length);
               const barX=i=>xCenter(i)-barW/2;
-              const barH=v=>Math.max(2,Math.round((v/maxCount)*chartH));
+              const barH=v=>Math.max(0,Math.round((v/maxCount)*chartH));
               const lineY=v=>PAD.t+chartH-Math.round((v/maxTotal)*chartH);
-              const points=months.map((m,i)=>xCenter(i)+","+lineY(m.total)).join(" ");
+              const newPts = months.map((m,i)=>xCenter(i)+","+lineY(m.newTotal||0)).join(" ");
+              const netPts = months.map((m,i)=>xCenter(i)+","+lineY(m.netTotal||0)).join(" ");
               return(
                 <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
                   boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0",marginBottom:20}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
                     <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
                       QUOTES — LAST 4 MONTHS
                     </div>
-                    <div style={{display:"flex",gap:16,fontSize:10,color:"#6b7a8d"}}>
+                    <div style={{display:"flex",gap:14,fontSize:10,color:"#6b7a8d",flexWrap:"wrap"}}>
                       <div style={{display:"flex",alignItems:"center",gap:5}}>
                         <div style={{width:12,height:12,borderRadius:2,background:"#1a5276"}}/>
-                        <span>Quote count</span>
+                        <span>New</span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <div style={{width:12,height:12,borderRadius:2,background:"#5499c7"}}/>
+                        <span>+ Revs</span>
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:5}}>
                         <div style={{width:16,height:2,background:"#c0392b",borderRadius:1}}/>
-                        <span>Total value</span>
+                        <span>New total</span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <svg width="16" height="3"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="#c0392b" strokeWidth="1.5" strokeDasharray="3,2"/></svg>
+                        <span>Net total</span>
                       </div>
                     </div>
                   </div>
@@ -5365,37 +5478,75 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                       const label=val>=1000?"$"+(val/1000).toFixed(0)+"k":"$"+Math.round(val);
                       return <text key={t} x={PAD.l+chartW+8} y={y+4} fontSize="9" fill="#c0392b">{label}</text>;
                     })}
-                    {/* Bars */}
-                    {months.map((m,i)=>(
-                      <g key={m.label}>
-                        <rect x={barX(i)} y={PAD.t+chartH-barH(m.count)}
-                          width={barW} height={barH(m.count)}
-                          fill={m.isCurrent?"#1a5276":"#d0d7de"} rx="3"/>
-                        {/* Count label — always just above bar */}
-                        <text x={xCenter(i)} y={PAD.t+chartH-barH(m.count)-5}
-                          textAnchor="middle" fontSize="10"
-                          fontWeight={m.isCurrent?"500":"400"}
-                          fill={m.isCurrent?"#1a5276":"#6b7a8d"}>
-                          {m.count}
-                        </text>
-                      </g>
-                    ))}
-                    {/* Value line — thin */}
-                    <polyline points={points} fill="none" stroke="#c0392b" strokeWidth="1.5"
-                      strokeLinejoin="round" strokeDasharray="0"/>
-                    {/* Value dots + labels — always below dot to avoid colliding with bar count labels above */}
+                    {/* Bars — overlay: light "+ Revs" bar in back, dark "New" bar in front */}
                     {months.map((m,i)=>{
-                      const cx=xCenter(i), cy=lineY(m.total);
-                      const label=m.total>=1000?"$"+(m.total/1000).toFixed(1)+"k":"$"+Math.round(m.total);
-                      // White label on current month bar (red on blue is hard to read)
-                      const labelFill=m.isCurrent?"#fff":"#c0392b";
-                      return <g key={m.label}>
-                        <circle cx={cx} cy={cy} r="3" fill="#c0392b" stroke="#fff" strokeWidth="1.5"/>
-                        <text x={cx} y={cy+14} textAnchor="middle" fontSize="9"
-                          fill={labelFill} fontWeight="600">
-                          {label}
-                        </text>
-                      </g>;
+                      const allC = m.allCount||m.count||0;
+                      const newC = m.newCount||0;
+                      const allH = barH(allC);
+                      const newH = barH(newC);
+                      const lightFill = m.isCurrent?"#5499c7":"#d0d7de";
+                      const darkFill  = m.isCurrent?"#1a5276":"#7a8593";
+                      return (
+                        <g key={m.label}>
+                          {/* Back bar: total count incl. revisions */}
+                          <rect x={barX(i)} y={PAD.t+chartH-allH}
+                            width={barW} height={allH}
+                            fill={lightFill} rx="3"/>
+                          {/* Front bar: new families only */}
+                          <rect x={barX(i)} y={PAD.t+chartH-newH}
+                            width={barW} height={newH}
+                            fill={darkFill} rx="3"/>
+                          {/* Label above the taller bar (the "+ Revs" bar) — shows "N / N+R" */}
+                          <text x={xCenter(i)} y={PAD.t+chartH-allH-5}
+                            textAnchor="middle" fontSize="10"
+                            fontWeight={m.isCurrent?"500":"400"}
+                            fill={m.isCurrent?"#1a5276":"#6b7a8d"}>
+                            {allC===newC?newC:(newC+" / "+allC)}
+                          </text>
+                        </g>
+                      );
+                    })}
+                    {/* Net total line — dashed, drawn first so the solid New line sits on top */}
+                    <polyline points={netPts} fill="none" stroke="#c0392b" strokeWidth="1.5"
+                      strokeLinejoin="round" strokeDasharray="4,3"/>
+                    {/* New total line — solid */}
+                    <polyline points={newPts} fill="none" stroke="#c0392b" strokeWidth="1.5"
+                      strokeLinejoin="round"/>
+                    {/* Dots + labels for both lines. We label NEW above the dot and NET below,
+                        so they don't collide. Skip the Net label if it equals New (no revs that month). */}
+                    {months.map((m,i)=>{
+                      const cx=xCenter(i);
+                      const newT = m.newTotal||0;
+                      const netT = m.netTotal||0;
+                      const newCY = lineY(newT);
+                      const netCY = lineY(netT);
+                      const fmt = v => v>=1000?"$"+(v/1000).toFixed(1)+"k":"$"+Math.round(v);
+                      const labelFill = m.isCurrent?"#fff":"#c0392b";
+                      const showNetSeparate = Math.abs(netT-newT) >= 1;
+                      return (
+                        <g key={m.label}>
+                          {/* Net dot (drawn first so New sits on top when same value) */}
+                          {showNetSeparate && (
+                            <circle cx={cx} cy={netCY} r="2.5" fill="#fff" stroke="#c0392b" strokeWidth="1.5"/>
+                          )}
+                          {/* New dot — filled, primary */}
+                          <circle cx={cx} cy={newCY} r="3" fill="#c0392b" stroke="#fff" strokeWidth="1.5"/>
+                          {/* New label — above the New dot (or below if Net is above New) */}
+                          <text x={cx} y={netCY < newCY ? newCY+14 : newCY-7}
+                            textAnchor="middle" fontSize="9"
+                            fill={labelFill} fontWeight="600">
+                            {fmt(newT)}
+                          </text>
+                          {/* Net label only when different — placed opposite the New label */}
+                          {showNetSeparate && (
+                            <text x={cx} y={netCY < newCY ? netCY-7 : netCY+14}
+                              textAnchor="middle" fontSize="9"
+                              fill={labelFill} fontWeight="500" fontStyle="italic">
+                              {fmt(netT)}
+                            </text>
+                          )}
+                        </g>
+                      );
                     })}
                     {/* X-axis labels */}
                     {months.map((m,i)=>(
