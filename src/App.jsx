@@ -5512,8 +5512,9 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     {/* New total line — solid */}
                     <polyline points={newPts} fill="none" stroke="#c0392b" strokeWidth="1.5"
                       strokeLinejoin="round"/>
-                    {/* Dots + labels for both lines. We label NEW above the dot and NET below,
-                        so they don't collide. Skip the Net label if it equals New (no revs that month). */}
+                    {/* Dots + label for both lines. Show only ONE value label per month:
+                        if Net differs meaningfully from New, label the Net dot;
+                        otherwise label the New dot. Keeps the chart visually quiet. */}
                     {months.map((m,i)=>{
                       const cx=xCenter(i);
                       const newT = m.newTotal||0;
@@ -5522,29 +5523,27 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                       const netCY = lineY(netT);
                       const fmt = v => v>=1000?"$"+(v/1000).toFixed(1)+"k":"$"+Math.round(v);
                       const labelFill = m.isCurrent?"#fff":"#c0392b";
-                      const showNetSeparate = Math.abs(netT-newT) >= 1;
+                      const showNetSeparate = Math.abs(netT-newT) >= 500;
+                      // Label the dot that represents the "fuller picture": Net if there's
+                      // a delta, otherwise New (they're effectively equal).
+                      const labelValue = showNetSeparate ? netT : newT;
+                      const labelCY    = showNetSeparate ? netCY : newCY;
+                      // Position label above or below the dot based on which is higher,
+                      // so it stays away from the bar tops.
+                      const labelY = labelCY < PAD.t + chartH/2 ? labelCY + 14 : labelCY - 7;
                       return (
                         <g key={m.label}>
-                          {/* Net dot (drawn first so New sits on top when same value) */}
+                          {/* Net dot — drawn first so New sits on top when same value */}
                           {showNetSeparate && (
                             <circle cx={cx} cy={netCY} r="2.5" fill="#fff" stroke="#c0392b" strokeWidth="1.5"/>
                           )}
                           {/* New dot — filled, primary */}
                           <circle cx={cx} cy={newCY} r="3" fill="#c0392b" stroke="#fff" strokeWidth="1.5"/>
-                          {/* New label — above the New dot (or below if Net is above New) */}
-                          <text x={cx} y={netCY < newCY ? newCY+14 : newCY-7}
-                            textAnchor="middle" fontSize="9"
+                          {/* Single value label */}
+                          <text x={cx} y={labelY} textAnchor="middle" fontSize="9"
                             fill={labelFill} fontWeight="600">
-                            {fmt(newT)}
+                            {fmt(labelValue)}
                           </text>
-                          {/* Net label only when different — placed opposite the New label */}
-                          {showNetSeparate && (
-                            <text x={cx} y={netCY < newCY ? netCY-7 : netCY+14}
-                              textAnchor="middle" fontSize="9"
-                              fill={labelFill} fontWeight="500" fontStyle="italic">
-                              {fmt(netT)}
-                            </text>
-                          )}
                         </g>
                       );
                     })}
