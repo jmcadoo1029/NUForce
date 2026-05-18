@@ -3391,6 +3391,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   const [acctResults, setAcctResults] = useState([]);
   const [acctOpen, setAcctOpen]       = useState(false);
   const [acctModal, setAcctModal]     = useState(null); // account name string
+  const [hoveredMonthIdx, setHoveredMonthIdx] = useState(null); // for Last-4-Months chart tooltip
   const acctRef  = useRef(null);
   const acctTimer = useRef(null);
 
@@ -5436,7 +5437,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
               const netPts = months.map((m,i)=>xCenter(i)+","+lineY(m.netTotal||0)).join(" ");
               return(
                 <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
-                  boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0",marginBottom:20}}>
+                  boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0",marginBottom:20,position:"relative"}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
                     <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
                       QUOTES — LAST 4 MONTHS
@@ -5556,7 +5557,90 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                         {m.label}
                       </text>
                     ))}
+                    {/* Invisible hover zones — one per month column, full chart height.
+                        These sit ON TOP of all other shapes so they always catch the mouse. */}
+                    {months.map((m,i)=>{
+                      const colW = chartW / months.length;
+                      const zoneX = PAD.l + i*colW;
+                      return (
+                        <rect key={"hz-"+m.label}
+                          x={zoneX} y={PAD.t}
+                          width={colW} height={chartH}
+                          fill="transparent"
+                          onMouseEnter={()=>setHoveredMonthIdx(i)}
+                          onMouseLeave={()=>setHoveredMonthIdx(null)}
+                          style={{cursor:"default"}}/>
+                      );
+                    })}
                   </svg>
+                  {/* Tooltip overlay — appears on month-column hover */}
+                  {hoveredMonthIdx !== null && months[hoveredMonthIdx] && (()=>{
+                    const m = months[hoveredMonthIdx];
+                    // SVG renders at width:100% inside card padding of 24px on each side.
+                    // To get the card-pixel x of an SVG point: 24px + (svgX/W) * (100% - 48px)
+                    const svgX = xCenter(hoveredMonthIdx);
+                    const ratio = svgX / W;     // 0..1 along the SVG width
+                    const newT = m.newTotal||0;
+                    const netT = m.netTotal||0;
+                    const delta = netT - newT;
+                    const fmt = v => v>=1000?"$"+(v/1000).toFixed(1)+"k":"$"+Math.round(v);
+                    const fmtFull = v => "$"+Math.round(v).toLocaleString();
+                    const deltaColor = delta>0?"#1e8449":delta<0?"#c0392b":"#6b7a8d";
+                    // Anchor strategy by column position:
+                    //  - first column: anchor tooltip to its right (so it doesn't clip left)
+                    //  - last column: anchor to its left (so it doesn't clip right)
+                    //  - middle columns: centered above the column
+                    let xform = "translateX(-50%)";
+                    if(hoveredMonthIdx === 0) xform = "translateX(0)";
+                    if(hoveredMonthIdx >= months.length - 1) xform = "translateX(-100%)";
+                    return (
+                      <div style={{
+                        position:"absolute",
+                        left: `calc(24px + ${ratio} * (100% - 48px))`,
+                        top: 60,
+                        transform: xform,
+                        background:"#1a2332",
+                        color:"#fff",
+                        borderRadius:8,
+                        padding:"10px 12px",
+                        fontSize:11,
+                        lineHeight:1.5,
+                        boxShadow:"0 4px 12px rgba(0,0,0,0.18)",
+                        pointerEvents:"none",
+                        minWidth:160,
+                        zIndex:10,
+                      }}>
+                        <div style={{fontWeight:700,letterSpacing:0.5,marginBottom:6,fontSize:11}}>
+                          {m.label}
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:12}}>
+                          <span style={{color:"#9aa5b1"}}>New families:</span>
+                          <span style={{fontWeight:600}}>{m.newCount}</span>
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:12}}>
+                          <span style={{color:"#9aa5b1"}}>+ Revisions:</span>
+                          <span style={{fontWeight:600}}>{m.allCount}</span>
+                        </div>
+                        <div style={{borderTop:"1px solid #2d3a4a",margin:"6px 0"}}/>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:12}}>
+                          <span style={{color:"#9aa5b1"}}>New total:</span>
+                          <span style={{fontWeight:600}}>{fmtFull(newT)}</span>
+                        </div>
+                        <div style={{display:"flex",justifyContent:"space-between",gap:12}}>
+                          <span style={{color:"#9aa5b1"}}>Net total:</span>
+                          <span style={{fontWeight:600}}>{fmtFull(netT)}</span>
+                        </div>
+                        {Math.abs(delta) >= 1 && (
+                          <div style={{display:"flex",justifyContent:"space-between",gap:12,marginTop:2}}>
+                            <span style={{color:"#9aa5b1"}}>Rev delta:</span>
+                            <span style={{fontWeight:600,color:deltaColor}}>
+                              {delta>0?"+":"−"}{fmt(Math.abs(delta))}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}
