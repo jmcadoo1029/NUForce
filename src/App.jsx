@@ -5433,7 +5433,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
               const barX=i=>xCenter(i)-barW/2;
               const barH=v=>Math.max(0,Math.round((v/maxCount)*chartH));
               const lineY=v=>PAD.t+chartH-Math.round((v/maxTotal)*chartH);
-              const newPts = months.map((m,i)=>xCenter(i)+","+lineY(m.newTotal||0)).join(" ");
               const netPts = months.map((m,i)=>xCenter(i)+","+lineY(m.netTotal||0)).join(" ");
               return(
                 <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
@@ -5453,11 +5452,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:5}}>
                         <div style={{width:16,height:2,background:"#c0392b",borderRadius:1}}/>
-                        <span>New total</span>
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:5}}>
-                        <svg width="16" height="3"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="#c0392b" strokeWidth="1.5" strokeDasharray="3,2"/></svg>
-                        <span>Net total</span>
+                        <span>Total</span>
                       </div>
                     </div>
                   </div>
@@ -5507,43 +5502,27 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                         </g>
                       );
                     })}
-                    {/* Net total line — dashed, drawn first so the solid New line sits on top */}
+                    {/* Total value line (solid red) — represents Net Total
+                        (new families this month + revision deltas approved this month).
+                        Detail breakdown is in the hover tooltip. */}
                     <polyline points={netPts} fill="none" stroke="#c0392b" strokeWidth="1.5"
-                      strokeLinejoin="round" strokeDasharray="4,3"/>
-                    {/* New total line — solid */}
-                    <polyline points={newPts} fill="none" stroke="#c0392b" strokeWidth="1.5"
                       strokeLinejoin="round"/>
-                    {/* Dots + label for both lines. Show only ONE value label per month:
-                        if Net differs meaningfully from New, label the Net dot;
-                        otherwise label the New dot. Keeps the chart visually quiet. */}
+                    {/* Dots + value label per month */}
                     {months.map((m,i)=>{
                       const cx=xCenter(i);
-                      const newT = m.newTotal||0;
                       const netT = m.netTotal||0;
-                      const newCY = lineY(newT);
                       const netCY = lineY(netT);
                       const fmt = v => v>=1000?"$"+(v/1000).toFixed(1)+"k":"$"+Math.round(v);
                       const labelFill = m.isCurrent?"#fff":"#c0392b";
-                      const showNetSeparate = Math.abs(netT-newT) >= 500;
-                      // Label the dot that represents the "fuller picture": Net if there's
-                      // a delta, otherwise New (they're effectively equal).
-                      const labelValue = showNetSeparate ? netT : newT;
-                      const labelCY    = showNetSeparate ? netCY : newCY;
-                      // Position label above or below the dot based on which is higher,
-                      // so it stays away from the bar tops.
-                      const labelY = labelCY < PAD.t + chartH/2 ? labelCY + 14 : labelCY - 7;
+                      // Position label above or below the dot based on which half of the
+                      // chart it falls in — keeps it clear of the bar tops.
+                      const labelY = netCY < PAD.t + chartH/2 ? netCY + 14 : netCY - 7;
                       return (
                         <g key={m.label}>
-                          {/* Net dot — drawn first so New sits on top when same value */}
-                          {showNetSeparate && (
-                            <circle cx={cx} cy={netCY} r="2.5" fill="#fff" stroke="#c0392b" strokeWidth="1.5"/>
-                          )}
-                          {/* New dot — filled, primary */}
-                          <circle cx={cx} cy={newCY} r="3" fill="#c0392b" stroke="#fff" strokeWidth="1.5"/>
-                          {/* Single value label */}
+                          <circle cx={cx} cy={netCY} r="3" fill="#c0392b" stroke="#fff" strokeWidth="1.5"/>
                           <text x={cx} y={labelY} textAnchor="middle" fontSize="9"
                             fill={labelFill} fontWeight="600">
-                            {fmt(labelValue)}
+                            {fmt(netT)}
                           </text>
                         </g>
                       );
