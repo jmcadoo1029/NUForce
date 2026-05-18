@@ -4864,7 +4864,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     <div>
                       {/* Filter pills */}
                       <div style={{display:"flex",gap:6,padding:"10px 24px",borderBottom:"1px solid #f0f2f5",alignItems:"center"}}>
-                        {[["all","All",allCount],["new","New",newCount],["revisions","Revisions",revCount]].map(([key,label,count])=>{
+                        {[["new","New",newCount],["revisions","Revisions",revCount],["all","All",allCount]].map(([key,label,count])=>{
                           const active=quotesThisMonthFilter===key;
                           return(
                             <button key={key} onClick={()=>setQuotesThisMonthFilter(key)}
