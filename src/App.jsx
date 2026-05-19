@@ -9510,21 +9510,29 @@ const STANDARD_TERMS = [
     const sf2 = v => { const n = parseFloat(String(v).replace(/,/g,'')); return isNaN(n)?0:n; };
     const money = v => '$'+Math.round(sf2(v)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
+    // Track current font state so drawFooter can save/restore around its own setF calls.
+    // Without this, drawFooter's "8pt MUTED" font would leak past the page break and
+    // style the first line of content on the new page (e.g. orphaned spec lines).
+    let curFont = {style:'normal', size:9, color:DARK};
+
     const setF = (style, size, color) => {
       doc.setFont('helvetica', style);
       doc.setFontSize(size);
       doc.setTextColor(...(color||DARK));
+      curFont = {style, size, color: color||DARK};
     };
 
     const totalPages = () => doc.internal.getNumberOfPages();
 
     const drawFooter = () => {
       const p = doc.internal.getCurrentPageInfo().pageNumber;
+      const prev = curFont;                              // remember caller's font
       setF('normal', 8, MUTED);
       doc.text('NU Laboratories, Inc. | '+(qi.opp||''), ML, PH-18);
       doc.text('Page '+p+' | '+(qi.revDate||qi.date||''), PW-MR, PH-18, {align:'right'});
       doc.setDrawColor(...LIGHT); doc.setLineWidth(0.5);
       doc.line(ML, PH-26, PW-MR, PH-26);
+      setF(prev.style, prev.size, prev.color);           // restore caller's font
     };
 
     const checkY = (need) => {
