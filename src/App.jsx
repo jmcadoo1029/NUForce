@@ -5018,12 +5018,19 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
               const months=data.monthCounts;
               const prior3=months.slice(0,3);
               const current=months[3];
-              const avgCount=prior3.length>0?prior3.reduce((a,m)=>a+m.count,0)/prior3.length:0;
-              const avgTotal=prior3.length>0?prior3.reduce((a,m)=>a+m.total,0)/prior3.length:0;
-              const countDiff=current.count-avgCount;
-              const totalDiff=current.total-avgTotal;
+              // NEW-quote semantics: # quotes uses newCount, total value uses netTotal
+              // (newTotal + net revision delta), avg quote value uses newTotal/newCount.
+              // Comparisons stay weighted (sum-of-totals / sum-of-counts across the 3 months).
+              const avgNewCount=prior3.length>0?prior3.reduce((a,m)=>a+(m.newCount||0),0)/prior3.length:0;
+              const avgNetTotal=prior3.length>0?prior3.reduce((a,m)=>a+(m.netTotal||0),0)/prior3.length:0;
+              const sumPriorNewCount=prior3.reduce((a,m)=>a+(m.newCount||0),0);
+              const sumPriorNewTotal=prior3.reduce((a,m)=>a+(m.newTotal||0),0);
+              const avgPriorQuoteValue=sumPriorNewCount>0?sumPriorNewTotal/sumPriorNewCount:0;
+              const countDiff=(current.newCount||0)-avgNewCount;
+              const totalDiff=(current.netTotal||0)-avgNetTotal;
               const countUp=countDiff>=0;
               const totalUp=totalDiff>=0;
+              const currentQuoteValue=(current.newCount||0)>0?(current.newTotal||0)/(current.newCount||0):0;
               const fmt=n=>n>=1000?"$"+(n/1000).toFixed(1)+"k":"$"+Math.round(n);
               const diffColor=(up)=>up?"#1e8449":"#c0392b";
               const arrow=(up)=>up?"▲":"▼";
@@ -5042,19 +5049,19 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     <div style={{fontSize:10,fontWeight:700,color:"#6b7a8d",padding:"10px 0 6px",borderBottom:"1px solid #f0f2f5"}}># QUOTES</div>
                     {prior3.map(m=>(
                       <div key={m.label} style={{textAlign:"center",padding:"10px 0 6px",borderBottom:"1px solid #f0f2f5"}}>
-                        <span style={{fontSize:16,fontWeight:700,color:"#1a2332"}}>{m.count}</span>
+                        <span style={{fontSize:16,fontWeight:700,color:"#1a2332"}}>{m.newCount||0}</span>
                       </div>
                     ))}
                     <div style={{fontSize:10,fontWeight:700,color:"#6b7a8d",padding:"10px 0 6px",borderBottom:"1px solid #f0f2f5"}}>AVG QUOTE VALUE</div>
                     {prior3.map(m=>(
                       <div key={m.label} style={{textAlign:"center",padding:"10px 0 6px",borderBottom:"1px solid #f0f2f5"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:"#1a2332"}}>{m.count>0?fmt(m.total/m.count):"—"}</span>
+                        <span style={{fontSize:13,fontWeight:600,color:"#1a2332"}}>{(m.newCount||0)>0?fmt((m.newTotal||0)/(m.newCount||0)):"—"}</span>
                       </div>
                     ))}
                     <div style={{fontSize:10,fontWeight:700,color:"#6b7a8d",padding:"10px 0 0"}}>TOTAL VALUE</div>
                     {prior3.map(m=>(
                       <div key={m.label} style={{textAlign:"center",padding:"10px 0 0"}}>
-                        <span style={{fontSize:13,fontWeight:600,color:"#1a5276"}}>{fmt(m.total)}</span>
+                        <span style={{fontSize:13,fontWeight:600,color:"#1a5276"}}>{fmt(m.netTotal||0)}</span>
                       </div>
                     ))}
                   </div>
@@ -5065,9 +5072,9 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                         {current.label.toUpperCase()} — QUOTES
                       </div>
                       <div style={{display:"flex",alignItems:"baseline",gap:8}}>
-                        <span style={{fontSize:22,fontWeight:800,color:"#1a5276"}}>{current.count}</span>
+                        <span style={{fontSize:22,fontWeight:800,color:"#1a5276"}}>{current.newCount||0}</span>
                         <span style={{fontSize:11,fontWeight:700,color:diffColor(countUp)}}>
-                          {arrow(countUp)} {Math.abs(countDiff).toFixed(1)} vs 3-mo avg ({Math.round(avgCount)})
+                          {arrow(countUp)} {Math.abs(countDiff).toFixed(1)} vs 3-mo avg ({Math.round(avgNewCount)})
                         </span>
                       </div>
                     </div>
@@ -5076,10 +5083,10 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                         {current.label.toUpperCase()} — AVG QUOTE VALUE
                       </div>
                       <div style={{display:"flex",alignItems:"baseline",gap:8}}>
-                        <span style={{fontSize:22,fontWeight:800,color:"#1a2332"}}>{current.count>0?fmt(current.total/current.count):"—"}</span>
-                        {current.count>0&&avgCount>0&&(
-                          <span style={{fontSize:11,fontWeight:700,color:diffColor((current.total/current.count)>=(avgTotal/avgCount))}}>
-                            {arrow((current.total/current.count)>=(avgTotal/avgCount))} {fmt(Math.abs((current.total/current.count)-(avgTotal/avgCount)))} vs avg
+                        <span style={{fontSize:22,fontWeight:800,color:"#1a2332"}}>{(current.newCount||0)>0?fmt(currentQuoteValue):"—"}</span>
+                        {(current.newCount||0)>0&&avgPriorQuoteValue>0&&(
+                          <span style={{fontSize:11,fontWeight:700,color:diffColor(currentQuoteValue>=avgPriorQuoteValue)}}>
+                            {arrow(currentQuoteValue>=avgPriorQuoteValue)} {fmt(Math.abs(currentQuoteValue-avgPriorQuoteValue))} vs avg
                           </span>
                         )}
                       </div>
@@ -5089,7 +5096,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                         {current.label.toUpperCase()} — TOTAL VALUE
                       </div>
                       <div style={{display:"flex",alignItems:"baseline",gap:8}}>
-                        <span style={{fontSize:22,fontWeight:800,color:"#1a5276"}}>{fmt(current.total)}</span>
+                        <span style={{fontSize:22,fontWeight:800,color:"#1a5276"}}>{fmt(current.netTotal||0)}</span>
                         <span style={{fontSize:11,fontWeight:700,color:diffColor(totalUp)}}>
                           {arrow(totalUp)} {fmt(Math.abs(totalDiff))} vs 3-mo avg
                         </span>
