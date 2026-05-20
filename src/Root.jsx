@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
+import { nulabsSessionStorage } from "./nulabsSessionStorage";
 import { checkNuForceAccess } from "./capabilityCheck";
 import App from "./App";
 
@@ -86,24 +87,33 @@ export default function Root() {
 
     // Run the initial check: read shared session, then capability-gate it.
     (async () => {
-      const { data: { session: s } } = await supabase.auth.getSession();
-      if (!isMounted) return;
+      try {
+        const { data: { session: s } } = await supabase.auth.getSession();
+        if (!isMounted) return;
 
-      if (!s) {
-        // No session → bounce to NUWorkspace login with return_to param.
-        // window.location.replace() doesn't add a history entry, so the user
-        // can't accidentally hit Back into a no-session state.
-        const ret = encodeURIComponent(window.location.origin);
-        window.location.replace(`${WORKSPACE_URL}/?return_to=${ret}`);
-        setAuthState("no_session"); // cosmetic; we're about to navigate away
-        return;
+        if (!s) {
+          // No session → bounce to NUWorkspace login with return_to param.
+          // window.location.replace() doesn't add a history entry, so the user
+          // can't accidentally hit Back into a no-session state.
+          const ret = encodeURIComponent(window.location.origin);
+          window.location.replace(`${WORKSPACE_URL}/?return_to=${ret}`);
+          setAuthState("no_session"); // cosmetic; we're about to navigate away
+          return;
+        }
+
+        // Session present — run capability check.
+        setSession(s);
+        const granted = await checkNuForceAccess(supabase, s);
+        if (!isMounted) return;
+        setAuthState(granted ? "granted" : "denied");
+      } catch (err) {
+        // Any unhandled error in the auth chain — fail closed and surface
+        // the Access Denied page rather than leaving the app stuck in
+        // "loading" forever (blank screen). Log to console for debugging.
+        console.error("[Root] Initial auth check failed:", err);
+        if (!isMounted) return;
+        setAuthState("denied");
       }
-
-      // Session present — run capability check.
-      setSession(s);
-      const granted = await checkNuForceAccess(supabase, s);
-      if (!isMounted) return;
-      setAuthState(granted ? "granted" : "denied");
     })();
 
     // Subscribe to sign-in / sign-out / token-refresh events.
@@ -127,9 +137,43 @@ export default function Root() {
       }
     );
 
+    // Belt-and-suspenders: periodic check that the LIVE cookie's token
+    // hasn't expired. Critical detail (per Russ): always re-read the cookie,
+    // never compare against the in-memory session — workspace may have
+    // already refreshed the token in the cookie while NUForce held a stale
+    // copy. If the cookie ITSELF shows expiry, bounce to workspace.
+    const POLL_MS = 60 * 1000;
+    const expiryPoll = setInterval(() => {
+      try {
+        const raw = nulabsSessionStorage.getItem(
+          "sb-swuuxzmgmldvvomsgmjf-auth-token"
+        );
+        if (!raw) {
+          // Cookie gone (e.g. workspace logged out) → bounce.
+          const ret = encodeURIComponent(window.location.origin);
+          window.location.replace(`${WORKSPACE_URL}/?return_to=${ret}`);
+          return;
+        }
+        const parsed = JSON.parse(raw);
+        const nowSec = Math.floor(Date.now() / 1000);
+        // Small grace window (30s) — if the token is about to expire we
+        // still treat it as valid for this tick rather than racing the
+        // 401 fetch wrapper.
+        if (parsed?.expires_at && parsed.expires_at < nowSec - 30) {
+          // Live cookie's token is genuinely expired (workspace didn't
+          // refresh it) → bounce.
+          const ret = encodeURIComponent(window.location.origin);
+          window.location.replace(`${WORKSPACE_URL}/?return_to=${ret}`);
+        }
+      } catch (_) {
+        /* parsing or cookie read failed — let the 401 wrapper catch issues */
+      }
+    }, POLL_MS);
+
     return () => {
       isMounted = false;
       subscription.unsubscribe();
+      clearInterval(expiryPoll);
     };
   }, []);
 
