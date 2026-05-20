@@ -3392,6 +3392,9 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   const [acctOpen, setAcctOpen]       = useState(false);
   const [acctModal, setAcctModal]     = useState(null); // account name string
   const [hoveredMonthIdx, setHoveredMonthIdx] = useState(null); // for Last-4-Months chart tooltip
+  // Ready to Send widget state — { mode: 'send'|'dismiss', row: {id, opportunity, ...} } | null
+  const [rtsConfirm, setRtsConfirm] = useState(null);
+  const [rtsBusy, setRtsBusy] = useState(false);
   const acctRef  = useRef(null);
   const acctTimer = useRef(null);
 
@@ -3751,10 +3754,17 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       .or(`sent_at.lte.${thirtyDaysAgo},followup_again_at.lte.${today}`)
       .order("sent_at", {ascending: true});
     if(!error){
-      // Filter out closed won/lost quotes
+      // Filter:
+      //   - Hide closed won/closed lost quotes
+      //   - Hide quotes that are currently in "Ready to Send" — i.e. the quote
+      //     was re-approved AFTER this send event. Those are actively being
+      //     worked on; surfacing them as overdue follow-ups is just noise.
       const filtered=(data||[]).filter(fu=>{
         const stage=fu.quotes?.data?.qi?.stage||"" ;
-        return stage!=="Closed Won"&&stage!=="Closed Lost";
+        if(stage==="Closed Won" || stage==="Closed Lost") return false;
+        const decidedAt = fu.quotes?.data?.approval?.decidedAt;
+        if(decidedAt && fu.sent_at && new Date(decidedAt) > new Date(fu.sent_at)) return false;
+        return true;
       });
       setFollowUps(filtered);
     }
@@ -4262,6 +4272,77 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     const wonExisting = won.filter(q => q.type === "Existing Business");
     const wonTotal    = won.reduce((a,q) => a + (q.total||0), 0);
 
+    // ── Ready to Send queue ────────────────────────────────────────────
+    // Approved + still-open + not manually dismissed, deduped to the LATEST
+    // revision per opportunity family, filtered to only those that haven't
+    // been sent since the most recent approval.
+    let readyToSend = [];
+    try {
+      const { data: approvedRows } = await supabase
+        .from("quotes")
+        .select("id, opportunity, revision, customer, total, data, ready_to_send_dismissed_at")
+        .eq("approval_status", "approved")
+        .is("ready_to_send_dismissed_at", null)
+        .not("stage","in","(Closed Won,Closed Lost)")
+        .limit(2000);
+      const approved = approvedRows || [];
+
+      // Group by base-opp; keep latest revision per family (matches dashboard
+      // `created` array pattern at ~line 3995 — see `groupMap` there).
+      const baseOf = (opp) => {
+        if(!opp) return "";
+        const m = opp.match(/^(.+?)([A-Z])?$/);
+        return m ? m[1] : opp;
+      };
+      const familyMap = new Map();   // baseKey → latest row
+      approved.forEach(r => {
+        const baseKey = baseOf(r.opportunity) || ("__no_opp_" + r.id);
+        const cur = familyMap.get(baseKey);
+        const rev = (r.revision || "").toString();
+        const curRev = cur ? (cur.revision || "").toString() : "";
+        if(!cur || rev > curRev) familyMap.set(baseKey, r);
+      });
+      const latestApprovedPerFamily = Array.from(familyMap.values());
+
+      // Look up the most recent send per quote (single query for the whole set).
+      // We pull all follow_ups rows for these quote_ids, then keep the max sent_at.
+      const candidateIds = latestApprovedPerFamily.map(r => r.id);
+      const sendMaxByQuoteId = {};
+      if(candidateIds.length > 0){
+        const { data: fuRows } = await supabase
+          .from("follow_ups")
+          .select("quote_id, sent_at")
+          .in("quote_id", candidateIds)
+          .neq("sent_by", "manually_dismissed");   // ignore any future dismissal-like rows
+        (fuRows || []).forEach(fu => {
+          const prev = sendMaxByQuoteId[fu.quote_id];
+          if(!prev || new Date(fu.sent_at) > new Date(prev)) sendMaxByQuoteId[fu.quote_id] = fu.sent_at;
+        });
+      }
+
+      const nowMs = Date.now();
+      readyToSend = latestApprovedPerFamily
+        .map(r => {
+          const decidedAt = r.data?.approval?.decidedAt;
+          if(!decidedAt) return null;        // can't compare; skip
+          const lastSent = sendMaxByQuoteId[r.id];
+          if(lastSent && new Date(lastSent) >= new Date(decidedAt)) return null;  // already sent post-approval
+          const approvedMs = new Date(decidedAt).getTime();
+          if(isNaN(approvedMs)) return null;
+          const daysInQueue = Math.floor((nowMs - approvedMs) / (1000*60*60*24));
+          return {
+            id: r.id,
+            opportunity: r.opportunity || r.data?.qi?.opp || "",
+            customer: r.customer || r.data?.qi?.account || "",
+            total: r.total || 0,
+            approvedAt: decidedAt,
+            daysInQueue,
+          };
+        })
+        .filter(Boolean)
+        .sort((a,b) => new Date(a.approvedAt) - new Date(b.approvedAt));  // oldest first
+    } catch(e) { console.warn("readyToSend calc failed:", e); }
+
     const yrPrefix = String(year).slice(-2);
     const ytdStart = new Date(year, 0, 1).toISOString();
     const ytdEnd   = new Date(year + 1, 0, 1).toISOString();
@@ -4281,7 +4362,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     const ytdWonNewTotal = ytdWonNew.reduce((a,q) => a + (q.total||0), 0);
     const ytdWonExTotal  = ytdWonExisting.reduce((a,q) => a + (q.total||0), 0);
     const ytdWonTotal    = ytdWonNewTotal + ytdWonExTotal;
-    setData({ created, monthCounts, won, wonNew, wonExisting, wonTotal, topCodes, topAccounts, revisionDelta,
+    setData({ created, monthCounts, won, wonNew, wonExisting, wonTotal, topCodes, topAccounts, revisionDelta, readyToSend,
       ytdQuoteCount: ytdCreated.length, ytdQuoteTotal, ytdWonNewTotal, ytdWonExTotal, ytdWonTotal, yrPrefix });
     setLoading(false);
   };
@@ -5293,6 +5374,149 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+
+            {/* ── Ready to Send widget (visible to everyone) ── */}
+            {data?.readyToSend && (
+              <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
+                border:"1px solid #e8ecf0",overflow:"hidden",marginBottom:20}}>
+                <div style={{padding:"14px 24px",borderBottom:"1px solid #e8ecf0",
+                  display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
+                    ✉️ READY TO SEND
+                  </div>
+                  {data.readyToSend.length>0&&(
+                    <span style={{background:"#1a5276",color:"#fff",borderRadius:10,
+                      fontSize:10,fontWeight:700,padding:"2px 8px"}}>
+                      {data.readyToSend.length} {data.readyToSend.length===1?"quote":"quotes"}
+                    </span>
+                  )}
+                </div>
+                {data.readyToSend.length===0?(
+                  <div style={{padding:"24px",textAlign:"center",color:"#9aa5b1",fontSize:12}}>
+                    ✓ All approved quotes have been sent
+                  </div>
+                ):(
+                  <div>
+                    {data.readyToSend.map(rts=>{
+                      // Age coloring — readability prioritized: dark text on tinted background.
+                      // 0-6 days: white | 7-13 days: yellow | 14+ days: light-red + OVERDUE pill
+                      let bg = "#fff";
+                      let showOverdue = false;
+                      if(rts.daysInQueue >= 14){ bg = "#fee"; showOverdue = true; }
+                      else if(rts.daysInQueue >= 7){ bg = "#fff8e1"; }
+                      const dateStr = new Date(rts.approvedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"});
+                      const moneyStr = "$"+Math.round(rts.total||0).toLocaleString();
+                      return (
+                        <div key={rts.id}
+                          style={{display:"flex",alignItems:"center",gap:12,padding:"10px 24px",
+                            borderBottom:"1px solid #f0f2f5",background:bg}}>
+                          <div style={{flex:"0 0 auto",minWidth:90}}>
+                            <div style={{fontSize:12,fontWeight:700,color:"#1a2332"}}>{rts.opportunity}</div>
+                            <div style={{fontSize:10,color:"#6b7a8d",marginTop:1}}>
+                              Approved {dateStr} · {rts.daysInQueue}d
+                              {showOverdue&&(
+                                <span style={{marginLeft:6,background:"#c0392b",color:"#fff",
+                                  borderRadius:8,padding:"1px 6px",fontSize:9,fontWeight:700,letterSpacing:.5}}>
+                                  OVERDUE
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{flex:1,fontSize:12,color:"#1a2332",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            {rts.customer||"(no customer)"}
+                          </div>
+                          <div style={{flex:"0 0 auto",fontSize:12,fontWeight:600,color:"#1a5276",minWidth:80,textAlign:"right"}}>
+                            {moneyStr}
+                          </div>
+                          <div style={{flex:"0 0 auto",display:"flex",gap:6}}>
+                            <button onClick={()=>onLoadQuote(rts.id)}
+                              style={{background:"#fff",border:"1px solid #d0d7de",borderRadius:5,
+                                padding:"4px 10px",fontSize:11,cursor:"pointer",color:"#1a2332",fontWeight:600}}>
+                              Open
+                            </button>
+                            <button onClick={()=>setRtsConfirm({mode:"send",row:rts})}
+                              style={{background:"#1e8449",border:"none",borderRadius:5,
+                                padding:"4px 12px",fontSize:11,cursor:"pointer",color:"#fff",fontWeight:700}}>
+                              Send
+                            </button>
+                            <button onClick={()=>setRtsConfirm({mode:"dismiss",row:rts})}
+                              title="Remove from this list"
+                              style={{background:"transparent",border:"1px solid #d0d7de",borderRadius:5,
+                                padding:"4px 8px",fontSize:11,cursor:"pointer",color:"#6b7a8d",fontWeight:600,lineHeight:1}}>
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Ready to Send confirmation modal ── */}
+            {rtsConfirm && (
+              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1000,
+                display:"flex",alignItems:"center",justifyContent:"center",padding:20}}
+                onClick={()=>{ if(!rtsBusy) setRtsConfirm(null); }}>
+                <div onClick={e=>e.stopPropagation()}
+                  style={{background:"#fff",borderRadius:12,padding:24,maxWidth:420,width:"100%",
+                    boxShadow:"0 10px 40px rgba(0,0,0,0.3)"}}>
+                  <div style={{fontSize:14,fontWeight:700,color:"#1a2332",marginBottom:8}}>
+                    {rtsConfirm.mode==="send"?"Mark as Sent?":"Remove from Ready to Send?"}
+                  </div>
+                  <div style={{fontSize:13,color:"#6b7a8d",marginBottom:20,lineHeight:1.5}}>
+                    {rtsConfirm.mode==="send"
+                      ? <>Mark <b>{rtsConfirm.row.opportunity}</b> as sent? This will record the send event and remove it from this list.</>
+                      : <>Remove <b>{rtsConfirm.row.opportunity}</b> from Ready to Send? You can still send it manually from the quote later.</>}
+                  </div>
+                  <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                    <button onClick={()=>{ if(!rtsBusy) setRtsConfirm(null); }}
+                      disabled={rtsBusy}
+                      style={{background:"#fff",border:"1px solid #d0d7de",borderRadius:6,
+                        padding:"8px 16px",fontSize:12,cursor:rtsBusy?"not-allowed":"pointer",
+                        color:"#1a2332",fontWeight:600,opacity:rtsBusy?0.6:1}}>
+                      Cancel
+                    </button>
+                    <button onClick={async()=>{
+                        setRtsBusy(true);
+                        try {
+                          if(rtsConfirm.mode==="send"){
+                            const {error} = await supabase.from("follow_ups").insert({
+                              quote_id: rtsConfirm.row.id,
+                              opportunity: rtsConfirm.row.opportunity,
+                              customer: rtsConfirm.row.customer,
+                              sent_by: currentUser,
+                            });
+                            if(error) throw error;
+                          } else {
+                            const {error} = await supabase.from("quotes")
+                              .update({ready_to_send_dismissed_at: new Date().toISOString()})
+                              .eq("id", rtsConfirm.row.id);
+                            if(error) throw error;
+                          }
+                          // Optimistically remove the row from the widget without reloading the whole dashboard.
+                          setData(d => d ? {...d, readyToSend: d.readyToSend.filter(r=>r.id!==rtsConfirm.row.id)} : d);
+                          setRtsConfirm(null);
+                        } catch(e){
+                          console.warn("Ready to Send action failed:", e);
+                          alert("Action failed — please try again.");
+                        } finally {
+                          setRtsBusy(false);
+                        }
+                      }}
+                      disabled={rtsBusy}
+                      style={{background: rtsConfirm.mode==="send"?"#1e8449":"#c0392b",
+                        border:"none",borderRadius:6,padding:"8px 16px",fontSize:12,
+                        cursor:rtsBusy?"not-allowed":"pointer",color:"#fff",fontWeight:700,
+                        opacity:rtsBusy?0.6:1}}>
+                      {rtsBusy?"Working...":(rtsConfirm.mode==="send"?"Confirm Send":"Remove")}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -7137,6 +7361,10 @@ export default function App({onLogout,currentUser}){
   const [showApprovalModal,setShowApprovalModal]=useState(false);
   const [showChatter,setShowChatter]=useState(false);
   const [quoteSentAt,setQuoteSentAt]=useState(null); // date string if this quote has been marked sent
+  const [showSendConfirm,setShowSendConfirm]=useState(false);   // confirmation popup before marking sent
+  const [showSentHistory,setShowSentHistory]=useState(false);   // modal listing every send event for this quote
+  const [sentHistory,setSentHistory]=useState([]);              // rows: {sent_at, sent_by, id}
+  const [sentBusy,setSentBusy]=useState(false);                 // disables the Send button during the insert
   const [showFollowUpPopover,setShowFollowUpPopover]=useState(false);
   const [showProductPicker,setShowProductPicker]=useState(false);
   const [pickerDragIdx,setPickerDragIdx]=useState(null);
@@ -10135,24 +10363,126 @@ const STANDARD_TERMS = [
                     ✓ Sent {new Date(quoteSentAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
                   </span>
                 )}
-                <button onClick={async()=>{
-                    const {error,data}=await supabase.from("follow_ups").insert({
-                      quote_id:currentQuoteId,
-                      opportunity:qi.opp,
-                      customer:qi.account,
-                      sent_by:currentUser,
-                    }).select("sent_at").single();
-                    if(error)showToast("Error marking as sent","error",4000);
-                    else{
-                      setQuoteSentAt(data.sent_at);
-                      showToast("✉️ Marked as sent — will appear in Follow-ups in 30 days","success",4000);
-                    }
-                  }}
+                <button onClick={()=>setShowSendConfirm(true)}
                   style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",
                     borderRadius:5,padding:"3px 10px",color:"#fff",fontWeight:700,fontSize:11,
                     cursor:"pointer"}}>
-                  ✉️ Mark as Sent
+                  ✉️ Send
                 </button>
+                {/* Sent history icon — opens a modal listing every send event for this quote */}
+                <button onClick={async()=>{
+                    const {data,error}=await supabase.from("follow_ups")
+                      .select("id, sent_at, sent_by")
+                      .eq("quote_id", currentQuoteId)
+                      .neq("sent_by","salesforce_import")
+                      .order("sent_at",{ascending:false});
+                    if(error){showToast("Error loading sent history","error",4000);return;}
+                    setSentHistory(data||[]);
+                    setShowSentHistory(true);
+                  }}
+                  title="View sent history"
+                  style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",
+                    borderRadius:5,padding:"3px 8px",color:"#fff",fontWeight:700,fontSize:11,
+                    cursor:"pointer",lineHeight:1}}>
+                  🕐
+                </button>
+              </div>
+            )}
+
+            {/* ── Send confirmation popup ── */}
+            {showSendConfirm && !showDashboard && currentQuoteId && (
+              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1000,
+                display:"flex",alignItems:"center",justifyContent:"center",padding:20}}
+                onClick={()=>{ if(!sentBusy) setShowSendConfirm(false); }}>
+                <div onClick={e=>e.stopPropagation()}
+                  style={{background:"#fff",borderRadius:12,padding:24,maxWidth:420,width:"100%",
+                    boxShadow:"0 10px 40px rgba(0,0,0,0.3)"}}>
+                  <div style={{fontSize:14,fontWeight:700,color:"#1a2332",marginBottom:8}}>
+                    Mark as Sent?
+                  </div>
+                  <div style={{fontSize:13,color:"#6b7a8d",marginBottom:20,lineHeight:1.5}}>
+                    Mark <b>{qi.opp||"this quote"}</b> as sent? This records a send event and (when linked to email) will send the quote.
+                  </div>
+                  <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                    <button onClick={()=>{ if(!sentBusy) setShowSendConfirm(false); }}
+                      disabled={sentBusy}
+                      style={{background:"#fff",border:"1px solid #d0d7de",borderRadius:6,
+                        padding:"8px 16px",fontSize:12,cursor:sentBusy?"not-allowed":"pointer",
+                        color:"#1a2332",fontWeight:600,opacity:sentBusy?0.6:1}}>
+                      Cancel
+                    </button>
+                    <button onClick={async()=>{
+                        setSentBusy(true);
+                        try {
+                          const {error,data}=await supabase.from("follow_ups").insert({
+                            quote_id:currentQuoteId,
+                            opportunity:qi.opp,
+                            customer:qi.account,
+                            sent_by:currentUser,
+                          }).select("sent_at").single();
+                          if(error) throw error;
+                          setQuoteSentAt(data.sent_at);
+                          setShowSendConfirm(false);
+                          showToast("✉️ Marked as sent — will appear in Follow-ups in 30 days","success",4000);
+                        } catch(e){
+                          console.warn("Send action failed:",e);
+                          showToast("Error marking as sent","error",4000);
+                        } finally {
+                          setSentBusy(false);
+                        }
+                      }}
+                      disabled={sentBusy}
+                      style={{background:"#1e8449",border:"none",borderRadius:6,padding:"8px 16px",
+                        fontSize:12,cursor:sentBusy?"not-allowed":"pointer",color:"#fff",fontWeight:700,
+                        opacity:sentBusy?0.6:1}}>
+                      {sentBusy?"Working...":"Confirm Send"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Sent history modal ── */}
+            {showSentHistory && !showDashboard && currentQuoteId && (
+              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1000,
+                display:"flex",alignItems:"center",justifyContent:"center",padding:20}}
+                onClick={()=>setShowSentHistory(false)}>
+                <div onClick={e=>e.stopPropagation()}
+                  style={{background:"#fff",borderRadius:12,padding:24,maxWidth:500,width:"100%",
+                    maxHeight:"80vh",overflow:"auto",boxShadow:"0 10px 40px rgba(0,0,0,0.3)"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                    <div style={{fontSize:14,fontWeight:700,color:"#1a2332"}}>
+                      Sent History — {qi.opp||"Quote"}
+                    </div>
+                    <button onClick={()=>setShowSentHistory(false)}
+                      style={{background:"transparent",border:"none",fontSize:18,color:"#9aa5b1",
+                        cursor:"pointer",padding:"0 4px",lineHeight:1}}>×</button>
+                  </div>
+                  {sentHistory.length===0?(
+                    <div style={{padding:"20px",textAlign:"center",color:"#9aa5b1",fontSize:13}}>
+                      No send events recorded for this quote yet.
+                    </div>
+                  ):(
+                    <div>
+                      {sentHistory.map(ev=>(
+                        <div key={ev.id} style={{display:"flex",alignItems:"center",gap:12,
+                          padding:"10px 0",borderBottom:"1px solid #f0f2f5"}}>
+                          <div style={{fontSize:12,color:"#1a2332",minWidth:140,fontWeight:600}}>
+                            {new Date(ev.sent_at).toLocaleDateString("en-US",
+                              {month:"short",day:"numeric",year:"numeric"})}
+                            <span style={{color:"#9aa5b1",fontWeight:400,marginLeft:6}}>
+                              {new Date(ev.sent_at).toLocaleTimeString("en-US",
+                                {hour:"numeric",minute:"2-digit"})}
+                            </span>
+                          </div>
+                          <div style={{flex:1,fontSize:12,color:"#6b7a8d"}}>
+                            by {ev.sent_by||"(unknown)"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
