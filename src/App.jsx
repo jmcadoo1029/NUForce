@@ -5432,7 +5432,24 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                             {moneyStr}
                           </div>
                           <div style={{flex:"0 0 auto",display:"flex",gap:6}}>
-                            <button onClick={()=>onLoadQuote(rts.id)}
+                            <button onClick={async()=>{
+                                const {data:row,error}=await supabase.from("quotes")
+                                  .select("id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source")
+                                  .eq("id", rts.id)
+                                  .single();
+                                if(error||!row){ alert("Could not open quote — please refresh and try again."); return; }
+                                const blob=row.data||{};
+                                onLoadQuote({...blob,id:row.id,
+                                  opp:row.opportunity||blob.opp,
+                                  customer:row.customer||blob.customer,
+                                  rfq:row.rfq||blob.rfq,
+                                  total:row.total??blob.total,
+                                  savedAt:row.updated_at,
+                                  source:row.source||"nuforce",
+                                  approval:{...(blob.approval||{}),status:row.approval_status||"none"},
+                                  wonApproval:{...(blob.wonApproval||{}),status:row.won_approval_status||"none"},
+                                });
+                              }}
                               style={{background:"#fff",border:"1px solid #d0d7de",borderRadius:5,
                                 padding:"4px 10px",fontSize:11,cursor:"pointer",color:"#1a2332",fontWeight:600}}>
                               Open
