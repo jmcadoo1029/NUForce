@@ -1,48 +1,147 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
-import Login from "./Login";
+import { checkNuForceAccess } from "./capabilityCheck";
 import App from "./App";
 
+// Phase 7: NUForce is now strongly gated by NUWorkspace.
+//
+// Render outcomes:
+//   1. Initial async checks running → null (intentionally no spinner; check is
+//      fast and a flash-of-loading-state is worse UX than a brief blank).
+//   2. No session → window.location.replace = workspace.nulabs.com/?return_to=...
+//      NUWorkspace handles login then bounces back. Render null in the
+//      meantime so nothing flashes before the redirect.
+//   3. Session + access_nuforce capability → <App />
+//   4. Session but no capability → <AccessDenied />
+//
+// Login.jsx is no longer imported — there is no manual login at NUForce.
+
+const WORKSPACE_URL = "https://workspace.nulabs.com";
+
+function AccessDenied() {
+  return (
+    <div style={{
+      minHeight:"100vh", background:"#0f1419", color:"#fff",
+      display:"flex", alignItems:"center", justifyContent:"center", padding:20,
+      fontFamily:"system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+    }}>
+      <div style={{
+        maxWidth:480, width:"100%", textAlign:"center",
+        background:"#1a2332", borderRadius:14, padding:"48px 36px",
+        boxShadow:"0 10px 40px rgba(0,0,0,0.4)",
+      }}>
+        <div style={{
+          fontSize:32, fontWeight:800, letterSpacing:2, color:"#c0392b",
+          marginBottom:8,
+        }}>
+          NUFORCE
+        </div>
+        <div style={{
+          fontSize:11, color:"#9aa5b1", letterSpacing:1.5, marginBottom:32,
+        }}>
+          NU LABORATORIES · INTERNAL USE ONLY
+        </div>
+        <div style={{fontSize:18, fontWeight:600, marginBottom:12, color:"#fff"}}>
+          Access not granted
+        </div>
+        <div style={{
+          fontSize:13, color:"#bbb", marginBottom:32, lineHeight:1.6,
+        }}>
+          You don't have access to NUForce. Contact Russ if you believe this is an error.
+        </div>
+        <a href={WORKSPACE_URL}
+          style={{
+            display:"inline-block",
+            padding:"12px 24px",
+            background:"transparent",
+            border:"1px solid rgba(255,255,255,0.25)",
+            borderRadius:8,
+            color:"#fff",
+            textDecoration:"none",
+            fontSize:13,
+            fontWeight:600,
+          }}>
+          ← Back to NUWorkspace
+        </a>
+      </div>
+    </div>
+  );
+}
+
 export default function Root() {
+  // Possible auth states:
+  //   "loading"      — initial check in flight
+  //   "no_session"   — redirecting to NUWorkspace (also null-rendered)
+  //   "granted"      — session + access_nuforce → render <App />
+  //   "denied"       — session but no capability → render <AccessDenied />
+  const [authState, setAuthState] = useState("loading");
   const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // One-time cleanup: legacy sessionStorage key from the pre-Supabase-Auth
-    // era. Safe to remove — it has no meaning after Phase 5.
+    // era. Safe to remove — has no meaning after Phase 5.
     try { sessionStorage.removeItem("vibrato_user"); } catch (_) { /* ignore */ }
 
-    // Initial session — reads from the shared .nulabs.com cookie in prod,
-    // localStorage in local dev (via the adapter).
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
+    let isMounted = true;
 
-    // Subscribe to sign-in / sign-out / token-refresh events
+    // Run the initial check: read shared session, then capability-gate it.
+    (async () => {
+      const { data: { session: s } } = await supabase.auth.getSession();
+      if (!isMounted) return;
+
+      if (!s) {
+        // No session → bounce to NUWorkspace login with return_to param.
+        // window.location.replace() doesn't add a history entry, so the user
+        // can't accidentally hit Back into a no-session state.
+        const ret = encodeURIComponent(window.location.origin);
+        window.location.replace(`${WORKSPACE_URL}/?return_to=${ret}`);
+        setAuthState("no_session"); // cosmetic; we're about to navigate away
+        return;
+      }
+
+      // Session present — run capability check.
+      setSession(s);
+      const granted = await checkNuForceAccess(supabase, s);
+      if (!isMounted) return;
+      setAuthState(granted ? "granted" : "denied");
+    })();
+
+    // Subscribe to sign-in / sign-out / token-refresh events.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => setSession(session)
+      async (event, s) => {
+        if (!isMounted) return;
+        if (event === "SIGNED_OUT" || !s) {
+          // Sign-out elsewhere (e.g. user logged out of NUWorkspace) →
+          // bounce back to NUWorkspace login.
+          const ret = encodeURIComponent(window.location.origin);
+          window.location.replace(`${WORKSPACE_URL}/?return_to=${ret}`);
+          setSession(null);
+          setAuthState("no_session");
+          return;
+        }
+        // SIGNED_IN / TOKEN_REFRESHED / USER_UPDATED — re-validate capability.
+        setSession(s);
+        const granted = await checkNuForceAccess(supabase, s);
+        if (!isMounted) return;
+        setAuthState(granted ? "granted" : "denied");
+      }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const handleLogin = async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    // session state updates via onAuthStateChange — no need to setSession here
-  };
-
   const handleLogout = async () => {
+    // Sign out globally — the onAuthStateChange listener handles the redirect.
     await supabase.auth.signOut();
-    // session state updates via onAuthStateChange
   };
 
-  if (loading) return null;
+  if (authState === "loading" || authState === "no_session") return null;
+  if (authState === "denied") return <AccessDenied />;
 
-  if (!session) return <Login onLogin={handleLogin} />;
-
-  // App.jsx receives the email exactly like before, so approver gating
-  // (currentUser === "jordanmcadoo@nulabs.com" etc.) keeps working as-is.
+  // App.jsx still receives currentUser as the email string, matching the
+  // hardcoded approver comparisons inside it.
   return <App onLogout={handleLogout} currentUser={session.user.email} />;
 }
