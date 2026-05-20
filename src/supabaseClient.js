@@ -1,6 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
+import { nulabsSessionStorage } from "./nulabsSessionStorage";
 
 const SUPABASE_URL = "https://swuuxzmgmldvvomsgmjf.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_bmrPY65INpUkea8VUX1Wag_T7Vrz9ZZ";
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    storage: nulabsSessionStorage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
+  },
+});
