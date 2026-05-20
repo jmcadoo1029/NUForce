@@ -7470,7 +7470,7 @@ export default function App({onLogout,currentUser}){
   // ── Browser tab title + history state for back button ─────────────────────
   useEffect(()=>{
     const opp=qi.opp||"";
-    const label=showDashboard?"Home":opp?opp:"NUForce";
+    const label=showDashboard?"Dashboard":opp?opp:"NUForce";
     document.title=label;
     // Push a history state so the browser back button works within the app
     const state={showDashboard, quoteId:currentQuoteId};
@@ -10262,11 +10262,18 @@ const STANDARD_TERMS = [
                 </div>
           <div style={{fontWeight:700,fontSize:13,letterSpacing:1,color:"rgba(255,255,255,0.5)",marginLeft:4}}>NUFORCE</div>
           <div style={{flex:1}}/>
+          <button onClick={()=>{window.location.href="https://workspace.nulabs.com";}}
+            title="Open NUWorkspace"
+            style={{background:"none",border:"1px solid rgba(255,255,255,0.25)",
+              borderRadius:6,padding:"5px 12px",color:"#fff",fontSize:11,cursor:"pointer",fontWeight:600,
+              marginRight:6}}>
+            ← NUWorkspace
+          </button>
           <button onClick={()=>navigateTo(true)}
             title="Go to dashboard"
             style={{background:showDashboard?"rgba(255,255,255,0.2)":"none",border:"1px solid rgba(255,255,255,0.25)",
               borderRadius:6,padding:"5px 12px",color:"#fff",fontSize:11,cursor:"pointer",fontWeight:600}}>
-            🏠 Home
+            📋 Dashboard
           </button>
           <QuoteSearch onLoad={q=>{handleLoad(q);navigateTo(false);}}/>
 
