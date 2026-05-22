@@ -63,6 +63,117 @@ const lwDisc=vs=>{if(vs<=2000)return 500;if(vs<=3000)return 750;return 1000;};
 // MW testing price based on unit weight (lbs)
 const mwTesting=wt=>{if(!wt||wt<=0)return 4575;if(wt<=2500)return 4575;if(wt<=3500)return 5575;return 6250;};
 
+// ── Workspace project creation helpers ───────────────────────────────────────
+
+// Build the labeled-list test article description from the ti state object.
+// Russ stores this as a single text field in project_info.test_article_description.
+// Only includes lines where NUForce has a value — empty fields are omitted.
+// Formatting follows the same conventions used in the quote PDF generators
+// (e.g. "120 V AC", "1 Ph", "60 Hz", "5 A") for consistency.
+const buildTestArticleDescription = (ti) => {
+  if (!ti) return "";
+  const lines = [];
+  const push = (label, value) => {
+    if (value === null || value === undefined) return;
+    const s = String(value).trim();
+    if (s === "" || s === "0") return;
+    lines.push(`${label}: ${s}`);
+  };
+  push("Item", ti.item);
+  push("Qty", ti.qty);
+  push("Model #", ti.model);
+  push("Drawing #", ti.drawing);
+  const L = (ti.dimL || "").toString().trim();
+  const W = (ti.dimW || "").toString().trim();
+  const H = (ti.dimH || "").toString().trim();
+  if (L || W || H) {
+    lines.push(`Size: ${L || "?"}" × ${W || "?"}" × ${H || "?"}"`);
+  }
+  push("Weight", ti.wt);
+  if (ti.volt) lines.push(`Voltage: ${ti.volt} V ${ti.pwrType || "AC"}`);
+  if (ti.phase) lines.push(`Phase: ${ti.phase} Ph`);
+  if (ti.hz) lines.push(`Frequency: ${ti.hz} Hz`);
+  if (ti.inrush) lines.push(`Inrush: ${ti.inrush} A`);
+  if (ti.amps) lines.push(`Op Amps: ${ti.amps} A`);
+  push("Loads", ti.loads);
+  push("Mounting", ti.mounting);
+  push("Pressure/Flow", ti.pressureFlow);
+  return lines.join("\n");
+};
+
+// Collect all quote line items from the three possible sources
+// (pickerLines is current, summary.lines is legacy, custom.rows is edge case),
+// normalize them into a single shape for the RPC payload.
+// task_num is NOT included — workspace owns numbering per Russ's contract.
+const collectQuoteLineItems = ({ pickerLines, summary, custom, quoteNumber, poNumber }) => {
+  const items = [];
+  (pickerLines || []).forEach(l => {
+    if (!l.label && !l.price) return;
+    items.push({
+      name: l.label || "",
+      description: l.desc || null,
+      sales_category: l.code || null,
+      fixed_price: parseFloat(l.price) || 0,
+      quote_number: quoteNumber,
+      po_number: poNumber,
+    });
+  });
+  (summary?.lines || []).forEach(l => {
+    if (!l.label && !l.val) return;
+    items.push({
+      name: l.label || "",
+      description: null,
+      sales_category: l.code || null,
+      fixed_price: parseFloat(l.val) || 0,
+      quote_number: quoteNumber,
+      po_number: poNumber,
+    });
+  });
+  if (custom?.on) {
+    (custom?.rows || []).forEach(r => {
+      if (!r.label && !r.price) return;
+      items.push({
+        name: r.label || "Custom Item",
+        description: null,
+        sales_category: r.pcode || "94",
+        fixed_price: parseFloat(r.price) || 0,
+        quote_number: quoteNumber,
+        po_number: poNumber,
+      });
+    });
+  }
+  return items;
+};
+
+// Collect budget materials rows into the expenses payload shape.
+// Budget rows: { desc, qty, unitCost } — desc is the field name (not "description").
+const collectBudgetExpenses = (budget) => {
+  const expenses = [];
+  (budget?.rows || []).forEach(r => {
+    const qty = parseFloat(r.qty) || 1;
+    const unitCost = parseFloat(r.unitCost) || 0;
+    const planned = qty * unitCost;
+    if (!r.desc && planned === 0) return;
+    expenses.push({
+      name: r.desc || "Budget Material",
+      planned_amount: planned,
+    });
+  });
+  return expenses;
+};
+
+// Map NUForce's related contacts list into the workspace payload shape.
+// NUForce stores: qi.relatedContacts = [{ name, email, contactId? }]
+// Workspace wants:                     [{ full_name, email }]
+const collectRelatedContacts = (qi) => {
+  return (qi?.relatedContacts || [])
+    .filter(rc => rc && (rc.name || rc.email))
+    .map(rc => ({
+      full_name: rc.name || "",
+      email: rc.email || "",
+    }));
+};
+
 // ── Theme ─────────────────────────────────────────────────────────────────────
 const C={
   bg:"#f0f2f5",panel:"#e8ecf0",card:"#ffffff",border:"#d0d7de",
@@ -1858,6 +1969,7 @@ async function saveQuoteToSupabase(quote, autoSpecs, autoNotes, opts) {
     budget_items:     quote.budget?.rows   || null,
     budget_markup:    quote.budget?.markup ? parseFloat(quote.budget.markup) : null,
     budget_notes:     quote.budget?.notes  || null,
+    workspace_project_id: quote.workspace_project_id || null,
     data:             quote,
     search_text:      [
       quote.qi?.opp    || quote.opp    || "",
@@ -7420,7 +7532,11 @@ export default function App({onLogout,currentUser}){
   const [cloneOppInput,setCloneOppInput]=useState("");
   const [currentQuoteId,setCurrentQuoteId]=useState(null);
   const [wonApproval,setWonApproval]=useState({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
-  const [showCreateProjectAlert,setShowCreateProjectAlert]=useState(false);
+  // ── Workspace project linkage ──────────────────────────────────────────────
+  const [workspaceProjectId,setWorkspaceProjectId]=useState(null);
+  const [workspaceBusy,setWorkspaceBusy]=useState(false);
+  const [showAppendConfirm,setShowAppendConfirm]=useState(null); // null or {project_id, project_name, client_company, existing_task_count, new_task_count, new_expense_count}
+  const [showClearLinkConfirm,setShowClearLinkConfirm]=useState(false);
   const [currentQuoteSource,setCurrentQuoteSource]=useState("nuforce");
   const [showDashboard,setShowDashboard]=useState(true);
 
@@ -7697,7 +7813,7 @@ export default function App({onLogout,currentUser}){
       savedAt: new Date().toISOString(),
     };
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,snapshot:savedSnapshot};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId,snapshot:savedSnapshot};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);setSnapshot(savedSnapshot);setIsDirty(false);showToast("Submitted for approval","info");}
     else showToast("Submit failed — check your connection","error",5000);
@@ -7721,7 +7837,7 @@ export default function App({onLogout,currentUser}){
     setLocked(true);
     setApprovalComments("");
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Quote approved ✓","success");autoUnflag(newId);}
     else showToast("Save failed — check your connection","error",5000);
@@ -7735,7 +7851,7 @@ export default function App({onLogout,currentUser}){
     setLocked(false);
     setApprovalComments("");
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval:newApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Quote rejected","info");}
     else showToast("Save failed — check your connection","error",5000);
@@ -7766,7 +7882,7 @@ export default function App({onLogout,currentUser}){
       savedAt: new Date().toISOString(),
     };
     const q={id:currentQuoteId||undefined,opp:effectiveQi.opp,customer:effectiveQi.account,rfq:effectiveQi.rfq,total:displayTotal,
-      qi:effectiveQi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,snapshot:savedSnapshot};
+      qi:effectiveQi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId,snapshot:savedSnapshot};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);setSnapshot(savedSnapshot);setIsDirty(false);showToast("Submitted for Closed Won approval","info");}
     else showToast("Submit failed — check your connection","error",5000);
@@ -7776,7 +7892,7 @@ export default function App({onLogout,currentUser}){
     const newWonApproval={...wonApproval,status:"won_approved",decidedBy:currentUser,decidedAt:new Date().toISOString(),comments:comments||""};
     setWonApproval(newWonApproval);
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Closed Won approved ✓","success");}
     else showToast("Save failed — check your connection","error",5000);
@@ -7787,7 +7903,7 @@ export default function App({onLogout,currentUser}){
     setWonApproval(newWonApproval);
     setLocked(false);
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval:newWonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId};
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Closed Won rejected","info");}
     else showToast("Save failed — check your connection","error",5000);
@@ -7906,7 +8022,7 @@ export default function App({onLogout,currentUser}){
       const result=window.confirm("Save the current quote before switching?\n\nClick OK to save, or Cancel to discard.");
       if(result){
         const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
+          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId};
         await saveQuoteToSupabase(q,autoSpecs,autoNotes);
       }
     }
@@ -7946,6 +8062,7 @@ export default function App({onLogout,currentUser}){
         setWonInfo({wonDate:"",jobNum:"",poNum:""});setWonLocked(false);setWonDatePending(false);
         setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
         setChatterEntries([]);setChatterInput("");
+        setWorkspaceProjectId(null);setShowAppendConfirm(null);setShowClearLinkConfirm(false);
         setLocked(false);setCurrentQuoteId(null);setCurrentQuoteSource("nuforce");
         setOpenQuotesPanel(false);
         navigateTo(false);
@@ -8182,7 +8299,7 @@ export default function App({onLogout,currentUser}){
         const q={id:undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
           qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,
           budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,
-          inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
+          inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId};
         const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
         if(!newId){showToast("Save failed before flagging","error");setFlagLoading(false);return;}
         setCurrentQuoteId(newId);
@@ -8250,7 +8367,7 @@ export default function App({onLogout,currentUser}){
     const result=window.confirm("Save the current quote before cloning?\n\nClick OK to save first, or Cancel to clone without saving.");
     if(result){
       const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
+        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId};
       saveQuoteToSupabase(q,autoSpecs,autoNotes);
     }
     setCloneOppInput("");
@@ -8282,7 +8399,7 @@ export default function App({onLogout,currentUser}){
       if(result){
         const id=currentQuoteId||undefined;
         const q={id,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
+          qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId};
         saveQuoteToSupabase(q,autoSpecs,autoNotes);
       }
     }
@@ -8302,6 +8419,7 @@ export default function App({onLogout,currentUser}){
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("nuforce");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
+    setWorkspaceProjectId(null);setShowAppendConfirm(null);setShowClearLinkConfirm(false);
     setChatterEntries([]);setChatterInput("");setQuoteSentAt(null);setShowFollowUpPopover(false);setFollowUpDate("");setSnapshot(null);setIsDirty(true); // new quote — no snapshot yet, all live
     setTimeout(()=>{ isLoadingRef.current=false; }, 50);
     localStorage.removeItem("vibrato_last_quote_id");
@@ -8377,7 +8495,7 @@ export default function App({onLogout,currentUser}){
       savedAt: new Date().toISOString(),
     };
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,snapshot:savedSnapshot};
+      qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId,snapshot:savedSnapshot};
 
     // Detect revision letter change on existing quotes — prompt user for save mode
     let saveOpts;
@@ -8431,6 +8549,194 @@ export default function App({onLogout,currentUser}){
       }));
     } else {
       showToast("Save failed — check your connection and try again.","error",5000);
+    }
+  };
+
+  // ── Workspace project creation handlers ──────────────────────────────────
+  // Pushes the closed-won quote to NUWorkspace as a new project, or appends to
+  // an existing one. Russ owns the three SECURITY DEFINER RPCs on the workspace
+  // side; we just assemble and call. All-or-nothing transactions, error codes
+  // come back prefixed (JOB_EXISTS, CLIENT_NOT_FOUND, PROJECT_NOT_FOUND, BAD_INPUT).
+
+  const handleCreateProject = async () => {
+    const jobNum = (wonInfo?.jobNum || "").trim();
+    if (!jobNum) { showToast("Enter a Job # before creating a project","error",3500); return; }
+    if (!currentQuoteId) { showToast("Save the quote first before creating a project","error",3500); return; }
+    setWorkspaceBusy(true);
+    try {
+      // 1. Pre-check: Job # must NOT already exist
+      const { data: lookup, error: lookupErr } = await supabase.rpc(
+        'lookup_project_by_job_number', { job_number: jobNum }
+      );
+      if (lookupErr) throw lookupErr;
+      if (lookup?.found) {
+        showToast(
+          `Job # "${jobNum}" already exists on project "${lookup.project_name}". Use Add to Existing instead, or change the Job #.`,
+          "error", 6000
+        );
+        return;
+      }
+      // 2. Assemble payload
+      const payload = {
+        source: "nuforce",
+        source_quote_id: currentQuoteId,
+        source_quote_number: qi.opp,
+        project: {
+          name: jobNum,
+          description: combineSpecs(
+            combineSpecs(ti.tiSpecs, autoSpecs),
+            combineSpecs(ti.tiNotes, autoNotes)
+          ),
+        },
+        project_info: {
+          po_number: wonInfo.poNum || null,
+          quote_number: qi.opp || null,
+          client_name: qi.account || null,
+          client_salesforce_id: null,
+          primary_contact: {
+            full_name: qi.contact || null,
+            email: qi.email || null,
+            phone: null,
+          },
+          phase: "Waiting on TP Approval",
+          status: "jobprep",
+          test_article_description: buildTestArticleDescription(ti),
+          dpas: ti.dpas || null,
+          cui: ti.docRestriction || null,
+          dcas: ti.gsi || null,
+          customer_witness: ti.witness || null,
+        },
+        related_contacts: collectRelatedContacts(qi),
+        tasks: collectQuoteLineItems({
+          pickerLines, summary, custom,
+          quoteNumber: qi.opp, poNumber: wonInfo.poNum,
+        }),
+        expenses: collectBudgetExpenses(budget),
+      };
+      // 3. Call the RPC
+      const { data: result, error: rpcErr } = await supabase.rpc(
+        'create_project_from_nuforce', { payload }
+      );
+      if (rpcErr) throw rpcErr;
+      if (!result?.project_id) throw new Error("Project creation returned no project_id");
+      // 4. Persist the linkage to NUForce's quote row
+      const { error: updateErr } = await supabase
+        .from("quotes")
+        .update({ workspace_project_id: result.project_id })
+        .eq("id", currentQuoteId);
+      if (updateErr) {
+        console.error("Project created but failed to save workspace_project_id locally:", updateErr);
+        showToast(
+          "Project created in workspace, but couldn't save the link locally. Refresh and try again if needed.",
+          "info", 6000
+        );
+      }
+      // 5. Update local state — button swaps to "Open in Workspace ↗"
+      setWorkspaceProjectId(result.project_id);
+      showToast(
+        `✓ Project "${jobNum}" created in NUWorkspace (${result.task_count||0} tasks, ${result.expense_count||0} expenses)`,
+        "success", 4500
+      );
+    } catch (err) {
+      showToast(`Create Project failed: ${err.message || err}`,"error",6000);
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
+  // Step A of Add to Existing: look up the project by Job #, show confirmation popup
+  const handleAddToExistingLookup = async () => {
+    const jobNum = (wonInfo?.jobNum || "").trim();
+    if (!jobNum) { showToast("Enter a Job # to find the existing project","error",3500); return; }
+    if (!currentQuoteId) { showToast("Save the quote first before adding to a project","error",3500); return; }
+    setWorkspaceBusy(true);
+    try {
+      const { data: lookup, error: lookupErr } = await supabase.rpc(
+        'lookup_project_by_job_number', { job_number: jobNum }
+      );
+      if (lookupErr) throw lookupErr;
+      if (!lookup?.found) {
+        showToast(
+          `No project with Job # "${jobNum}" found in workspace. Check the Job # or use Create Project instead.`,
+          "error", 6000
+        );
+        return;
+      }
+      setShowAppendConfirm({
+        project_id: lookup.project_id,
+        project_name: lookup.project_name,
+        client_company: lookup.client_company,
+        existing_task_count: lookup.task_count,
+        new_task_count: collectQuoteLineItems({
+          pickerLines, summary, custom,
+          quoteNumber: qi.opp, poNumber: wonInfo.poNum,
+        }).length,
+        new_expense_count: collectBudgetExpenses(budget).length,
+      });
+    } catch (err) {
+      showToast(`Lookup failed: ${err.message || err}`,"error",6000);
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
+  // Step B of Add to Existing: user confirmed — actually append
+  const handleAddToExistingConfirm = async () => {
+    if (!showAppendConfirm) return;
+    const target = showAppendConfirm;
+    const jobNum = (wonInfo?.jobNum || "").trim();
+    setWorkspaceBusy(true);
+    try {
+      const payload = {
+        source: "nuforce",
+        source_quote_id: currentQuoteId,
+        source_quote_number: qi.opp,
+        target_job_number: jobNum,
+        tasks: collectQuoteLineItems({
+          pickerLines, summary, custom,
+          quoteNumber: qi.opp, poNumber: wonInfo.poNum,
+        }),
+        expenses: collectBudgetExpenses(budget),
+      };
+      const { data: result, error: rpcErr } = await supabase.rpc(
+        'append_to_project_from_nuforce', { payload }
+      );
+      if (rpcErr) throw rpcErr;
+      const { error: updateErr } = await supabase
+        .from("quotes")
+        .update({ workspace_project_id: result.project_id })
+        .eq("id", currentQuoteId);
+      if (updateErr) console.error("Append succeeded but failed to save link locally:", updateErr);
+      setWorkspaceProjectId(result.project_id);
+      setShowAppendConfirm(null);
+      showToast(
+        `✓ Added to "${target.project_name}" (${result.tasks_added||0} tasks, ${result.expenses_added||0} expenses)`,
+        "success", 4500
+      );
+    } catch (err) {
+      showToast(`Add to Existing failed: ${err.message || err}`,"error",6000);
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
+  // Edge case: clear the workspace link (does NOT delete the workspace project, just unlinks here)
+  const handleClearWorkspaceLink = async () => {
+    if (!currentQuoteId) return;
+    setWorkspaceBusy(true);
+    try {
+      const { error } = await supabase
+        .from("quotes")
+        .update({ workspace_project_id: null })
+        .eq("id", currentQuoteId);
+      if (error) throw error;
+      setWorkspaceProjectId(null);
+      setShowClearLinkConfirm(false);
+      showToast("Workspace link cleared. Buttons re-enabled.","info",3500);
+    } catch (err) {
+      showToast(`Clear link failed: ${err.message || err}`,"error",6000);
+    } finally {
+      setWorkspaceBusy(false);
     }
   };
 
@@ -8542,6 +8848,10 @@ export default function App({onLogout,currentUser}){
     //   (not necessarily at the same index — indices shift when tests change)
     // - Price/desc overrides: keep as-is
     setPickerLines(q.pickerLines||[]); setUnifiedOrder(q.unifiedOrder||null);
+    // Workspace project linkage — pulled from the quote row (top-level column, not in data blob)
+    setWorkspaceProjectId(q.workspace_project_id||null);
+    setShowAppendConfirm(null);
+    setShowClearLinkConfirm(false);
     if(q.lineOverrides!==undefined){
       const savedLines=q.summary?.lines||[];
       // Build a set of all labels in the saved summary for O(1) lookup
@@ -10977,12 +11287,21 @@ const STANDARD_TERMS = [
                   );
                 })}
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6}}>
-                  <button onClick={()=>setShowCreateProjectAlert("new")}
-                    style={{background:"#1a5276",border:"none",borderRadius:7,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",gap:5,flex:1}}>
-                    🏗️ Create Project
-                  </button>
-                  <button onClick={()=>setShowCreateProjectAlert("existing")}
-                    style={{background:"#6c3483",border:"none",borderRadius:7,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",gap:5,flex:1}}>
+                  {workspaceProjectId ? (
+                    <a href={`https://workspace.nulabs.com/#project/${workspaceProjectId}/info`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{background:"#1a5276",border:"none",borderRadius:7,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",gap:5,flex:1,textDecoration:"none",justifyContent:"center"}}>
+                      Open in Workspace ↗
+                    </a>
+                  ) : (
+                    <button onClick={handleCreateProject} disabled={workspaceBusy}
+                      style={{background:workspaceBusy?"#9aa5b1":"#1a5276",border:"none",borderRadius:7,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:workspaceBusy?"not-allowed":"pointer",color:"#fff",display:"flex",alignItems:"center",gap:5,flex:1}}>
+                      {workspaceBusy ? "Working..." : "🏗️ Create Project"}
+                    </button>
+                  )}
+                  <button onClick={handleAddToExistingLookup}
+                    disabled={workspaceBusy || !!workspaceProjectId}
+                    style={{background:(workspaceBusy||workspaceProjectId)?"#9aa5b1":"#6c3483",border:"none",borderRadius:7,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:(workspaceBusy||workspaceProjectId)?"not-allowed":"pointer",color:"#fff",display:"flex",alignItems:"center",gap:5,flex:1}}>
                     ➕ Add to Existing
                   </button>
                   <button onClick={()=>{
@@ -11001,15 +11320,56 @@ const STANDARD_TERMS = [
                     Save &amp; Close
                   </button>
                 </div>
-                {showCreateProjectAlert&&(
-                  <div style={{marginTop:10,background:showCreateProjectAlert==="new"?"#f0f9ff":"#faf5ff",
-                    border:"1px solid "+(showCreateProjectAlert==="new"?"#0ea5e9":"#7c3aed"),
-                    borderRadius:7,padding:"10px 14px",fontSize:12,
-                    color:showCreateProjectAlert==="new"?"#0c4a6e":"#4c1d95",
-                    display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-                    <span>🚧 {showCreateProjectAlert==="new"?"Create New Project":"Add to Existing Project"} — feature coming soon</span>
-                    <button onClick={()=>setShowCreateProjectAlert(false)}
-                      style={{background:"none",border:"none",cursor:"pointer",fontSize:14,fontWeight:700}}>×</button>
+                {showAppendConfirm && (
+                  <div style={{marginTop:10,background:"#faf5ff",border:"1px solid #7c3aed",borderRadius:7,padding:"12px 14px",fontSize:12,color:"#4c1d95"}}>
+                    <div style={{fontWeight:700,marginBottom:6}}>
+                      Found project: <span style={{color:"#1a2332"}}>{showAppendConfirm.project_name}</span>
+                    </div>
+                    <div style={{marginBottom:4}}>
+                      Client: <strong>{showAppendConfirm.client_company || "—"}</strong>
+                    </div>
+                    <div style={{marginBottom:10}}>
+                      Existing tasks: <strong>{showAppendConfirm.existing_task_count ?? "?"}</strong>
+                    </div>
+                    <div style={{marginBottom:10}}>
+                      This will add <strong>{showAppendConfirm.new_task_count} task{showAppendConfirm.new_task_count===1?"":"s"}</strong> and <strong>{showAppendConfirm.new_expense_count} expense{showAppendConfirm.new_expense_count===1?"":"s"}</strong> from this quote.
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={handleAddToExistingConfirm} disabled={workspaceBusy}
+                        style={{background:workspaceBusy?"#9aa5b1":"#6c3483",border:"none",borderRadius:6,padding:"6px 14px",fontWeight:700,fontSize:12,cursor:workspaceBusy?"not-allowed":"pointer",color:"#fff"}}>
+                        {workspaceBusy ? "Adding..." : "Confirm — Add Items"}
+                      </button>
+                      <button onClick={()=>setShowAppendConfirm(null)} disabled={workspaceBusy}
+                        style={{background:"#fff",border:"1px solid #d1d5db",borderRadius:6,padding:"6px 14px",fontWeight:600,fontSize:12,cursor:workspaceBusy?"not-allowed":"pointer",color:"#374151"}}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {workspaceProjectId && !showClearLinkConfirm && (
+                  <div style={{marginTop:10,textAlign:"right"}}>
+                    <button onClick={()=>setShowClearLinkConfirm(true)}
+                      style={{background:"none",border:"none",color:"#9aa5b1",fontSize:10,cursor:"pointer",textDecoration:"underline",padding:0}}>
+                      Clear workspace link
+                    </button>
+                  </div>
+                )}
+                {showClearLinkConfirm && (
+                  <div style={{marginTop:10,background:"#fef9c3",border:"1px solid #ca8a04",borderRadius:7,padding:"12px 14px",fontSize:12,color:"#713f12"}}>
+                    <div style={{fontWeight:700,marginBottom:6}}>Clear workspace link?</div>
+                    <div style={{marginBottom:10}}>
+                      This unlinks the quote from the workspace project. The workspace project itself will NOT be deleted — if you want it gone, handle that in workspace separately. After clearing, the Create Project / Add to Existing buttons will be re-enabled.
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={handleClearWorkspaceLink} disabled={workspaceBusy}
+                        style={{background:workspaceBusy?"#9aa5b1":"#ca8a04",border:"none",borderRadius:6,padding:"6px 14px",fontWeight:700,fontSize:12,cursor:workspaceBusy?"not-allowed":"pointer",color:"#fff"}}>
+                        {workspaceBusy ? "Clearing..." : "Yes, unlink"}
+                      </button>
+                      <button onClick={()=>setShowClearLinkConfirm(false)} disabled={workspaceBusy}
+                        style={{background:"#fff",border:"1px solid #d1d5db",borderRadius:6,padding:"6px 14px",fontWeight:600,fontSize:12,cursor:workspaceBusy?"not-allowed":"pointer",color:"#374151"}}>
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -11204,7 +11564,7 @@ const STANDARD_TERMS = [
                                 return;
                               }
                               const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-                                qi:{...qi,stage:s},ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
+                                qi:{...qi,stage:s},ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId};
                               saveQuoteToSupabase(q,autoSpecs,autoNotes).then(newId=>{
                                 if(newId){setCurrentQuoteId(newId);showToast("Saved — "+(qi.opp||"Untitled"),"success");}
                                 else showToast("Save failed — check your connection","error",5000);
@@ -12137,7 +12497,7 @@ const STANDARD_TERMS = [
                 setChatterInput("");
                 // Save immediately so chatter persists without requiring manual SAVE
                 const q={id:currentQuoteId,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
-                  qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries:updated,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder};
+                  qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries:updated,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId};
                 await saveQuoteToSupabase(q,autoSpecs,autoNotes);
                 setChatterSaving(false);
               }}
