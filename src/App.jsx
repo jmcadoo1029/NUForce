@@ -8542,12 +8542,25 @@ export default function App({onLogout,currentUser}){
     // Detect revision letter change on existing quotes — prompt user for save mode
     let saveOpts;
     if (currentQuoteId) {
-      // Look up the currently-saved rev letter for this row
-      const { data: existing } = await supabase
-        .from("quotes")
-        .select("revision")
-        .eq("id", currentQuoteId)
-        .single();
+      // Look up the currently-saved rev letter for this row.
+      // Wrap in a 5s timeout — if Supabase is hung here, skip the rev-change check
+      // and proceed with the save rather than blocking entirely. We lose the ability
+      // to prompt for rev changes on this one save, which is acceptable.
+      let existing = null;
+      try {
+        const revCheckPromise = supabase
+          .from("quotes")
+          .select("revision")
+          .eq("id", currentQuoteId)
+          .single();
+        const revCheckTimeout = new Promise((_, reject) => setTimeout(
+          () => reject(new Error("rev check timed out")), 5000
+        ));
+        const result = await Promise.race([revCheckPromise, revCheckTimeout]);
+        existing = result.data;
+      } catch (e) {
+        console.warn('[REV-CHECK] timed out or failed — skipping rev-change detection on this save', e?.message || e);
+      }
       const oldRev = (existing?.revision || "").toString().trim();
       const newRev = (qi.rev || "").toString().trim();
       if (existing && oldRev !== newRev) {
