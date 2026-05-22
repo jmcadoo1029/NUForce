@@ -1943,6 +1943,7 @@ async function savePdfAs(doc, suggestedName) {
 }
 
 async function saveQuoteToSupabase(quote, autoSpecs, autoNotes, opts) {
+  console.warn('[SAVE-ENTRY] saveQuoteToSupabase entered', new Date().toISOString());
   const forceInsert = opts && opts.forceInsert;
   const row = {
     id: forceInsert ? undefined : (quote.id || undefined),
@@ -8515,6 +8516,7 @@ export default function App({onLogout,currentUser}){
 
   // Save quote to Supabase
   const handleSave=async()=>{
+    console.warn('[CLICK-DIAG] handleSave entered', new Date().toISOString());
     // Block save if Closed Won and wonDate hasn't been confirmed this session
     if(qi.stage==="Closed Won"&&wonDatePending){
       showToast("Confirm the Won Date first","warn",4000);
