@@ -8404,12 +8404,18 @@ export default function App({onLogout,currentUser}){
     showToast(`Added ${lines.length} line item${lines.length!==1?"s":""} to quote`, "success");
   };
 
-  const handleClone=()=>{
+  const handleClone=async()=>{
     const result=window.confirm("Save the current quote before cloning?\n\nClick OK to save first, or Cancel to clone without saving.");
     if(result){
       const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
         qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId};
-      saveQuoteToSupabase(q,autoSpecs,autoNotes);
+      // Await the save before opening the clone modal. Previously this was fire-and-forget,
+      // which caused the original save and the subsequent clone-save to race on the same
+      // Supabase client, wedging it. Serializing prevents the deadlock.
+      const newId = await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+      if (!newId) {
+        showToast("Original quote couldn't save — clone anyway? Click Clone in the modal to proceed without saving the original, or close to retry.","warn",6000);
+      }
     }
     setCloneOppInput("");
     setShowCloneModal(true);
@@ -8433,7 +8439,7 @@ export default function App({onLogout,currentUser}){
     window.scrollTo({top:0,behavior:"smooth"});
   };
 
-  const handleNewQuote=(skipConfirm=false)=>{
+  const handleNewQuote=async(skipConfirm=false)=>{
     isLoadingRef.current=true; // suppress isDirty during reset
     if(!skipConfirm){
       const result=window.confirm("Save the current quote before starting a new one?\n\nClick OK to save, or Cancel to discard and continue.");
@@ -8441,7 +8447,13 @@ export default function App({onLogout,currentUser}){
         const id=currentQuoteId||undefined;
         const q={id,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
           qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId};
-        saveQuoteToSupabase(q,autoSpecs,autoNotes);
+        // Await the save before resetting state. Previously this was fire-and-forget,
+        // which caused the original save and the subsequent new-quote save to race on the
+        // same Supabase client, wedging it. Serializing prevents the deadlock.
+        const newId = await saveQuoteToSupabase(q,autoSpecs,autoNotes);
+        if (!newId) {
+          showToast("Original quote couldn't save — starting new quote anyway","warn",5000);
+        }
       }
     }
     // Reset all state to blank defaults
@@ -8693,6 +8705,10 @@ export default function App({onLogout,currentUser}){
         }),
         expenses: collectBudgetExpenses(budget),
       };
+      // ── DIAGNOSTIC: log budget state and collected expenses so we can see exactly what we're sending
+      console.warn('[EXPENSE-DIAG] budget state:', JSON.stringify(budget));
+      console.warn('[EXPENSE-DIAG] payload.expenses:', JSON.stringify(payload.expenses));
+      // ── end diagnostic
       // 3. Call the RPC
       const { data: result, error: rpcErr } = await supabase.rpc(
         'create_project_from_nuforce', { payload }
