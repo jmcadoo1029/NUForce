@@ -8691,7 +8691,7 @@ export default function App({onLogout,currentUser}){
         source: "nuforce",
         source_quote_id: currentQuoteId,
         source_quote_number: qi.opp,
-        target_job_number: jobNum,
+        project: { name: jobNum },
         tasks: collectQuoteLineItems({
           pickerLines, summary, custom,
           quoteNumber: qi.opp, poNumber: wonInfo.poNum,
