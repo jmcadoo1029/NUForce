@@ -1992,6 +1992,32 @@ async function saveQuoteToSupabase(quote, autoSpecs, autoNotes, opts) {
     ].filter(Boolean).join(" ").toLowerCase(),
   };
 
+  // ── DIAGNOSTIC (Phase 7 hung-save investigation, per Russ) ────────────────
+  // Logs token state right before each save fires. Wrapped in its own 3s
+  // timeout so a hung getSession() doesn't become a hung save itself —
+  // a hung getSession is in fact diagnostic (strong signal for the auth-lock
+  // deadlock hypothesis). Remove after the issue is identified.
+  try {
+    const diagPromise = supabase.auth.getSession();
+    const diagTimeout = new Promise((_, reject) => setTimeout(
+      () => reject(new Error("getSession itself hung")), 3000
+    ));
+    const { data: { session } } = await Promise.race([diagPromise, diagTimeout]);
+    const now = Math.floor(Date.now() / 1000);
+    const exp = session?.expires_at ?? null;
+    console.warn('[SAVE-DIAG] token state', {
+      has_session: !!session,
+      expires_at: exp,
+      now,
+      seconds_to_expiry: exp ? (exp - now) : null,
+      is_expired: exp ? (exp <= now) : null,
+      ts: new Date().toISOString(),
+    });
+  } catch (diagErr) {
+    console.warn('[SAVE-DIAG] getSession threw or hung — strong signal for auth-lock hypothesis', diagErr?.message || diagErr);
+  }
+  // ── end diagnostic ────────────────────────────────────────────────────────
+
   // Wrap the save in a 30-second timeout. Without this, a hung Supabase call
   // (auth lock contention, JWT mid-refresh, throttled tab, etc.) leaves the
   // await pending forever — user sees no toast, no console error, just nothing.
