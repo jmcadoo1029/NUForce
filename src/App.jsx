@@ -1992,21 +1992,35 @@ async function saveQuoteToSupabase(quote, autoSpecs, autoNotes, opts) {
     ].filter(Boolean).join(" ").toLowerCase(),
   };
 
+  // Wrap the save in a 30-second timeout. Without this, a hung Supabase call
+  // (auth lock contention, JWT mid-refresh, throttled tab, etc.) leaves the
+  // await pending forever — user sees no toast, no console error, just nothing.
+  // Timeout converts that silent failure into a visible one (returns null, which
+  // triggers the existing "Save failed — check your connection" toast in callers).
+  const SAVE_TIMEOUT_MS = 30000;
+  const withTimeout = (promise) => Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(
+      () => reject(new Error("Save timed out after 30s")),
+      SAVE_TIMEOUT_MS
+    )),
+  ]);
+
   let data, error;
-  if (row.id) {
-    const { id, ...updateRow } = row;
-    ({ data, error } = await supabase
-      .from("quotes")
-      .update(updateRow)
-      .eq("id", id)
-      .select("id")
-      .single());
-  } else {
-    ({ data, error } = await supabase
-      .from("quotes")
-      .insert(row)
-      .select("id")
-      .single());
+  try {
+    if (row.id) {
+      const { id, ...updateRow } = row;
+      ({ data, error } = await withTimeout(
+        supabase.from("quotes").update(updateRow).eq("id", id).select("id").single()
+      ));
+    } else {
+      ({ data, error } = await withTimeout(
+        supabase.from("quotes").insert(row).select("id").single()
+      ));
+    }
+  } catch (timeoutErr) {
+    console.error("Supabase save timeout:", timeoutErr);
+    return null;
   }
 
   if (error) { console.error("Supabase save error:", error); return null; }
