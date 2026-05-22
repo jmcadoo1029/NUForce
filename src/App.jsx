@@ -8619,6 +8619,31 @@ export default function App({onLogout,currentUser}){
     if (!currentQuoteId) { showToast("Save the quote first before creating a project","error",3500); return; }
     setWorkspaceBusy(true);
     try {
+      // 0. Persist the current quote state first — Won Details, line items, everything.
+      // Otherwise users who fill in Won Date / Job # / PO # in the modal and click Create Project
+      // would have those fields lost (they live in the data JSONB blob, not as top-level columns).
+      // Build the same q={} payload handleSave builds, but bypass handleSave itself to avoid
+      // its toast/prompt/guard side effects.
+      const snapshotLines=(summary.lines||[]).map((l,i)=>{
+        const ov=lineOverrides[i]||{};
+        if(ov.deleted)return null;
+        return {...l, val: ov.price!==undefined ? sf(ov.price,0) : l.val};
+      }).filter(Boolean);
+      const savedSnapshot={
+        lines: snapshotLines, total: displayTotal,
+        tiSpecs: ti.tiSpecs||"", tiNotes: ti.tiNotes||"",
+        savedAt: new Date().toISOString(),
+      };
+      const q={id:currentQuoteId,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
+        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId,snapshot:savedSnapshot};
+      const savedId = await saveQuoteToSupabase(q, autoSpecs, autoNotes);
+      if (!savedId) {
+        showToast("Couldn't save quote before creating project — try saving manually first","error",6000);
+        return;
+      }
+      // Save succeeded — proceed with the workspace flow
+      setSnapshot(savedSnapshot);
+      setIsDirty(false);
       // 1. Pre-check: Job # must NOT already exist
       const { data: lookup, error: lookupErr } = await supabase.rpc(
         'lookup_project_by_job_number', { job_number: jobNum }
@@ -8742,6 +8767,26 @@ export default function App({onLogout,currentUser}){
     const jobNum = (wonInfo?.jobNum || "").trim();
     setWorkspaceBusy(true);
     try {
+      // 0. Persist the current quote state first (same reasoning as handleCreateProject)
+      const snapshotLines=(summary.lines||[]).map((l,i)=>{
+        const ov=lineOverrides[i]||{};
+        if(ov.deleted)return null;
+        return {...l, val: ov.price!==undefined ? sf(ov.price,0) : l.val};
+      }).filter(Boolean);
+      const savedSnapshot={
+        lines: snapshotLines, total: displayTotal,
+        tiSpecs: ti.tiSpecs||"", tiNotes: ti.tiNotes||"",
+        savedAt: new Date().toISOString(),
+      };
+      const q={id:currentQuoteId,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
+        qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId,snapshot:savedSnapshot};
+      const savedId = await saveQuoteToSupabase(q, autoSpecs, autoNotes);
+      if (!savedId) {
+        showToast("Couldn't save quote before adding to project — try saving manually first","error",6000);
+        return;
+      }
+      setSnapshot(savedSnapshot);
+      setIsDirty(false);
       const payload = {
         source: "nuforce",
         source_quote_id: currentQuoteId,
