@@ -10,19 +10,15 @@ const WORKSPACE_URL = "https://workspace.nulabs.com";
 // caller's await chain settles instead of suspending forever.
 const FETCH_TIMEOUT_MS = 15000;
 
-// Ceiling for acquiring the in-memory session lock. supabase-js passes -1
-// (infinite) by default; we refuse infinite so a stuck operation can't wedge
-// the lock queue forever (the root cause of the upstream deadlock bug).
-const LOCK_TIMEOUT_MS = 10000;
-
 // Phase 7 fixes for SSO with NUWorkspace (UNCHANGED — see notes below):
 //
-//   1. lock: in-memory serializing lock (see Phase 7.2 below)
-//      Originally a no-op: lock: (_name, _timeout, fn) => fn(). That disabled
-//      the LockManager to stop cross-tab navigator.locks contention between
-//      NUForce and Workspace (both share the storage key). But the no-op
-//      provides NO serialization, and supabase-js's session/token machinery
-//      depends on the lock for mutex semantics. See Phase 7.2.
+//   1. lock: (_name, _timeout, fn) => fn()
+//      Disable the LockManager. Both apps share the same Supabase storage
+//      key and would contend for the same lock; the second-loaded app hangs
+//      forever on getSession(). NUForce is read-only on the session, so the
+//      lock provides no benefit here. (Confirmed working: navigator.locks
+//      probe shows held:[] pending:[] during the failure, so the lock is NOT
+//      the source of the save hang.)
 //
 //   2. autoRefreshToken: false
 //      NUWorkspace owns session lifecycle. NUForce reads the session that
@@ -138,85 +134,13 @@ function authAwareFetch(input, init) {
     });
 }
 
-// ---------------------------------------------------------------------------
-// PHASE 7.2 FIX — the persistent save-hang (replaces the lock no-op)
-//
-// Root cause (confirmed against supabase-js issues #1594, #2013, #2111):
-// the library's session/token operations are serialized through the `lock`
-// function. The Phase 7 no-op ran them with NO serialization. Under that,
-// concurrent session/token operations on a long-lived session can leave the
-// library's internal state wedged on a promise that never settles — the call
-// hangs UPSTREAM of fetch(), which is why:
-//   - getSession(), .select().single(), and .update() all hang
-//   - the AbortController fetch timeout never fires (fetch is never reached)
-//   - a direct console fetch to the REST endpoint returns instantly mid-hang
-//   - a hard refresh always recovers (fresh in-memory state)
-//
-// The upstream bug (#1594) is specifically that the library acquires the lock
-// with an INFINITE timeout, so an orphaned/stuck operation deadlocks every
-// later call. The maintainers' recommended workaround (#2013) is an in-memory
-// lock. We implement that — WITH a timeout the library itself lacks — so:
-//   - operations are properly serialized (mutex semantics restored), AND
-//   - a stuck operation times out and releases the queue instead of wedging
-//     it forever.
-//
-// This is per-client and in-memory, so it does NOT reintroduce the cross-tab
-// navigator.locks contention Phase 7 removed. Each tab/app has its own client
-// and its own lock chain. autoRefreshToken stays false; workspace stays the
-// sole refresher. Phase 7 contract intact.
-// ---------------------------------------------------------------------------
-
-class LockAcquireTimeoutError extends Error {
-  constructor(name, ms) {
-    super(`LOCK_TIMEOUT: lock '${name}' not acquired within ${ms}ms`);
-    this.name = "LockAcquireTimeoutError";
-    this.isAcquireTimeout = true;   // supabase-js inspects this flag
-  }
-}
-
-// Single-client, in-memory serializing lock. Serializes operations through a
-// promise chain; each operation is bounded by a timeout so a hung op releases
-// the chain rather than deadlocking all subsequent ops.
-const inMemoryLock = (() => {
-  let chain = Promise.resolve();
-  return function lock(name, acquireTimeout, fn) {
-    const timeoutMs =
-      (typeof acquireTimeout === "number" && acquireTimeout > 0)
-        ? acquireTimeout
-        : LOCK_TIMEOUT_MS;
-
-    const run = chain.then(async () => {
-      let timer;
-      try {
-        return await Promise.race([
-          Promise.resolve().then(fn),
-          new Promise((_, reject) => {
-            timer = setTimeout(
-              () => reject(new LockAcquireTimeoutError(name, timeoutMs)),
-              timeoutMs
-            );
-          }),
-        ]);
-      } finally {
-        clearTimeout(timer);
-      }
-    });
-
-    // Advance the chain on settle (success OR failure OR timeout) so the next
-    // queued operation always proceeds. The chain awaits the same bounded
-    // `run`, so even a hung fn frees the chain after timeoutMs.
-    chain = run.then(() => {}, () => {});
-    return run;
-  };
-})();
-
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     storage: nulabsSessionStorage,
     autoRefreshToken: false,
     persistSession: true,
     detectSessionInUrl: true,
-    lock: inMemoryLock,
+    lock: (_name, _timeout, fn) => fn(),
   },
   global: {
     fetch: authAwareFetch,
