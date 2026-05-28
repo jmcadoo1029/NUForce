@@ -1914,6 +1914,72 @@ function BudgetSection({budget,setBudget}){
 
 // ── Quote Search panel ─────────────────────────────────────────────────────────
 import { supabase } from "./supabaseClient";
+import { getAccessToken } from "./getAccessToken";
+
+// ── Direct-PostgREST bypass ────────────────────────────────────────────────────
+// supabase-js 2.x wedges getSession() and query operations on a healthy session,
+// upstream of fetch (confirmed across versions 2.58 and 2.100). A direct fetch to
+// PostgREST returns instantly during the hang. For the operations that hang —
+// quote save, rev-check, load, dashboard queries, reminders — we route around the
+// library using restFetch + a token read straight from the cookie (getAccessToken).
+// Auth/session detection stays on supabase-js; only the hot-path data ops bypass it.
+const REST_BASE = "https://swuuxzmgmldvvomsgmjf.supabase.co/rest/v1";
+const REST_APIKEY = "sb_publishable_bmrPY65INpUkea8VUX1Wag_T7Vrz9ZZ";
+const REST_TIMEOUT_MS = 15000;
+
+// Sentinel so callers can distinguish "no valid session" from other failures.
+class NoSessionError extends Error {
+  constructor() { super("NO_SESSION: getAccessToken returned null (expired or missing)"); this.name = "NoSessionError"; this.isNoSession = true; }
+}
+
+// Thin direct-PostgREST fetch. method: GET/POST/PATCH/DELETE. path: e.g.
+// "quotes?id=eq.123&select=id". body: object for writes. Returns parsed JSON
+// (array for selects, array/obj for writes per Prefer). Throws on non-2xx,
+// on timeout (AbortController), or NoSessionError when there's no valid token.
+async function restFetch(method, path, { body, returnRepresentation = false } = {}) {
+  const token = getAccessToken();
+  if (!token) throw new NoSessionError();
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REST_TIMEOUT_MS);
+
+  const headers = {
+    "apikey": REST_APIKEY,
+    "Authorization": `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  if (returnRepresentation) headers["Prefer"] = "return=representation";
+
+  try {
+    const res = await fetch(`${REST_BASE}/${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (res.status === 401) {
+      // Token rejected — treat like an expired session.
+      throw new NoSessionError();
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`REST ${method} ${path} failed: ${res.status} ${text.slice(0, 300)}`);
+    }
+    // 204 No Content (some writes/deletes) → no body
+    if (res.status === 204) return null;
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) return await res.json();
+    return null;
+  } catch (err) {
+    clearTimeout(timer);
+    if (err && err.name === "AbortError") {
+      throw new Error(`REST ${method} ${path} timed out after ${REST_TIMEOUT_MS}ms`);
+    }
+    throw err;
+  }
+}
+
 
 // ── Supabase storage helpers ──────────────────────────────────────────────────
 // ── PDF Save-As helper ───────────────────────────────────────────────────────
@@ -1995,65 +2061,38 @@ async function saveQuoteToSupabase(quote, autoSpecs, autoNotes, opts) {
     ].filter(Boolean).join(" ").toLowerCase(),
   };
 
-  // ── DIAGNOSTIC (Phase 7 hung-save investigation, per Russ) ────────────────
-  // Logs token state right before each save fires. Wrapped in its own 3s
-  // timeout so a hung getSession() doesn't become a hung save itself —
-  // a hung getSession is in fact diagnostic (strong signal for the auth-lock
-  // deadlock hypothesis). Remove after the issue is identified.
-  try {
-    const diagPromise = supabase.auth.getSession();
-    const diagTimeout = new Promise((_, reject) => setTimeout(
-      () => reject(new Error("getSession itself hung")), 3000
-    ));
-    const { data: { session } } = await Promise.race([diagPromise, diagTimeout]);
-    const now = Math.floor(Date.now() / 1000);
-    const exp = session?.expires_at ?? null;
-    console.warn('[SAVE-DIAG] token state', {
-      has_session: !!session,
-      expires_at: exp,
-      now,
-      seconds_to_expiry: exp ? (exp - now) : null,
-      is_expired: exp ? (exp <= now) : null,
-      ts: new Date().toISOString(),
-    });
-  } catch (diagErr) {
-    console.warn('[SAVE-DIAG] getSession threw or hung — strong signal for auth-lock hypothesis', diagErr?.message || diagErr);
-  }
-  // ── end diagnostic ────────────────────────────────────────────────────────
-
-  // Wrap the save in a 30-second timeout. Without this, a hung Supabase call
-  // (auth lock contention, JWT mid-refresh, throttled tab, etc.) leaves the
-  // await pending forever — user sees no toast, no console error, just nothing.
-  // Timeout converts that silent failure into a visible one (returns null, which
-  // triggers the existing "Save failed — check your connection" toast in callers).
-  const SAVE_TIMEOUT_MS = 30000;
-  const withTimeout = (promise) => Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(
-      () => reject(new Error("Save timed out after 30s")),
-      SAVE_TIMEOUT_MS
-    )),
-  ]);
-
-  let data, error;
+  // ── BYPASS: write directly to PostgREST (supabase-js wedges on save) ───────
+  // Routes around the library entirely. getAccessToken reads the workspace-
+  // refreshed token from the cookie; restFetch does the direct write with its
+  // own 15s AbortController timeout. No getSession(), no query builder.
   try {
     if (row.id) {
       const { id, ...updateRow } = row;
-      ({ data, error } = await withTimeout(
-        supabase.from("quotes").update(updateRow).eq("id", id).select("id").single()
-      ));
+      const result = await restFetch("PATCH", `quotes?id=eq.${encodeURIComponent(id)}&select=id`, {
+        body: updateRow,
+        returnRepresentation: true,
+      });
+      const saved = Array.isArray(result) ? result[0] : result;
+      return saved?.id || id;
     } else {
-      ({ data, error } = await withTimeout(
-        supabase.from("quotes").insert(row).select("id").single()
-      ));
+      const result = await restFetch("POST", `quotes?select=id`, {
+        body: row,
+        returnRepresentation: true,
+      });
+      const saved = Array.isArray(result) ? result[0] : result;
+      return saved?.id || null;
     }
-  } catch (timeoutErr) {
-    console.error("Supabase save timeout:", timeoutErr);
+  } catch (err) {
+    if (err && err.isNoSession) {
+      console.warn("[SAVE] no valid session — bouncing for re-auth");
+      // Surface as a failed save; the session is expired and needs re-auth.
+      // (supabaseClient's authAwareFetch handles the actual bounce on 401s
+      // from other supabase-js calls; here we just fail the save visibly.)
+      return null;
+    }
+    console.error("Save failed (REST bypass):", err);
     return null;
   }
-
-  if (error) { console.error("Supabase save error:", error); return null; }
-  return data.id;
 }
 
 // DEPRECATED — caused statement timeouts on growing databases (full 2-year scan with `data` blob).
@@ -8560,24 +8599,15 @@ export default function App({onLogout,currentUser}){
     // Detect revision letter change on existing quotes — prompt user for save mode
     let saveOpts;
     if (currentQuoteId) {
-      // Look up the currently-saved rev letter for this row.
-      // Wrap in a 5s timeout — if Supabase is hung here, skip the rev-change check
-      // and proceed with the save rather than blocking entirely. We lose the ability
-      // to prompt for rev changes on this one save, which is acceptable.
+      // Look up the currently-saved rev letter for this row via the REST bypass
+      // (supabase-js wedges here too). restFetch has its own 15s timeout; if it
+      // fails we skip the rev-change check and proceed with the save.
       let existing = null;
       try {
-        const revCheckPromise = supabase
-          .from("quotes")
-          .select("revision")
-          .eq("id", currentQuoteId)
-          .single();
-        const revCheckTimeout = new Promise((_, reject) => setTimeout(
-          () => reject(new Error("rev check timed out")), 5000
-        ));
-        const result = await Promise.race([revCheckPromise, revCheckTimeout]);
-        existing = result.data;
+        const result = await restFetch("GET", `quotes?id=eq.${encodeURIComponent(currentQuoteId)}&select=revision`);
+        existing = Array.isArray(result) && result.length ? result[0] : null;
       } catch (e) {
-        console.warn('[REV-CHECK] timed out or failed — skipping rev-change detection on this save', e?.message || e);
+        console.warn('[REV-CHECK] failed — skipping rev-change detection on this save', e?.message || e);
       }
       const oldRev = (existing?.revision || "").toString().trim();
       const newRev = (qi.rev || "").toString().trim();
