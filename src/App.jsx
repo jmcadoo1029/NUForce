@@ -10323,7 +10323,9 @@ const STANDARD_TERMS = [
       sectionHdr('Quote Information');
       y += 4;
       // Two-column layout: left = quote meta, right = customer info
-      // Each row uses a bold label and normal value, half-width per column
+      // Each row uses a bold label and normal value, half-width per column.
+      // Rows advance by the ACTUAL wrapped line count of their value so long
+      // values (e.g. a long account name) don't overlap the row below.
       const colW = TW / 2;
       const labelW = 60;          // label column width within each side
       const leftLabelX  = ML;
@@ -10344,28 +10346,36 @@ const STANDARD_TERMS = [
         ['Contact', qi.contact],
         ['Email',   qi.email],
       ].filter(r=>r[1]);
-      const rowH = 13;
-      const blockH = Math.max(leftCol.length, rightCol.length) * rowH;
+      const lineH = 11;             // vertical space per wrapped line
+      const rowGap = 2;             // extra gap between rows
+      const valueW = colW - labelW - 8;
+      // Pre-measure each column's total height by summing wrapped line counts
+      const measureColH = (col) => {
+        setF('normal', 9.5, DARK);
+        return col.reduce((h, r) => {
+          const n = doc.splitTextToSize(String(r[1]), valueW).length;
+          return h + n*lineH + rowGap;
+        }, 0);
+      };
+      const blockH = Math.max(measureColH(leftCol), measureColH(rightCol));
       checkY(blockH + 4);
       const startY = y;
-      leftCol.forEach((r,i)=>{
-        const ry = startY + i*rowH;
-        setF('bold', 9.5, DARK);
-        doc.text(String(r[0]), leftLabelX, ry);
-        setF('normal', 9.5, DARK);
-        const vlines = doc.splitTextToSize(String(r[1]), colW - labelW - 8);
-        doc.text(vlines, leftValueX, ry);
-      });
-      rightCol.forEach((r,i)=>{
-        const ry = startY + i*rowH;
-        if(r[0]){
-          setF('bold', 9.5, DARK);
-          doc.text(String(r[0]), rightLabelX, ry);
-        }
-        setF('normal', 9.5, DARK);
-        const vlines = doc.splitTextToSize(String(r[1]), colW - labelW - 8);
-        doc.text(vlines, rightValueX, ry);
-      });
+      const renderCol = (col, labelX, valueX) => {
+        let cy = startY;
+        col.forEach((r) => {
+          setF('normal', 9.5, DARK);
+          const vlines = doc.splitTextToSize(String(r[1]), valueW);
+          if(r[0]){
+            setF('bold', 9.5, DARK);
+            doc.text(String(r[0]), labelX, cy);
+            setF('normal', 9.5, DARK);
+          }
+          doc.text(vlines, valueX, cy);
+          cy += vlines.length*lineH + rowGap;
+        });
+      };
+      renderCol(leftCol, leftLabelX, leftValueX);
+      renderCol(rightCol, rightLabelX, rightValueX);
       y = startY + blockH + 4;
       y += 6;
 
