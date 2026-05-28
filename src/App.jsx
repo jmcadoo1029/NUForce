@@ -69,7 +69,8 @@ const mwTesting=wt=>{if(!wt||wt<=0)return 4575;if(wt<=2500)return 4575;if(wt<=35
 // Russ stores this as a single text field in project_info.test_article_description.
 // Only includes lines where NUForce has a value — empty fields are omitted.
 // Formatting follows the same conventions used in the quote PDF generators
-// (e.g. "120 V AC", "1 Ph", "60 Hz", "5 A") for consistency.
+// (e.g. "440 V AC, 3 Ph, 60 Hz" combined on one line). Produces a labeled,
+// human-readable block for the workspace project's description text area.
 const buildTestArticleDescription = (ti) => {
   if (!ti) return "";
   const lines = [];
@@ -79,25 +80,26 @@ const buildTestArticleDescription = (ti) => {
     if (s === "" || s === "0") return;
     lines.push(`${label}: ${s}`);
   };
-  push("Item", ti.item);
-  push("Qty", ti.qty);
-  push("Model #", ti.model);
-  push("Drawing #", ti.drawing);
-  const L = (ti.dimL || "").toString().trim();
-  const W = (ti.dimW || "").toString().trim();
-  const H = (ti.dimH || "").toString().trim();
-  if (L || W || H) {
-    lines.push(`Size: ${L || "?"}" × ${W || "?"}" × ${H || "?"}"`);
-  }
-  push("Weight", ti.wt);
-  if (ti.volt) lines.push(`Voltage: ${ti.volt} V ${ti.pwrType || "AC"}`);
-  if (ti.phase) lines.push(`Phase: ${ti.phase} Ph`);
-  if (ti.hz) lines.push(`Frequency: ${ti.hz} Hz`);
-  if (ti.inrush) lines.push(`Inrush: ${ti.inrush} A`);
-  if (ti.amps) lines.push(`Op Amps: ${ti.amps} A`);
-  push("Loads", ti.loads);
-  push("Mounting", ti.mounting);
-  push("Pressure/Flow", ti.pressureFlow);
+  // Labeled fields, in display order
+  push("Test Item", ti.item);
+  push("Model No", ti.model);
+  push("Drawing No", ti.drawing);
+  const sizeStr = [ti.dimL && ti.dimL + '"', ti.dimW && ti.dimW + '"', ti.dimH && ti.dimH + '"']
+    .filter(Boolean).join(' x ');
+  if (sizeStr) lines.push(`Size: ${sizeStr}`);
+  if (ti.wt) lines.push(`Weight: ${ti.wt} lbs`);
+  const pwrParts = [
+    ti.volt && ti.volt + ' V ' + (ti.pwrType || 'AC'),
+    ti.phase && ti.phase + ' Ph',
+    ti.hz && ti.hz + ' Hz',
+    ti.amps && ti.amps + ' A',
+  ].filter(Boolean);
+  if (pwrParts.length) lines.push(`Power: ${pwrParts.join(', ')}`);
+  // Loads and Mounting render as their own unlabeled sentences (they are
+  // typically full prose descriptions, not short values).
+  if (ti.loads && String(ti.loads).trim()) lines.push(String(ti.loads).trim());
+  if (ti.mounting && String(ti.mounting).trim()) lines.push(String(ti.mounting).trim());
+  if (ti.pressureFlow && String(ti.pressureFlow).trim()) lines.push(String(ti.pressureFlow).trim());
   return lines.join("\n");
 };
 
@@ -7576,6 +7578,10 @@ export default function App({onLogout,currentUser}){
   // ── Workspace project linkage ──────────────────────────────────────────────
   const [workspaceProjectId,setWorkspaceProjectId]=useState(null);
   const [workspaceBusy,setWorkspaceBusy]=useState(false);
+  // Job # as it was when the quote loaded (persisted value). Used to distinguish
+  // a first-time Job # entry (→ Create Project) from a pre-existing Job # whose
+  // project presumably already exists (→ Open in Workspace).
+  const [loadedJobNum,setLoadedJobNum]=useState("");
   const [showAppendConfirm,setShowAppendConfirm]=useState(null); // null or {project_id, project_name, client_company, existing_task_count, new_task_count, new_expense_count}
   const [showClearLinkConfirm,setShowClearLinkConfirm]=useState(false);
   const [currentQuoteSource,setCurrentQuoteSource]=useState("nuforce");
@@ -8103,7 +8109,7 @@ export default function App({onLogout,currentUser}){
         setWonInfo({wonDate:"",jobNum:"",poNum:""});setWonLocked(false);setWonDatePending(false);
         setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
         setChatterEntries([]);setChatterInput("");
-        setWorkspaceProjectId(null);setShowAppendConfirm(null);setShowClearLinkConfirm(false);
+        setWorkspaceProjectId(null);setShowAppendConfirm(null);setShowClearLinkConfirm(false);setLoadedJobNum("");
         setLocked(false);setCurrentQuoteId(null);setCurrentQuoteSource("nuforce");
         setOpenQuotesPanel(false);
         navigateTo(false);
@@ -8472,7 +8478,7 @@ export default function App({onLogout,currentUser}){
     setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     setLocked(false); setCurrentQuoteId(null); setCurrentQuoteSource("nuforce");
     setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
-    setWorkspaceProjectId(null);setShowAppendConfirm(null);setShowClearLinkConfirm(false);
+    setWorkspaceProjectId(null);setShowAppendConfirm(null);setShowClearLinkConfirm(false);setLoadedJobNum("");
     setChatterEntries([]);setChatterInput("");setQuoteSentAt(null);setShowFollowUpPopover(false);setFollowUpDate("");setSnapshot(null);setIsDirty(true); // new quote — no snapshot yet, all live
     setTimeout(()=>{ isLoadingRef.current=false; }, 50);
     localStorage.removeItem("vibrato_last_quote_id");
@@ -8836,6 +8842,44 @@ export default function App({onLogout,currentUser}){
     }
   };
 
+  // Open the linked workspace project. If we already have the UUID (created or
+  // linked this session, or loaded from the quote), open directly. Otherwise look
+  // it up by Job # first, then open. Caches the UUID on success so later clicks
+  // are instant.
+  const handleOpenInWorkspace = async () => {
+    if (workspaceProjectId) {
+      window.open(`https://workspace.nulabs.com/#project/${workspaceProjectId}/info`, "_blank", "noopener,noreferrer");
+      return;
+    }
+    const jobNum = (wonInfo?.jobNum || "").trim();
+    if (!jobNum) {
+      showToast("No Job # on this quote to open in workspace","error",3500);
+      return;
+    }
+    setWorkspaceBusy(true);
+    try {
+      const { data: lookup, error: lookupErr } = await supabase.rpc(
+        'lookup_project_by_job_number', { job_number: jobNum }
+      );
+      if (lookupErr) throw lookupErr;
+      if (!lookup?.found || !lookup?.project_id) {
+        showToast(`No workspace project found for Job # "${jobNum}". It may not have been created yet.`,"error",6000);
+        return;
+      }
+      // Cache the UUID locally so the link is direct next time, and persist it to the quote
+      setWorkspaceProjectId(lookup.project_id);
+      if (currentQuoteId) {
+        supabase.from("quotes").update({ workspace_project_id: lookup.project_id }).eq("id", currentQuoteId)
+          .then(({ error }) => { if (error) console.warn("Couldn't cache workspace_project_id:", error); });
+      }
+      window.open(`https://workspace.nulabs.com/#project/${lookup.project_id}/info`, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      showToast(`Couldn't open workspace project: ${err.message || err}`,"error",6000);
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
   // Edge case: clear the workspace link (does NOT delete the workspace project, just unlinks here)
   const handleClearWorkspaceLink = async () => {
     if (!currentQuoteId) return;
@@ -8948,6 +8992,7 @@ export default function App({onLogout,currentUser}){
     if(q.approval)setApproval(q.approval); else setApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:"",history:[]});
     if(q.wonApproval)setWonApproval(q.wonApproval); else setWonApproval({status:"none",submittedBy:"",submittedAt:"",decidedBy:"",decidedAt:"",comments:""});
     if(q.wonInfo)setWonInfo(q.wonInfo); else setWonInfo({wonDate:"",jobNum:"",poNum:""});
+    setLoadedJobNum((q.wonInfo?.jobNum||"").trim()); // remember the persisted Job # for button logic
     setWonDatePending(false); // Loaded quotes are already trusted; no re-confirmation needed
     setChatterEntries(q.chatterEntries||[]);
     if(q.lineOrder!==undefined)setLineOrder(q.lineOrder); else setLineOrder(null);
@@ -11403,18 +11448,25 @@ const STANDARD_TERMS = [
                   );
                 })}
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6}}>
-                  {workspaceProjectId ? (
-                    <a href={`https://workspace.nulabs.com/#project/${workspaceProjectId}/info`}
-                      target="_blank" rel="noopener noreferrer"
-                      style={{background:"#1a5276",border:"none",borderRadius:7,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer",color:"#fff",display:"flex",alignItems:"center",gap:5,flex:1,textDecoration:"none",justifyContent:"center"}}>
-                      Open in Workspace ↗
-                    </a>
-                  ) : (
-                    <button onClick={handleCreateProject} disabled={workspaceBusy}
-                      style={{background:workspaceBusy?"#9aa5b1":"#1a5276",border:"none",borderRadius:7,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:workspaceBusy?"not-allowed":"pointer",color:"#fff",display:"flex",alignItems:"center",gap:5,flex:1}}>
-                      {workspaceBusy ? "Working..." : "🏗️ Create Project"}
-                    </button>
-                  )}
+                  {(() => {
+                    const curJob = (wonInfo?.jobNum||"").trim();
+                    // Open in Workspace when we have a link already, OR when the Job #
+                    // is one that was already persisted on this quote (project presumably
+                    // exists). A freshly-typed Job # (differs from loaded) means first-time
+                    // creation, so Create Project stays primary.
+                    const showOpen = !!workspaceProjectId || (curJob && curJob === loadedJobNum);
+                    return showOpen ? (
+                      <button onClick={handleOpenInWorkspace} disabled={workspaceBusy}
+                        style={{background:workspaceBusy?"#9aa5b1":"#1a5276",border:"none",borderRadius:7,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:workspaceBusy?"not-allowed":"pointer",color:"#fff",display:"flex",alignItems:"center",gap:5,flex:1,justifyContent:"center"}}>
+                        {workspaceBusy ? "Opening..." : "Open in Workspace ↗"}
+                      </button>
+                    ) : (
+                      <button onClick={handleCreateProject} disabled={workspaceBusy}
+                        style={{background:workspaceBusy?"#9aa5b1":"#1a5276",border:"none",borderRadius:7,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:workspaceBusy?"not-allowed":"pointer",color:"#fff",display:"flex",alignItems:"center",gap:5,flex:1}}>
+                        {workspaceBusy ? "Working..." : "🏗️ Create Project"}
+                      </button>
+                    );
+                  })()}
                   <button onClick={handleAddToExistingLookup}
                     disabled={workspaceBusy || !!workspaceProjectId}
                     style={{background:(workspaceBusy||workspaceProjectId)?"#9aa5b1":"#6c3483",border:"none",borderRadius:7,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:(workspaceBusy||workspaceProjectId)?"not-allowed":"pointer",color:"#fff",display:"flex",alignItems:"center",gap:5,flex:1}}>
