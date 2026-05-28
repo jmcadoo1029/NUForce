@@ -8048,32 +8048,53 @@ export default function App({onLogout,currentUser}){
   // ── Open Quotes panel handlers ───────────────────────────────────────────────
   const loadOpenQuotes=async()=>{
     setOpenQuotesLoading(true);
-    const {data,error}=await supabase.from("open_quotes").select("*").order("sort_order",{ascending:true}).order("created_at",{ascending:true});
-    if(!error)setOpenQuotesList(data||[]);
-    setOpenQuotesLoading(false);
+    try {
+      const data = await restFetch("GET", "open_quotes?select=*&order=sort_order.asc,created_at.asc");
+      setOpenQuotesList(data||[]);
+    } catch(e) {
+      console.error("[REMINDERS] load failed:", e?.message || e);
+      if (e?.isNoSession) showToast("Session expired, please refresh","error",5000);
+    } finally {
+      setOpenQuotesLoading(false);
+    }
   };
 
   const addOpenQuoteRow=async()=>{
     setOpenQuotesList(prev=>{
       const maxOrder=prev.length>0?Math.max(...prev.map(r=>r.sort_order||0)):0;
       const optimistic={id:"temp-"+Date.now(),opportunity:"",account:"",description:"",sort_order:maxOrder+1};
-      supabase.from("open_quotes").insert({opportunity:"",account:"",description:"",sort_order:maxOrder+1}).select().single()
-        .then(({data,error})=>{
-          if(error){alert("Could not add row: "+error.message);setOpenQuotesList(p=>p.filter(r=>r.id!==optimistic.id));return;}
-          if(data)setOpenQuotesList(p=>p.map(r=>r.id===optimistic.id?data:r));
-        });
+      restFetch("POST", "open_quotes?select=*", {
+        body: {opportunity:"",account:"",description:"",sort_order:maxOrder+1},
+        returnRepresentation: true,
+      }).then(result => {
+        const inserted = Array.isArray(result) ? result[0] : result;
+        if (inserted) setOpenQuotesList(p=>p.map(r=>r.id===optimistic.id?inserted:r));
+      }).catch(err => {
+        alert("Could not add row: "+(err?.message||err));
+        setOpenQuotesList(p=>p.filter(r=>r.id!==optimistic.id));
+      });
       return [...prev,optimistic];
     });
   };
 
   const updateOpenQuoteRow=async(id,field,value)=>{
     setOpenQuotesList(prev=>prev.map(r=>r.id===id?{...r,[field]:value}:r));
-    await supabase.from("open_quotes").update({[field]:value}).eq("id",id);
+    try {
+      await restFetch("PATCH", `open_quotes?id=eq.${encodeURIComponent(id)}`, {
+        body: {[field]:value},
+      });
+    } catch (e) {
+      console.error("[REMINDERS] update failed:", e?.message || e);
+    }
   };
 
   const deleteOpenQuoteRow=async(id)=>{
     setOpenQuotesList(prev=>prev.filter(r=>r.id!==id));
-    await supabase.from("open_quotes").delete().eq("id",id);
+    try {
+      await restFetch("DELETE", `open_quotes?id=eq.${encodeURIComponent(id)}`);
+    } catch (e) {
+      console.error("[REMINDERS] delete failed:", e?.message || e);
+    }
   };
 
   const handleOpenQuoteDragStart=(id)=>{
@@ -8093,9 +8114,11 @@ export default function App({onLogout,currentUser}){
       const [moved]=list.splice(fromIdx,1);
       list.splice(toIdx,0,moved);
       const reordered=list.map((r,i)=>({...r,sort_order:i+1}));
-      // Persist all sort_orders to Supabase
+      // Persist all sort_orders directly via REST bypass
       reordered.forEach(r=>{
-        supabase.from("open_quotes").update({sort_order:r.sort_order}).eq("id",r.id);
+        restFetch("PATCH", `open_quotes?id=eq.${encodeURIComponent(r.id)}`, {
+          body: {sort_order: r.sort_order},
+        }).catch(e => console.error("[REMINDERS] reorder save failed:", e?.message || e));
       });
       return reordered;
     });
@@ -8112,13 +8135,19 @@ export default function App({onLogout,currentUser}){
         await saveQuoteToSupabase(q,autoSpecs,autoNotes);
       }
     }
-    // Search Supabase directly by opportunity name
-    const {data:matchData}=await supabase
-      .from("quotes")
-      .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data, source")
-      .ilike("opportunity",row.opportunity.trim())
-      .limit(1)
-      .single();
+    // Search by opportunity name via REST bypass — case-insensitive exact match.
+    // The original used supabase-js .ilike() with no explicit wildcards, which
+    // becomes a case-insensitive equality match. PostgREST behaves the same way:
+    // an ilike pattern with no wildcards (* in PostgREST) matches the literal.
+    let matchData = null;
+    try {
+      const oppTerm = row.opportunity.trim();
+      const result = await restFetch("GET",
+        `quotes?select=id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source&opportunity=ilike.${encodeURIComponent(oppTerm)}&limit=1`);
+      matchData = Array.isArray(result) && result.length ? result[0] : null;
+    } catch (e) {
+      console.error("[REMINDERS] quote lookup failed:", e?.message || e);
+    }
     if(matchData){
       const q=matchData.data||{};
       // When loading from Reminders, treat as a NUForce quote regardless of source
