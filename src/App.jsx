@@ -874,15 +874,19 @@ function calcEmiShifts(s){
   // CS114 — rev-aware setup/cal, 90 min/test, F/G power test counts
   // F: 1Ph=2, 3Ph=3 power tests; setup/cal = 9 hr (6 cal + 2 setup + 1 add'l 4kHz-1MHz)
   // G: 1Ph=3, 3Ph=4 power tests; setup/cal = 15 hr (6 cal + 2 setup + 1 add'l + 6 verification)
+  // Throughput-based: lab caps CS114 at 2 tests/day (signal + power combined).
+  // The per-test procedure is ~70 min, but realistic daily throughput is 2/day
+  // once cable swaps, data collection, and changeover are factored in.
   const cs114PwrTests=phases===1?(useG?3:2):(useG?4:3);
   const cs114SetupHrs=useG?15:9;
   const cs114Setup=cs114SetupHrs/8;
-  const cs114SigTime=((90*cables)/60)/8;
-  const cs114PwrTime=((90*cs114PwrTests)/60)/8;
-  const cs114=cs114Setup+cs114SigTime+cs114PwrTime;
+  const cs114TotalTests=cables+cs114PwrTests;
+  const cs114TestsPerDay=2;
+  const cs114TestShifts=cs114TotalTests>0?Math.ceil(cs114TotalTests/cs114TestsPerDay):0;
+  const cs114=cs114Setup+cs114TestShifts;
   res.CS114={raw:cs114,rounded:ru(cs114),
-    sigTests:cables, pwrTests:cs114PwrTests, totalTests:cables+cs114PwrTests,
-    bd:[["Setup/Cal ("+revLabel+", "+cs114SetupHrs+"hr)",cs114Setup],["Signal cables (90min x "+cables+")",cs114SigTime],["Power cables (90min x "+cs114PwrTests+")",cs114PwrTime]]};
+    sigTests:cables, pwrTests:cs114PwrTests, totalTests:cs114TotalTests,
+    bd:[["Setup/Cal ("+revLabel+", "+cs114SetupHrs+"hr)",cs114Setup],["Tests ("+cs114TotalTests+" tests @ "+cs114TestsPerDay+"/day)",cs114TestShifts]]};
   // CS109 — Not performed by NU Labs; subcontract only, no shift cost
   res.CS109={raw:0,rounded:0,bd:[["Not performed at NU Labs -- subcontract required",0]]};
   // CS115 — Impulse Excitation; same test count as CS114, 5 min per test, 0.5 shift setup/cal
@@ -891,17 +895,18 @@ function calcEmiShifts(s){
   res.CS115={raw:cs115,rounded:ru(cs115),
     sigTests:cables, pwrTests:cs114PwrTests, totalTests:cs115Total,
     bd:[["Setup/Cal",0.5],["Tests (5min x "+cs115Total+")",((5*cs115Total)/60)/8]]};
-  // CS116 — rev-aware power test counts (mirrors CS114), 70 min/test, 3.5 hr setup
+  // CS116 — rev-aware power test counts (mirrors CS114), throughput-based: 4 tests/day
   // F: 1Ph=2, 3Ph=3 power tests
   // G: 1Ph=3, 3Ph=4 power tests
   const cs116PwrTests=phases===1?(useG?3:2):(useG?4:3);
   const cs116Setup=3.5/8;
-  const cs116SigTime=((70*cables)/60)/8;
-  const cs116PwrTime=((70*cs116PwrTests)/60)/8;
-  const cs116=cs116Setup+cs116SigTime+cs116PwrTime;
+  const cs116TotalTests=cables+cs116PwrTests;
+  const cs116TestsPerDay=4;
+  const cs116TestShifts=cs116TotalTests>0?Math.ceil(cs116TotalTests/cs116TestsPerDay):0;
+  const cs116=cs116Setup+cs116TestShifts;
   res.CS116={raw:cs116,rounded:ru(cs116),
-    sigTests:cables, pwrTests:cs116PwrTests, totalTests:cables+cs116PwrTests,
-    bd:[["Setup/Cal/Sweep ("+revLabel+", 3.5hr)",cs116Setup],["Signal cables (70min x "+cables+")",cs116SigTime],["Power cables (70min x "+cs116PwrTests+")",cs116PwrTime]]};
+    sigTests:cables, pwrTests:cs116PwrTests, totalTests:cs116TotalTests,
+    bd:[["Setup/Cal/Sweep ("+revLabel+", 3.5hr)",cs116Setup],["Tests ("+cs116TotalTests+" tests @ "+cs116TestsPerDay+"/day)",cs116TestShifts]]};
   // RE101 — Radiated Emissions, Magnetic Field
   // Engineer: 60 min cal + 15 min/position. 6 sides x 2 positions/side base + 1 per cable connector.
   // Floor: never less than 1.5 shifts (12 hr).
@@ -921,12 +926,16 @@ function calcEmiShifts(s){
   // Below 1 GHz: 200 MHz-1 GHz uses 50 cm beamwidth (35 cm cable allowance baked in, no +7).
   // ≥1 GHz bands: width-only with +7 cm cable allowance.
   const re102Pos={
-    b10k_30M:  1,                          // ≤3m boundary, 1 fixed position
-    b30_200M:  1,                          // ≤3m boundary, 1 fixed position
-    sub1GHz:   rp(W/50),                   // 200 MHz-1 GHz, 50cm beamwidth (cable already accounted)
-    b1_4:      rp((W+7)/93),               // +7cm cable allowance, 93cm beamwidth
-    b4_15:     rp((W+7)/52),               // 52cm beamwidth
-    b15_18:    rp((W+7)/14),               // 14cm beamwidth
+    b10k_30M:  1,                          // ≤3m boundary, 1 fixed position (active rod antenna)
+    b30_200M:  1,                          // ≤3m boundary, 1 fixed position (biconical)
+    // Above 200 MHz, directional antennas are scanned across BOTH width and height
+    // of the EUT to cover the test boundary within the antenna's 3dB beamwidth.
+    // Each band: positions = ceil(W_eff/beamwidth) × ceil(H_eff/beamwidth)
+    // (W_eff and H_eff add 7cm cable allowance, per the procedure).
+    sub1GHz:   rp(W/50)*rp(H/50),                // 200 MHz-1 GHz, 50cm beamwidth
+    b1_4:      rp((W+7)/93)*rp((H+7)/93),        // 1-4 GHz, 93cm beamwidth
+    b4_15:     rp((W+7)/52)*rp((H+7)/52),        // 4-15 GHz, 52cm beamwidth
+    b15_18:    rp((W+7)/14)*rp((H+7)/14),        // 15-18 GHz, 14cm beamwidth
   };
   // Per-sweep times (minutes) — engineer doc 461F & 461G
   const re102Times = useG
@@ -1293,7 +1302,7 @@ function EmiForm({s,set,ti,setup}){
             return(
               <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:4}}>
                 <span style={{fontSize:10,color:C.warn,flexShrink:0}}>Pwr Src $</span>
-                <input type="text" value={s.ce101pwrSrc||"5000"}
+                <input type="text" value={s.ce101pwrSrc||"6500"}
                   onChange={e=>set({...s,ce101pwrSrc:e.target.value})}
                   style={{...inp,width:60,fontSize:10,padding:"2px 5px"}}/>
               </div>
@@ -1358,7 +1367,7 @@ function EmiForm({s,set,ti,setup}){
       // CE101/CE102 Power Source Rental — 440V AC, charged once
       const has440AC=sf(ti?.volt,0)>=440&&(ti?.pwrType||"AC")==="AC";
       const hasCE=selTests.includes("CE101")||selTests.includes("CE102");
-      const ce101Amt=(has440AC&&hasCE)?sf(s.ce101pwrSrc,5000):0;
+      const ce101Amt=(has440AC&&hasCE)?sf(s.ce101pwrSrc,6500):0;
       const ce101Label=selTests.includes("CE101")?"CE101":"CE102";
       const shiftTotal=r25(Math.round(selShifts*rate));
       const grandTotal=r25(shiftTotal+rs103Amt+ce101Amt);
@@ -6508,7 +6517,7 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
   // CE101/CE102 Power Source Rental — 440V AC, charged once, attributed to CE101 if both selected
   const has440AC=sf(ti?.volt,0)>=440&&(ti?.pwrType||"AC")==="AC";
   const hasCe101or102=emiSelTests.includes("CE101")||emiSelTests.includes("CE102");
-  const ce101PwrCost=(has440AC&&hasCe101or102)?sf(emiCalc.ce101pwrSrc,5000):0;
+  const ce101PwrCost=(has440AC&&hasCe101or102)?sf(emiCalc.ce101pwrSrc,6500):0;
   const ce101PwrAttribTo=emiSelTests.includes("CE101")?"CE101":"CE102";
   const emiSetupCost=r25(sf(emiCalc.setupShifts,3)*emiRate*sf(emiCalc.pia,1));
   // Suggested EMI setup based on cables + weight
