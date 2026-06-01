@@ -9879,22 +9879,27 @@ const STANDARD_TERMS = [
     const rs103p = emiCalcData.RS103.pos;
     const pwrCables = sf(activeEmi.phases||ti.phase||'3',3)===1?2:4; // 1ph=2, 3ph=4
     const pos=(n)=>n+' position'+(n!==1?'s':'');
+    // EUT power type drives wording in CE101/CE102/CS101/CS106 descriptions.
+    // Falls back to AC for blank/unset values (consistent with existing power
+    // type warnings in getTestFlags).
+    const isDCquote = (ti?.pwrType||'AC')==='DC';
+    const acdc = isDCquote ? 'DC' : 'AC';   // used inline in desc strings below
 
     // Full 461F test definitions — only show tests selected by user
     const EMI_461F = [
       {key:"CE101", label:"Conducted Emissions, Power Leads, 30 Hz to 10 kHz",
-       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE101-2, input power < 1 kVA.",
+       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE101-2 from 30 Hz to 10 kHz with a relaxation to the limit determined during testing of 20xLog(fundamental current).",
        note:null},
       {key:"CE102", label:"Conducted Emissions, Power Leads, 10 kHz to 10 MHz",
-       desc: getEmiTestText("CE102","F",activeEmi.locs) ||
-             "Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE102-1 from 10 kHz to 10 MHz with 6 dB relaxation.",
+       desc: "Tested on each "+acdc+" power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE102-1 from 10 kHz to 10 MHz with 6 dB relaxation.",
        note:null},
       {key:"CS101", label:"Conducted Susceptibility, Power Leads, 30 Hz to 150 kHz",
-       desc: getEmiTestText("CS101","F",activeEmi.locs) ||
-             "Tested on each AC high side for a total of one (1) test. Tested to MIL-STD-461F Figure CS101-1, Curve 1 and Figure CS101-2.",
+       desc: "Tested on each "+acdc+" high side for a total of one (1) test. Tested to MIL-STD-461F Figure CS101-1 (Curve 1 or 2) and Figure CS101-2.",
        note:null},
       {key:"CS106", label:"Conducted Susceptibility, Transients, Power Leads",
-       desc:"Tested on each AC high side for a total of two (2) tests. Tested to MIL-STD-461F Figure CS106-1. Testing performed with a test generator compliant with CS06. Tested in charged mode of operation only.",
+       desc: isDCquote
+             ? "Tested on the DC high side for a total of one (1) test. Tested to MIL-STD-461F Figure CS106-1. Testing performed with a test generator compliant with CS06. Tested in charged mode of operation only."
+             : "Tested on each AC high side for a total of two (2) tests. Tested to MIL-STD-461F Figure CS106-1. Testing performed with a test generator compliant with CS06. Tested in charged mode of operation only.",
        note:"The overshoot on this generator is slightly higher than specified in CS106 but test results are generally accepted as this is considered worst case."},
       {key:"CS114", label:"Conducted Susceptibility, Bulk Cable Injection, 10 kHz to 200 MHz and 4 kHz to 1 MHz at 77 dB uA",
        desc:"Bulk injection on AC power input lead and on one lead individually. Common mode test on input leads for a total of "+c114.pwrTests+" tests for power leads. "+c114.sigTests+" test(s) on signal leads for a total of "+c114.totalTests+" tests. Tested to MIL-STD-461F Figure CS114-1, Curve 2 from 10 kHz to 200 MHz and from 4 kHz to 1 MHz at 77 dB uA.",
@@ -9904,7 +9909,7 @@ const STANDARD_TERMS = [
        note:null},
       {key:"RE101", label:"Radiated Emissions, Magnetic Field, 30 Hz to 100 kHz",
        desc: getEmiTestText("RE101","F",activeEmi.locs) ||
-             "Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RE101-2 from 30 Hz to 100 kHz.",
+             "Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RE101-2 (Navy) or RE101-1 (Army) from 30 Hz to 100 kHz.",
        note:null},
       {key:"RE102", label:"Radiated Emissions, Electric Field, 10 kHz to 18 GHz",
        desc: getEmiTestText("RE102","F",activeEmi.locs) ||
@@ -9919,7 +9924,7 @@ const STANDARD_TERMS = [
        ],
        note:"Tested at width and cables only. Testing required to 10x the highest operating frequency or 1 GHz (whichever is greater), or if not known, to 18 GHz."},
       {key:"RS101", label:"Radiated Susceptibility, Magnetic Field, 30 Hz to 100 kHz",
-       desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RS101-1 from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" LxW + "+rs101p.LH+" LxH + "+rs101p.WH+" WxH).",
+       desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RS101-1 (Navy) or RS101-2 (Army) from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" LxW + "+rs101p.LH+" LxH + "+rs101p.WH+" WxH).",
        note:"Applicability depends on application."},
       {key:"RS103", label:"Radiated Susceptibility, Electric Field, 2 MHz to 18 GHz",
        desc: getEmiTestText("RS103","F",activeEmi.locs) ||
@@ -10126,6 +10131,9 @@ const STANDARD_TERMS = [
     const rs101p = emiCalcG.RS101.pos;
     const rs103p = emiCalcG.RS103.pos;
     const pos=(n)=>n+' position'+(n!==1?'s':'');
+    // EUT power type drives wording in CE101/CE102/CS101/CS106 descriptions.
+    const isDCquote = (ti?.pwrType||'AC')==='DC';
+    const acdc = isDCquote ? 'DC' : 'AC';
 
     // CS115: same cable structure as CS114 but fewer power tests (bulk + high side only = pwrCables)
     const cs115 = emiCalcG.CS115;
@@ -10137,12 +10145,10 @@ const STANDARD_TERMS = [
        desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE101-2 from 120 Hz to 10 kHz with a relaxation to the limit determined during testing of 20xLog(fundamental current).",
        note:null},
       {key:"CE102", label:"Conducted Emissions, Radio Frequency Potentials, Power Leads",
-       desc: getEmiTestText("CE102","G",activeEmi.locs) ||
-             "Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE102-1 from 10 kHz to 10 MHz, basic curve relaxed by 6 dB.",
+       desc: "Tested on each "+acdc+" power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE102-1 from 10 kHz to 10 MHz, basic curve relaxed by 6 dB.",
        note:null},
       {key:"CS101", label:"Conducted Susceptibility, Power Leads, 30 Hz to 150 kHz",
-       desc: getEmiTestText("CS101","G",activeEmi.locs) ||
-             "Tested on the AC high side for a total of one (1) test. Tested to MIL-STD-461G Figure CS101-1 Curve 1 and Figure CS101-2 from 30 Hz to 150 kHz.",
+       desc: "Tested on the "+acdc+" high side for a total of one (1) test. Tested to MIL-STD-461G Figure CS101-1 (Curve 1 or 2) and Figure CS101-2 from 30 Hz to 150 kHz.",
        note:"Exempt from testing for normal operating current >30 A per phase, or if >30 A per phase with sensitivity worse than 1 uV or operating frequency >150 kHz."},
       {key:"CS109", label:"Conducted Susceptibility, Structure Current",
        desc:"Tested to MIL-STD-461G CS109 requirements.",
@@ -10158,7 +10164,7 @@ const STANDARD_TERMS = [
        note:null},
       {key:"RE101", label:"Radiated Emissions, Magnetic Field, 30 Hz to 100 kHz",
        desc: getEmiTestText("RE101","G",activeEmi.locs) ||
-             "Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461G Figure RE101-2 from 30 Hz to 100 kHz.",
+             "Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461G Figure RE101-2 (Navy) or RE101-1 (Army) from 30 Hz to 100 kHz.",
        note:null},
       {key:"RE102", label:"Radiated Emissions, Electric Field, 10 kHz to 18 GHz",
        desc: getEmiTestText("RE102","G",activeEmi.locs) ||
@@ -10173,11 +10179,11 @@ const STANDARD_TERMS = [
        ],
        note:"For 461G: tested in both horizontal and vertical polarizations. Testing required to 10x the highest operating frequency or 1 GHz (whichever is greater), or if not known, to 18 GHz."},
       {key:"RS101", label:"Radiated Susceptibility, Magnetic Field, 30 Hz to 100 kHz",
-       desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461G Figure RS101-1 from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" LxW + "+rs101p.LH+" LxH + "+rs101p.WH+" WxH).",
+       desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461G Figure RS101-1 (Navy) or RS101-2 (Army) from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" LxW + "+rs101p.LH+" LxH + "+rs101p.WH+" WxH).",
        note:"Applicability depends on application. Test not applicable to equipment with an operating sensitivity worse than 1 uV or operating frequency >100 kHz."},
       {key:"RS103", label:"Radiated Susceptibility, Electric Field, 2 MHz to 18 GHz",
        desc: getEmiTestText("RS103","G",activeEmi.locs) ||
-             "Tested to MIL-STD-461G Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m.",
+             "Tested to MIL-STD-461G Table XI for Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m.",
        positions:[
          {range:"2 MHz - 30 MHz",    pos:pos(rs103p.b2_30)},
          {range:"30 MHz - 200 MHz",  pos:pos(rs103p.b30_200)},
