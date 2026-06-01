@@ -5878,7 +5878,18 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
               const barX=i=>xCenter(i)-barW/2;
               const barH=v=>Math.max(0,Math.round((v/maxCount)*chartH));
               const lineY=v=>PAD.t+chartH-Math.round((v/maxTotal)*chartH);
-              const netPts = months.map((m,i)=>xCenter(i)+","+lineY(m.netTotal||0)).join(" ");
+              // Polyline endpoints: drop trailing zero-net months so the
+              // current-month-with-no-data-yet case doesn't make the line dive
+              // to the X-axis (which looks like revenue collapsed). Zero values
+              // in the MIDDLE of the series are still drawn — those represent
+              // an actual empty month, not "we haven't accumulated data yet."
+              const lastNonZeroIdx = months.reduce(
+                (acc,m,i)=>((m.netTotal||0)>0?i:acc), -1
+              );
+              const netPts = months
+                .map((m,i)=>i<=lastNonZeroIdx ? xCenter(i)+","+lineY(m.netTotal||0) : null)
+                .filter(Boolean)
+                .join(" ");
               return(
                 <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
                   boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0",marginBottom:20,position:"relative"}}>
@@ -5952,10 +5963,13 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                         Detail breakdown is in the hover tooltip. */}
                     <polyline points={netPts} fill="none" stroke="#c0392b" strokeWidth="1.5"
                       strokeLinejoin="round"/>
-                    {/* Dots + value label per month */}
+                    {/* Dots + value label per month — skipped when net total is $0
+                        (the dot would sit on the X-axis baseline and produce a
+                        broken-ring visual artifact; empty months should look empty). */}
                     {months.map((m,i)=>{
                       const cx=xCenter(i);
                       const netT = m.netTotal||0;
+                      if(netT === 0) return null;
                       const netCY = lineY(netT);
                       const fmt = v => v>=1000?"$"+(v/1000).toFixed(1)+"k":"$"+Math.round(v);
                       const labelFill = m.isCurrent?"#fff":"#c0392b";
