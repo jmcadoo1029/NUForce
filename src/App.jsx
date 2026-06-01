@@ -3840,6 +3840,9 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   const [showPrevMonth, setShowPrevMonth] = useState(false);
   const [prevMonthData, setPrevMonthData] = useState(null);
   const [prevMonthLoading, setPrevMonthLoading] = useState(false);
+  // Tracks which Closed Won breakdown card is hovered ("new" | "ex" | null) so
+  // we can show a popover listing the underlying quotes for that bucket.
+  const [pmWonHover, setPmWonHover] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(()=>{
     // Default to last completed month (never current or future)
     const d = new Date();
@@ -4750,18 +4753,72 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                       ))}
                     </div>
 
-                    {/* Closed Won breakdown */}
+                    {/* Closed Won breakdown — hover the card to see the quotes; click a row to open it */}
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
                       {[
-                        {label:"NEW BUSINESS", val:pm.wonNewTotal, count:pm.wonNewCount, color:"#1e8449"},
-                        {label:"EXISTING BUSINESS", val:pm.wonExTotal, count:pm.wonExCount, color:"#2e6da4"},
-                      ].map(s=>(
-                        <div key={s.label} style={{background:"#f8f9fb",borderRadius:10,padding:"14px 16px",border:"1px solid #e8ecf0"}}>
-                          <div style={{fontSize:9,fontWeight:700,letterSpacing:1.2,color:"#9aa5b1",marginBottom:4}}>CLOSED WON — {s.label}</div>
-                          <div style={{fontSize:22,fontWeight:800,color:s.color,lineHeight:1}}>{money(s.val)}</div>
-                          <div style={{fontSize:11,color:"#9aa5b1",marginTop:3}}>{s.count} quote{s.count!==1?"s":""}</div>
-                        </div>
-                      ))}
+                        {key:"new", label:"NEW BUSINESS",      val:pm.wonNewTotal, count:pm.wonNewCount, color:"#1e8449", list:pm.wonNew||[]},
+                        {key:"ex",  label:"EXISTING BUSINESS", val:pm.wonExTotal,  count:pm.wonExCount,  color:"#2e6da4", list:pm.wonEx ||[]},
+                      ].map(s=>{
+                        const hovering = pmWonHover === s.key;
+                        const canHover = s.count > 0;
+                        return (
+                          <div key={s.label}
+                            onMouseEnter={()=>canHover && setPmWonHover(s.key)}
+                            onMouseLeave={()=>setPmWonHover(null)}
+                            style={{position:"relative"}}>
+                            <div style={{background:"#f8f9fb",borderRadius:10,padding:"14px 16px",
+                              border:"1px solid #e8ecf0"}}>
+                              <div style={{fontSize:9,fontWeight:700,letterSpacing:1.2,color:"#9aa5b1",marginBottom:4}}>CLOSED WON — {s.label}</div>
+                              <div style={{fontSize:22,fontWeight:800,color:s.color,lineHeight:1}}>{money(s.val)}</div>
+                              <div style={{fontSize:11,color:"#9aa5b1",marginTop:3}}>
+                                {s.count} quote{s.count!==1?"s":""}
+                                {canHover && <span style={{marginLeft:6,color:"#1a5276",fontStyle:"italic"}}>hover to view</span>}
+                              </div>
+                            </div>
+                            {hovering && s.list.length>0 && (
+                              <div style={{position:"absolute",top:"100%",left:0,right:0,
+                                background:"#fff",border:"1px solid #d8dde3",
+                                borderRadius:10,boxShadow:"0 6px 18px rgba(0,0,0,0.12)",
+                                zIndex:50,maxHeight:280,overflowY:"auto",padding:"6px 0"}}>
+                                {s.list.map((q,i)=>(
+                                  <div key={q.id}
+                                    onClick={async()=>{
+                                      if(!onLoadQuote)return;
+                                      const {data:row}=await supabase.from("quotes")
+                                        .select("id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source")
+                                        .eq("id",q.id).single();
+                                      if(row){
+                                        const blob=row.data||{};
+                                        onLoadQuote({...blob,id:row.id,
+                                          opp:row.opportunity||blob.opp,
+                                          customer:row.customer||blob.customer,
+                                          rfq:row.rfq||blob.rfq,
+                                          total:row.total??blob.total,
+                                          savedAt:row.updated_at,
+                                          source:row.source||"nuforce",
+                                          approval:{...(blob.approval||{}),status:row.approval_status||"none"},
+                                          wonApproval:{...(blob.wonApproval||{}),status:row.won_approval_status||"none"},
+                                        });
+                                      }
+                                      setShowPrevMonth(false);
+                                      setPmWonHover(null);
+                                    }}
+                                    onMouseEnter={e=>e.currentTarget.style.background="#f0f4f8"}
+                                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                                    style={{display:"grid",gridTemplateColumns:"90px 1fr 90px",
+                                      gap:8,padding:"8px 14px",cursor:"pointer",
+                                      borderTop:i>0?"1px solid #f0f2f5":"none",alignItems:"center"}}>
+                                    <div style={{fontWeight:700,color:s.color,fontSize:12}}>{q.opportunity||"(no opp)"}</div>
+                                    <div style={{fontSize:12,color:"#1a2332",overflow:"hidden",
+                                      textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.customer||"—"}</div>
+                                    <div style={{fontSize:12,color:"#1a5276",fontWeight:600,textAlign:"right"}}>{money(q.total||0)}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {/* Top accounts + top codes side by side */}
