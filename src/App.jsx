@@ -1053,7 +1053,7 @@ function EmiForm({s,set,ti,setup}){
   };
   const PLATS=["Surface Ships","Submarines"];
   const LOCS_CAN=[
-    "Below Deck","Subs Internal",
+    "Below Deck","Below Deck Non-metallic","Subs Internal",
     "Aircraft Fixed Wing Internal ≥25m",
     "Ground Navy Fixed","Ground Air Force","Space System Internal",
   ];
@@ -1075,6 +1075,9 @@ function EmiForm({s,set,ti,setup}){
   const isSub          = (s.plats||{})['Submarines']||false;
   const isAboveDeck    = (s.locs||{})['Above Deck']||false;
   const isBelowDeck    = (s.locs||{})['Below Deck']||false;
+  // "Below Deck Non-metallic" is a separate selector from "Below Deck" (which
+  // is metallic). The two have different RS103 / RE102 limits per MIL-STD-461.
+  const isBelowDeckNonMetallic = (s.locs||{})['Below Deck Non-metallic']||false;
   const isSubsInternal = (s.locs||{})['Subs Internal']||false;
   const isSubsExternal = (s.locs||{})['Subs External']||false;
   const isGndNavyFixed = (s.locs||{})['Ground Navy Fixed']||false;
@@ -1125,6 +1128,9 @@ function EmiForm({s,set,ti,setup}){
 
     if(t==='RS103'){
       warnings.push('NU Labs RS103 capability is limited to 10 V/m (Ships metallic below deck / Subs internal). Max frequency: 18 GHz.');
+      if(isBelowDeckNonMetallic){
+        warnings.push('Ships non-metallic below deck (50/10 V/m) requires our rented 500 W amp for the 2–30 MHz portion at 50 V/m. Confirm amp availability or subcontract.');
+      }
       if(isAboveDeck){
         warnings.push('Ships above deck / exposed below deck (50 V/m 2–30 MHz) requires a rented 500 W amp — subcontract or add rental cost.');
       }
@@ -1145,7 +1151,7 @@ function EmiForm({s,set,ti,setup}){
         if(isAircraftIntBig) warnings.push('Aircraft Fixed Wing Internal ≥25 m: NU Labs can perform this in-house. Verify nose-to-tail length before quoting.');
         if(isSpaceInt) warnings.push('Space System Internal: May be doable — verify limits with production before committing.');
         if(isPreampTBD) warnings.push('High-gain preamp (≥48 dB) may extend RE102 capability for some limits. Feasibility not yet confirmed — check with production.');
-        const re102CanDo=isBelowDeck||isSubsInternal||isGndNavyFixed||isGndAF||isAircraftIntBig||isSpaceInt||isPreampTBD;
+        const re102CanDo=isBelowDeck||isBelowDeckNonMetallic||isSubsInternal||isGndNavyFixed||isGndAF||isAircraftIntBig||isSpaceInt||isPreampTBD;
         if(!re102CanDo) warnings.push('No location selected — verify RE102 applicability and limits with customer.');
       }
     }
