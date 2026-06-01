@@ -2811,6 +2811,147 @@ const newDcm=()=>({id:Date.now(),on:false,spec:"",rate:"1600",setupShifts:"1.5",
 const newHfv=()=>({id:Date.now(),on:false,showSetup:true,spec:"",dur:"30",pia:0,testing:"1225",stdSetup:"500",addlCosts:"0",proc:false,report:false});
 const newSho=()=>({id:Date.now(),on:false,showSetup:true,spec:"",shape:"Half Sine",pia:0,testing:"1250",stdSetup:"500",addlCosts:"0",proc:false,report:false});
 
+// ── EMI test description lookup (platform/location-aware) ────────────────
+// Built from the tech-reviewed spreadsheet of test specifications.
+// Lookup key: locsObj (the user's selected locations) + test + rev.
+// Returns the description for each in-house-capable location selected.
+// Locations marked OUT_OF_HOUSE are skipped here — the existing capability-
+// flagging logic in getTestFlags already greys those tests out, so they
+// don't appear as line items in the quote. Combos missing from this table
+// fall back to the existing hardcoded text in EMI_461F/EMI_461G arrays.
+//
+// Placeholders left intentionally for Deploy 3 substitution:
+//   (limit)       — figure number, substituted from this same table
+//   (location)    — friendly location name
+//   X positions   — position counts from RE102/RS103 pos calculations
+//   XXX           — values the user fills in (current value, etc.)
+const OUT_OF_HOUSE = "__OUTSOURCE__";
+
+const EMI_TEXT_LOOKUP = {
+  RE102: {
+    F: {
+      "Below Deck":            { fig:"Figure RE102-1", limit:"Metallic Ships below deck" },
+      "Below Deck Non-metallic":{ fig:"Figure RE102-1", limit:"Non-metallic Ships below deck" },
+      "Subs Internal":         { fig:"Figure RE102-2", limit:"Submarine internal" },
+      "Ground Navy Fixed":     { fig:"Figure RE102-4", limit:"Ground Navy Fixed" },
+      "Ground Air Force":      { fig:"Figure RE102-4", limit:"Ground Air Force" },
+      "Aircraft Fixed Wing Internal ≥25m":{ fig:"Figure RE102-3", limit:"Aircraft Internal" },
+      "Space System Internal": { fig:"Figure RE102-3", limit:"Space System Internal" },
+      "Above Deck":            OUT_OF_HOUSE,
+      "Subs External":         OUT_OF_HOUSE,
+      "Aircraft Fixed Wing Internal <25m": OUT_OF_HOUSE,
+      "Aircraft Fixed Wing External": OUT_OF_HOUSE,
+      "Ground Navy Mobile":    OUT_OF_HOUSE,
+      "Ground Army":           OUT_OF_HOUSE,
+    },
+    G: {
+      "Below Deck":            { fig:"Figure RE102-1", limit:"Metallic Ships below deck" },
+      "Below Deck Non-metallic":{ fig:"Figure RE102-1", limit:"Non-metallic Ships below deck" },
+      "Subs Internal":         { fig:"Figure RE102-2", limit:"Submarine internal" },
+      "Ground Navy Fixed":     { fig:"Figure RE102-4", limit:"Ground Navy Fixed" },
+      "Ground Air Force":      { fig:"Figure RE102-4", limit:"Ground Air Force" },
+      "Aircraft Fixed Wing Internal ≥25m":{ fig:"Figure RE102-3", limit:"Aircraft Internal" },
+      "Space System Internal": { fig:"Figure RE102-3", limit:"Space System Internal" },
+      "Above Deck":            OUT_OF_HOUSE,
+      "Subs External":         OUT_OF_HOUSE,
+      "Aircraft Fixed Wing Internal <25m": OUT_OF_HOUSE,
+      "Aircraft Fixed Wing External": OUT_OF_HOUSE,
+      "Ground Navy Mobile":    OUT_OF_HOUSE,
+      "Ground Army":           OUT_OF_HOUSE,
+    },
+  },
+  RS103: {
+    F: {
+      "Below Deck":            { ref:"Table VII", limit:"10 V/m", text:"Tested to MIL-STD-461F Table VII for Ships Metallic Below Deck from 2 MHz to 18 GHz at 10 V/m." },
+      "Below Deck Non-metallic":{ ref:"Table VII", limit:"50/10 V/m", text:"Tested to MIL-STD-461F Table VII for Ships Non-metallic Below Deck from 2 MHz to 18 GHz at 50 V/m (2-30 MHz), 10 V/m (30 MHz-18 GHz)." },
+      "Subs Internal":         { ref:"Table VII", limit:"5/10 V/m", text:"Tested to MIL-STD-461F Table VII for Submarine Internal from 2 MHz to 18 GHz at 5 V/m (2-30 MHz), 10 V/m (30 MHz-18 GHz)." },
+      "Above Deck":            OUT_OF_HOUSE,
+      "Subs External":         OUT_OF_HOUSE,
+      "Aircraft Fixed Wing Internal ≥25m": OUT_OF_HOUSE,
+      "Aircraft Fixed Wing Internal <25m": OUT_OF_HOUSE,
+      "Aircraft Fixed Wing External": OUT_OF_HOUSE,
+      "Ground Navy Fixed":     OUT_OF_HOUSE,
+      "Ground Navy Mobile":    OUT_OF_HOUSE,
+      "Ground Army":           OUT_OF_HOUSE,
+      "Ground Air Force":      OUT_OF_HOUSE,
+      "Space System Internal": OUT_OF_HOUSE,
+    },
+    G: {
+      "Below Deck":            { ref:"Table XI", limit:"10 V/m", text:"Tested to MIL-STD-461G Table XI for Ships Metallic Below Deck from 2 MHz to 18 GHz at 10 V/m." },
+      "Below Deck Non-metallic":{ ref:"Table XI", limit:"50/10 V/m", text:"Tested to MIL-STD-461G Table XI for Ships Non-metallic Below Deck from 2 MHz to 18 GHz at 50 V/m (2-30 MHz), 10 V/m (30 MHz-18 GHz)." },
+      "Subs Internal":         { ref:"Table XI", limit:"5/10 V/m", text:"Tested to MIL-STD-461G Table XI for Submarine Internal from 2 MHz to 18 GHz at 5 V/m (2-30 MHz), 10 V/m (30 MHz-18 GHz)." },
+      "Above Deck":            OUT_OF_HOUSE,
+      "Subs External":         OUT_OF_HOUSE,
+      "Aircraft Fixed Wing Internal ≥25m": OUT_OF_HOUSE,
+      "Aircraft Fixed Wing Internal <25m": OUT_OF_HOUSE,
+      "Aircraft Fixed Wing External": OUT_OF_HOUSE,
+      "Ground Navy Fixed":     OUT_OF_HOUSE,
+      "Ground Navy Mobile":    OUT_OF_HOUSE,
+      "Ground Army":           OUT_OF_HOUSE,
+      "Ground Air Force":      OUT_OF_HOUSE,
+      "Space System Internal": OUT_OF_HOUSE,
+    },
+  },
+  CE101: {
+    F: {
+      // CE101 wording depends on power type, not location. Lookup keyed by
+      // "60 Hz" / "400 Hz" / "DC" but those aren't first-class locations in
+      // NUForce yet — leaving the table here for future use. For now, the
+      // resolver falls back to the existing default text.
+    },
+    G: {},
+  },
+  CE102: {
+    F: { ALL:{ text:"Tested on each AC (or DC) power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE102-1 from 10 kHz to 10 MHz with 6 dB relaxation." } },
+    G: { ALL:{ text:"Tested on each AC (or DC) power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE102-1 from 10 kHz to 10 MHz with 6 dB relaxation." } },
+  },
+  CS101: {
+    F: { ALL:{ text:"Tested on each AC (or DC) high side for a total of one (1) test. Tested to MIL-STD-461F Figure CS101-1, Curve 1 and Figure CS101-2." } },
+    G: { ALL:{ text:"Tested on each AC (or DC) high side for a total of one (1) test. Tested to MIL-STD-461G Figure CS101-1, Curve 1 and Figure CS101-2." } },
+  },
+  CS115: {
+    F: { ALL:{ text:"Bulk injection on the AC power input and on the high side individually. Tested to MIL-STD-461F Figure CS115-1." } },
+    G: { ALL:{ text:"Bulk injection on the AC power input and on the high side individually. Tested to MIL-STD-461G Figure CS115-1." } },
+  },
+  CS116: {
+    F: { ALL:{ text:"Bulk injection on the AC power input lead and on each lead individually. Tested to MIL-STD-461F Figure CS116-2 at discrete frequencies: 10 kHz, 100 kHz, 1 MHz, 10 MHz, 30 MHz and 100 MHz." } },
+    G: { ALL:{ text:"Bulk injection on the AC power input lead and on each lead individually. Tested to MIL-STD-461G Figure CS116-2 at discrete frequencies: 10 kHz, 100 kHz, 1 MHz, 10 MHz, 30 MHz and 100 MHz." } },
+  },
+  RE101: {
+    F: { ALL:{ text:"Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RE101-2 (Navy) or RE101-1 (Army) from 30 Hz to 100 kHz." } },
+    G: { ALL:{ text:"Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461G Figure RE101-2 (Navy) or RE101-1 (Army) from 30 Hz to 100 kHz." } },
+  },
+  RS101: {
+    F: { ALL:{ text:"Applicable to all equipment enclosures including electrical cable interfaces. Applicability depends on application. Tested to MIL-STD-461F Figure RS101-1 (Navy) or RS101-2 (Army) from 30 Hz to 100 kHz." } },
+    G: { ALL:{ text:"Applicable to all equipment enclosures including electrical cable interfaces. Applicability depends on application. Tested to MIL-STD-461G Figure RS101-1 (Navy) or RS101-2 (Army) from 30 Hz to 100 kHz." } },
+  },
+};
+
+// Resolve description text for one test+rev given the user's location selections.
+// Returns null when no lookup match exists (caller falls back to hardcoded default).
+// rev is "F" or "G" (matches the table keys).
+function getEmiTestText(testKey, rev, locsObj) {
+  const table = EMI_TEXT_LOOKUP[testKey];
+  if (!table) return null;
+  const revMap = table[rev];
+  if (!revMap) return null;
+  // "ALL" key means location doesn't matter for this test — return the single entry
+  if (revMap.ALL) return revMap.ALL.text || null;
+  // Otherwise, collect entries for each selected in-house-capable location
+  const entries = [];
+  Object.entries(locsObj||{}).forEach(([locKey, isSelected])=>{
+    if (!isSelected) return;
+    const entry = revMap[locKey];
+    if (!entry || entry === OUT_OF_HOUSE) return;   // skip outsource / unknown
+    if (typeof entry === 'string') { entries.push(entry); return; }
+    if (entry.text) { entries.push(entry.text); return; }
+    // Compact form (RE102): construct the sentence from {fig, limit}
+    entries.push(`Tested to MIL-STD-461${rev} ${entry.fig} for ${entry.limit} applications.`);
+  });
+  if (entries.length === 0) return null;
+  return entries.join(" Additionally, ");
+}
+
 // ── Summary calculation helper ────────────────────────────────────────────────
 // Compute a section's total setup = stdSetup + global drilling + global fab + addlCosts
 function sectionSetup(s, globalSetup){
@@ -9745,10 +9886,12 @@ const STANDARD_TERMS = [
        desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE101-2, input power < 1 kVA.",
        note:null},
       {key:"CE102", label:"Conducted Emissions, Power Leads, 10 kHz to 10 MHz",
-       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE102-1 from 10 kHz to 10 MHz with 6 dB relaxation.",
+       desc: getEmiTestText("CE102","F",activeEmi.locs) ||
+             "Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE102-1 from 10 kHz to 10 MHz with 6 dB relaxation.",
        note:null},
       {key:"CS101", label:"Conducted Susceptibility, Power Leads, 30 Hz to 150 kHz",
-       desc:"Tested on each AC high side for a total of one (1) test. Tested to MIL-STD-461F Figure CS101-1, Curve 1 and Figure CS101-2.",
+       desc: getEmiTestText("CS101","F",activeEmi.locs) ||
+             "Tested on each AC high side for a total of one (1) test. Tested to MIL-STD-461F Figure CS101-1, Curve 1 and Figure CS101-2.",
        note:null},
       {key:"CS106", label:"Conducted Susceptibility, Transients, Power Leads",
        desc:"Tested on each AC high side for a total of two (2) tests. Tested to MIL-STD-461F Figure CS106-1. Testing performed with a test generator compliant with CS06. Tested in charged mode of operation only.",
@@ -9760,10 +9903,12 @@ const STANDARD_TERMS = [
        desc:"Bulk injection on AC power input lead and on each lead individually for a total of "+c116.pwrTests+" tests for power leads. "+c116.sigTests+" test(s) on signal leads for a total of "+c116.totalTests+" tests. Tested to MIL-STD-461F Figure CS116-2 at discrete frequencies: 10 kHz, 100 kHz, 1 MHz, 10 MHz, 30 MHz and 100 MHz.",
        note:null},
       {key:"RE101", label:"Radiated Emissions, Magnetic Field, 30 Hz to 100 kHz",
-       desc:"Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RE101-2 from 30 Hz to 100 kHz.",
+       desc: getEmiTestText("RE101","F",activeEmi.locs) ||
+             "Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RE101-2 from 30 Hz to 100 kHz.",
        note:null},
       {key:"RE102", label:"Radiated Emissions, Electric Field, 10 kHz to 18 GHz",
-       desc:"Tested to MIL-STD-461F Figure RE102-1 for Metallic Ships below deck applications.",
+       desc: getEmiTestText("RE102","F",activeEmi.locs) ||
+             "Tested to MIL-STD-461F Figure RE102-1 for Metallic Ships below deck applications.",
        positions:[
          {range:"10 kHz - 30 MHz",   pos:pos(1)},
          {range:"30 MHz - 200 MHz",  pos:pos(1)},
@@ -9777,7 +9922,8 @@ const STANDARD_TERMS = [
        desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RS101-1 from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" LxW + "+rs101p.LH+" LxH + "+rs101p.WH+" WxH).",
        note:"Applicability depends on application."},
       {key:"RS103", label:"Radiated Susceptibility, Electric Field, 2 MHz to 18 GHz",
-       desc:"Tested to MIL-STD-461F Table VII for Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m.",
+       desc: getEmiTestText("RS103","F",activeEmi.locs) ||
+             "Tested to MIL-STD-461F Table VII for Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m.",
        positions:[
          {range:"2 MHz - 30 MHz",    pos:pos(rs103p.b2_30)},
          {range:"30 MHz - 200 MHz",  pos:pos(rs103p.b30_200)},
@@ -9991,10 +10137,12 @@ const STANDARD_TERMS = [
        desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE101-2 from 120 Hz to 10 kHz with a relaxation to the limit determined during testing of 20xLog(fundamental current).",
        note:null},
       {key:"CE102", label:"Conducted Emissions, Radio Frequency Potentials, Power Leads",
-       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE102-1 from 10 kHz to 10 MHz, basic curve relaxed by 6 dB.",
+       desc: getEmiTestText("CE102","G",activeEmi.locs) ||
+             "Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE102-1 from 10 kHz to 10 MHz, basic curve relaxed by 6 dB.",
        note:null},
       {key:"CS101", label:"Conducted Susceptibility, Power Leads, 30 Hz to 150 kHz",
-       desc:"Tested on the AC high side for a total of one (1) test. Tested to MIL-STD-461G Figure CS101-1 Curve 1 and Figure CS101-2 from 30 Hz to 150 kHz.",
+       desc: getEmiTestText("CS101","G",activeEmi.locs) ||
+             "Tested on the AC high side for a total of one (1) test. Tested to MIL-STD-461G Figure CS101-1 Curve 1 and Figure CS101-2 from 30 Hz to 150 kHz.",
        note:"Exempt from testing for normal operating current >30 A per phase, or if >30 A per phase with sensitivity worse than 1 uV or operating frequency >150 kHz."},
       {key:"CS109", label:"Conducted Susceptibility, Structure Current",
        desc:"Tested to MIL-STD-461G CS109 requirements.",
@@ -10009,10 +10157,12 @@ const STANDARD_TERMS = [
        desc:"Bulk injection on AC power input and on the high side and return individually for a total of "+c116.pwrTests+" tests for power leads. "+c116.sigTests+" test(s) on signal leads for a total of "+c116.totalTests+" tests. Tested at discrete frequencies: 10 kHz, 100 kHz, 1 MHz, 10 MHz, 30 MHz and 100 MHz.",
        note:null},
       {key:"RE101", label:"Radiated Emissions, Magnetic Field, 30 Hz to 100 kHz",
-       desc:"Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461G Figure RE101-2 from 30 Hz to 100 kHz.",
+       desc: getEmiTestText("RE101","G",activeEmi.locs) ||
+             "Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461G Figure RE101-2 from 30 Hz to 100 kHz.",
        note:null},
       {key:"RE102", label:"Radiated Emissions, Electric Field, 10 kHz to 18 GHz",
-       desc:"Tested to MIL-STD-461G Figure RE102-1 for Metallic Ships below deck applications.",
+       desc: getEmiTestText("RE102","G",activeEmi.locs) ||
+             "Tested to MIL-STD-461G Figure RE102-1 for Metallic Ships below deck applications.",
        positions:[
          {range:"10 kHz - 30 MHz",   pos:pos(1)},
          {range:"30 MHz - 200 MHz",  pos:pos(1)},
@@ -10026,7 +10176,8 @@ const STANDARD_TERMS = [
        desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461G Figure RS101-1 from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" LxW + "+rs101p.LH+" LxH + "+rs101p.WH+" WxH).",
        note:"Applicability depends on application. Test not applicable to equipment with an operating sensitivity worse than 1 uV or operating frequency >100 kHz."},
       {key:"RS103", label:"Radiated Susceptibility, Electric Field, 2 MHz to 18 GHz",
-       desc:"Tested to MIL-STD-461G Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m.",
+       desc: getEmiTestText("RS103","G",activeEmi.locs) ||
+             "Tested to MIL-STD-461G Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m.",
        positions:[
          {range:"2 MHz - 30 MHz",    pos:pos(rs103p.b2_30)},
          {range:"30 MHz - 200 MHz",  pos:pos(rs103p.b30_200)},
