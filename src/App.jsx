@@ -920,22 +920,20 @@ function calcEmiShifts(s){
         ...(re101Raw>=1.5&&re101Hrs/8<1.5?[["Floor 1.5 shifts applied",1.5-(re101Hrs/8)]]:[])]};
 
   // RE102 — Radiated Emissions, Electric Field, 10 kHz to 18 GHz
-  // Width-only positions per engineer pricing note ("price assumes width only for E&F")
+  // 461F: width-only positions per spec. 461G: width × height positions above 200 MHz
+  // (directional antennas scanned across both width and height of EUT to cover the
+  // test boundary within the antenna's 3dB beamwidth).
   // 461F: 1 sweep all bands. 461G: 1 sweep <30 MHz, 2 sweeps (H+V) ≥30 MHz.
   // Per-sweep times independently calibrated for F vs G per engineer doc.
   // Below 1 GHz: 200 MHz-1 GHz uses 50 cm beamwidth (35 cm cable allowance baked in, no +7).
-  // ≥1 GHz bands: width-only with +7 cm cable allowance.
+  // ≥1 GHz bands: +7 cm cable allowance.
   const re102Pos={
     b10k_30M:  1,                          // ≤3m boundary, 1 fixed position (active rod antenna)
     b30_200M:  1,                          // ≤3m boundary, 1 fixed position (biconical)
-    // Above 200 MHz, directional antennas are scanned across BOTH width and height
-    // of the EUT to cover the test boundary within the antenna's 3dB beamwidth.
-    // Each band: positions = ceil(W_eff/beamwidth) × ceil(H_eff/beamwidth)
-    // (W_eff and H_eff add 7cm cable allowance, per the procedure).
-    sub1GHz:   rp(W/50)*rp(H/50),                // 200 MHz-1 GHz, 50cm beamwidth
-    b1_4:      rp((W+7)/93)*rp((H+7)/93),        // 1-4 GHz, 93cm beamwidth
-    b4_15:     rp((W+7)/52)*rp((H+7)/52),        // 4-15 GHz, 52cm beamwidth
-    b15_18:    rp((W+7)/14)*rp((H+7)/14),        // 15-18 GHz, 14cm beamwidth
+    sub1GHz:   useG ? rp(W/50)*rp(H/50)         : rp(W/50),         // 200 MHz-1 GHz, 50cm beamwidth
+    b1_4:      useG ? rp((W+7)/93)*rp((H+7)/93) : rp((W+7)/93),     // 1-4 GHz, 93cm beamwidth
+    b4_15:     useG ? rp((W+7)/52)*rp((H+7)/52) : rp((W+7)/52),     // 4-15 GHz, 52cm beamwidth
+    b15_18:    useG ? rp((W+7)/14)*rp((H+7)/14) : rp((W+7)/14),     // 15-18 GHz, 14cm beamwidth
   };
   // Per-sweep times (minutes) — engineer doc 461F & 461G
   const re102Times = useG
