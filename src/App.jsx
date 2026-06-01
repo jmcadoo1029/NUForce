@@ -3856,8 +3856,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   const [aiInput,setAiInput]=useState("");
   const [aiLoading,setAiLoading]=useState(false);
   const [aiMessages,setAiMessages]=useState([]);
-  const [fuEmail, setFuEmail]       = useState(null);   // {quoteId, text} — generated email
-  const [fuEmailLoading, setFuEmailLoading] = useState(null); // quoteId generating for
 
   const askAI = async (question) => {
     if(!question.trim()||aiLoading) return;
@@ -3942,98 +3940,104 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   const loadFollowUps = async () => {
     if(!isFollowUpUser)return;
     setFuLoading(true);
-    const thirtyDaysAgo = new Date(Date.now() - 30*24*60*60*1000).toISOString();
-    const ninetyDaysAgo = new Date(Date.now() - 90*24*60*60*1000).toISOString();
     const today = new Date().toISOString().slice(0,10);
-    // Get follow_ups that are either:
-    //   a) sent 30+ days ago and not yet followed up
-    //   b) have a followup_again_at date <= today and not yet followed up again
+    // Pull all pending follow-ups (followed_up=false). We build the family-latest
+    // map from ALL pending rows, then apply the due-date and family filters
+    // client-side. This lets a brand-new revision that isn't due yet still
+    // suppress an older revision that IS due (otherwise the older one would
+    // appear on the list incorrectly).
     const {data,error} = await supabase
       .from("follow_ups")
-      .select("*, quotes(opportunity, customer, data)")
-      .eq("followed_up", false)
-      .or(`sent_at.lte.${thirtyDaysAgo},followup_again_at.lte.${today}`)
-      .order("sent_at", {ascending: true});
+      .select("*, quotes(id, opportunity, revision, customer, data)")
+      .eq("followed_up", false);
     if(!error){
-      // Filter:
-      //   - Hide closed won/closed lost quotes
-      //   - Hide quotes that are currently in "Ready to Send" — i.e. the quote
-      //     was re-approved AFTER this send event. Those are actively being
-      //     worked on; surfacing them as overdue follow-ups is just noise.
-      const filtered=(data||[]).filter(fu=>{
-        const stage=fu.quotes?.data?.qi?.stage||"" ;
+      const rows = data || [];
+      const baseOf = (opp) => {
+        if(!opp) return "";
+        // strip trailing single capital letter (rev letter): 26-010A -> 26-010
+        const m = opp.match(/^(.+?)([A-Z])?$/);
+        return m ? m[1] : opp;
+      };
+      // Family grouping: latest revision per opportunity family across ALL pending
+      // rows (whether due or not), so a newer-but-not-due revision suppresses the
+      // older revision's stale follow-up.
+      const familyLatest = new Map();   // baseKey -> highest revision letter
+      rows.forEach(fu => {
+        const opp = fu.quotes?.opportunity || fu.opportunity || "";
+        const baseKey = baseOf(opp);
+        if(!baseKey) return;
+        const rev = (fu.quotes?.revision || "").toString();
+        const cur = familyLatest.get(baseKey);
+        if(!cur || rev > cur) familyLatest.set(baseKey, rev);
+      });
+      // Due semantics:
+      //   - row has followup_again_at: due iff that date <= today
+      //     (the 30-day-from-sent rule does NOT apply once a reschedule was set)
+      //   - row has no followup_again_at: due iff sent_at >= 30 days ago
+      const todayMs = new Date(today + "T00:00:00").getTime();
+      const thirtyMs = Date.now() - 30*24*60*60*1000;
+      const isDue = (fu) => {
+        if(fu.followup_again_at){
+          return new Date(fu.followup_again_at).getTime() <= todayMs;
+        }
+        return fu.sent_at && new Date(fu.sent_at).getTime() <= thirtyMs;
+      };
+      const filtered = rows.filter(fu => {
+        // Drop Closed Won/Closed Lost
+        const stage = fu.quotes?.data?.qi?.stage || "";
         if(stage==="Closed Won" || stage==="Closed Lost") return false;
-        const decidedAt = fu.quotes?.data?.approval?.decidedAt;
-        if(decidedAt && fu.sent_at && new Date(decidedAt) > new Date(fu.sent_at)) return false;
+        // Drop superseded revisions
+        const opp = fu.quotes?.opportunity || fu.opportunity || "";
+        const baseKey = baseOf(opp);
+        const rev = (fu.quotes?.revision || "").toString();
+        if(familyLatest.get(baseKey) !== rev) return false;
+        // Drop rows that aren't due yet
+        if(!isDue(fu)) return false;
         return true;
       });
+      // Sort by "oldest on the list" — when did this row first become eligible?
+      //   - initial: sent_at + 30 days (would have appeared then)
+      //   - rescheduled: followup_again_at (would have appeared then)
+      // Earliest of those -> oldest on the list -> top.
+      const dueAt = (fu) => {
+        if(fu.followup_again_at) return new Date(fu.followup_again_at).getTime();
+        return fu.sent_at ? new Date(fu.sent_at).getTime() + 30*24*60*60*1000 : Infinity;
+      };
+      filtered.sort((a,b) => dueAt(a) - dueAt(b));
       setFollowUps(filtered);
     }
     setFuLoading(false);
   };
 
-  const generateFollowUpEmail = async (fu) => {
-    setFuEmailLoading(fu.id);
-    const q = fu.quotes;
-    const blob = q?.data || {};
-    const tests = [];
-    if(blob.vibs?.some(s=>s.on))tests.push("Vibration");
-    if(blob.shocks?.some(s=>s.on))tests.push("Shock");
-    if(blob.noises?.some(s=>s.on))tests.push("Acoustic Noise");
-    if(blob.envs?.some(s=>s.on))tests.push("Environmental");
-    if(blob.emis?.some(s=>s.on))tests.push("EMI/EMC");
-    if(blob.pqs?.some(s=>s.on))tests.push("Power Quality");
-    if(blob.hfvs?.some(s=>s.on))tests.push("High Frequency Vibration");
-    const itemName = blob.ti?.item || blob.qi?.item || "";
-    try {
-      // Call via Supabase Edge Function to avoid CORS + keep API key server-side
-      const resp = await fetch(
-        "https://swuuxzmgmldvvomsgmjf.supabase.co/functions/v1/generate-followup-email",
-        {
-          method:"POST",
-          headers:{
-            "Content-Type":"application/json",
-            "Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3dXV4em1nbWxkdnZvbXNnbWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MjcyMzMsImV4cCI6MjA4ODQwMzIzM30.GinbXqvBHcvYRaACBhgpd_Si8-qIDDj7PlbTCINcSU8",
-          },
-          body: JSON.stringify({
-            opportunity: fu.opportunity || q?.opportunity || "",
-            customer:    fu.customer    || q?.customer    || "",
-            itemName,
-            tests,
-            sentBy: fu.sent_by || "NU Laboratories Sales",
-          })
-        }
-      );
-      const json = await resp.json();
-      if(json.error) throw new Error(json.error);
-      setFuEmail({id:fu.id, text: json.text || "Could not generate email."});
-    } catch(e) {
-      setFuEmail({id:fu.id, text:"Error generating email — please try again."});
-    }
-    setFuEmailLoading(null);
-  };
-
   const markFollowedUp = async (fuId, scheduleAgain) => {
-    const update = {
-      followed_up: true,
-      followed_up_at: new Date().toISOString(),
-      followed_up_by: currentUser,
-    };
     if(scheduleAgain){
+      // Primary path: record this follow-up AND set the row to reappear in 90 days.
+      // The list query filters on followed_up=false AND (sent>=30d OR
+      // followup_again_at<=today). Keeping followed_up=false plus a future
+      // followup_again_at makes the row dormant — it will return when that
+      // date arrives. We record the most recent action via followed_up_at.
       const d = new Date();
       d.setDate(d.getDate()+90);
-      update.followed_up = false;
-      update.followed_up_at = null;
-      update.followup_again_at = d.toISOString().slice(0,10);
-    }
-    await supabase.from("follow_ups").update(update).eq("id",fuId);
-    // Update state optimistically — no reload, no scroll jump
-    if(scheduleAgain){
-      setFollowUps(prev=>prev.map(fu=>fu.id===fuId?{...fu,...update}:fu));
+      const update = {
+        followed_up: false,
+        followed_up_at: new Date().toISOString(),
+        followed_up_by: currentUser,
+        followup_again_at: d.toISOString().slice(0,10),
+      };
+      await supabase.from("follow_ups").update(update).eq("id",fuId);
     } else {
-      setFollowUps(prev=>prev.filter(fu=>fu.id!==fuId));
+      // Secondary path: never show again. Clear any future reminder to be safe.
+      const update = {
+        followed_up: true,
+        followed_up_at: new Date().toISOString(),
+        followed_up_by: currentUser,
+        followup_again_at: null,
+      };
+      await supabase.from("follow_ups").update(update).eq("id",fuId);
     }
-    if(fuEmail?.id===fuId)setFuEmail(null);
+    // Either action removes the row from the visible list. Reschedules reappear
+    // 90 days later via a fresh load. Permanent removals never reappear.
+    setFollowUps(prev=>prev.filter(fu=>fu.id!==fuId));
   };
 
 
@@ -5780,8 +5784,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                   <div>
                     {followUps.map(fu=>{
                       const daysSinceSent=Math.floor((Date.now()-new Date(fu.sent_at).getTime())/(1000*60*60*24));
-                      const isGenerating=fuEmailLoading===fu.id;
-                      const emailShown=fuEmail?.id===fu.id;
                       return(
                         <div key={fu.id} style={{borderTop:"1px solid #f0f2f5",padding:"14px 24px"}}>
                           {/* Quote info row */}
@@ -5808,54 +5810,19 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                             {/* Action buttons */}
                             <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                               <button
-                                disabled={isGenerating}
-                                onClick={()=>emailShown?setFuEmail(null):generateFollowUpEmail(fu)}
-                                style={{background:emailShown?"#eaf2ff":"#1a5276",border:"none",
-                                  borderRadius:6,padding:"6px 14px",color:emailShown?"#1a5276":"#fff",
-                                  fontWeight:600,fontSize:11,cursor:"pointer",
-                                  border:emailShown?"1px solid #1a5276":"none"}}>
-                                {isGenerating?"✨ Generating…":emailShown?"✕ Hide Email":"✨ Generate Email"}
+                                onClick={e=>{e.preventDefault();markFollowedUp(fu.id,true);}}
+                                style={{background:"#1e8449",border:"none",borderRadius:6,
+                                  padding:"6px 14px",color:"#fff",fontWeight:600,fontSize:11,cursor:"pointer"}}>
+                                ✓ Followed Up
                               </button>
                               <button
                                 onClick={e=>{e.preventDefault();markFollowedUp(fu.id,false);}}
-                                style={{background:"#1e8449",border:"none",borderRadius:6,
-                                  padding:"6px 14px",color:"#fff",fontWeight:600,fontSize:11,cursor:"pointer"}}>
-                                ✓ Done
-                              </button>
-                              <button
-                                onClick={e=>{e.preventDefault();markFollowedUp(fu.id,true);}}
-                                style={{background:"none",border:"1px solid #b7791f",borderRadius:6,
-                                  padding:"6px 14px",color:"#b7791f",fontWeight:600,fontSize:11,cursor:"pointer"}}>
-                                ↻ Follow up in 90 days
+                                style={{background:"none",border:"1px solid #6b7a8d",borderRadius:6,
+                                  padding:"6px 14px",color:"#6b7a8d",fontWeight:600,fontSize:11,cursor:"pointer"}}>
+                                Don't Show Again
                               </button>
                             </div>
                           </div>
-                          {/* Generated email */}
-                          {emailShown&&fuEmail&&(
-                            <div style={{marginTop:12,background:"#f8f9fb",borderRadius:8,
-                              border:"1px solid #e8ecf0",padding:"14px 16px"}}>
-                              <div style={{display:"flex",justifyContent:"space-between",
-                                alignItems:"center",marginBottom:10}}>
-                                <div style={{fontSize:11,fontWeight:700,color:"#9aa5b1",letterSpacing:.8}}>
-                                  GENERATED FOLLOW-UP EMAIL
-                                </div>
-                                <button
-                                  onClick={()=>{
-                                    navigator.clipboard.writeText(fuEmail.text);
-                                  }}
-                                  style={{background:"#1a5276",border:"none",borderRadius:5,
-                                    padding:"4px 12px",color:"#fff",fontSize:11,fontWeight:600,
-                                    cursor:"pointer"}}>
-                                  📋 Copy
-                                </button>
-                              </div>
-                              <pre style={{fontSize:12,color:"#1a2332",lineHeight:1.7,
-                                whiteSpace:"pre-wrap",fontFamily:"Segoe UI,system-ui,sans-serif",
-                                margin:0}}>
-                                {fuEmail.text}
-                              </pre>
-                            </div>
-                          )}
                         </div>
                       );
                     })}
