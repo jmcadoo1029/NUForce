@@ -7668,15 +7668,49 @@ export default function App({onLogout,currentUser}){
   const EMAILJS_DECISION_TPL= "YOUR_DECISION_TEMPLATE_ID";
   const EMAILJS_PUBLIC_KEY  = "YOUR_PUBLIC_KEY";
 
-  const APPROVERS=[
-    {name:"Jordan McAdoo", email:"jordanmcadoo@nulabs.com"},
-    {name:"Ragen McAdoo",  email:"ragenmcadoo@nulabs.com"},
-    {name:"Russ McAdoo",   email:"russmcadoo@nulabs.com"},
-    {name:"Russ McAdoo",   email:"rmcadoo@gmail.com"},
-  ];
-  const APPROVER_EMAILS=APPROVERS.map(a=>a.email);
-  const isApprover=APPROVER_EMAILS.includes(currentUser);
-  const isFollowUpUser=currentUser==="ccebello@nulabs.com"||isApprover;
+  // ── Permissions ─────────────────────────────────────────────────────────
+  // Approver rights are sourced from Workspace's permission model:
+  //   employees.role_id → permission_roles.capabilities.nuforce_approve_quotes
+  // Looked up once on app load via the direct-PostgREST bypass (consistent
+  // with our other reads; supabase-js wedges on the same shared session).
+  // The .or() on email + personal_email covers users whose session may carry
+  // either their work or personal address.
+  // Default false until the lookup resolves — failsafe: no approve UI flashes
+  // before we know for sure.
+  const [isApprover, setIsApprover] = useState(false);
+  const [permsLoaded, setPermsLoaded] = useState(false);
+  useEffect(()=>{
+    let cancelled = false;
+    (async()=>{
+      if(!currentUser){ setPermsLoaded(true); return; }
+      try {
+        const safeUser = encodeURIComponent(currentUser);
+        // Look up the employee row by either email or personal_email
+        const empRows = await restFetch("GET",
+          `employees?select=role_id&or=(email.eq.${safeUser},personal_email.eq.${safeUser})&limit=1`);
+        const emp = (empRows||[])[0];
+        let canApprove = false;
+        if(emp?.role_id){
+          const roleRows = await restFetch("GET",
+            `permission_roles?select=capabilities&id=eq.${encodeURIComponent(emp.role_id)}&limit=1`);
+          const role = (roleRows||[])[0];
+          canApprove = !!(role?.capabilities?.nuforce_approve_quotes);
+        }
+        if(!cancelled){
+          setIsApprover(canApprove);
+          setPermsLoaded(true);
+        }
+      } catch(e){
+        // Fail closed: if the lookup errors (network, RLS, missing table),
+        // treat the user as a non-approver until the issue is resolved.
+        console.warn("[PERMS] approver lookup failed:", e?.message||e);
+        if(!cancelled) setPermsLoaded(true);
+      }
+    })();
+    return ()=>{ cancelled = true; };
+  },[currentUser]);
+  // Anyone in NUForce can follow up — no permission gating needed.
+  const isFollowUpUser = true;
   const isSalesforce=currentQuoteSource==="salesforce";
 
   // ── Browser tab title + history state for back button ─────────────────────
@@ -7861,7 +7895,12 @@ export default function App({onLogout,currentUser}){
         quote_total: money(displayTotal),
         submitted_by:submitter,
         submitted_at:new Date().toLocaleString(),
-        to_email:    APPROVERS.map(a=>a.email).join(","),
+        // to_email used to come from the hardcoded APPROVERS array. With perms
+        // now in Workspace, this needs to be a dynamic lookup if EmailJS is
+        // ever configured (it's currently using placeholder keys and the call
+        // does not actually send). Left blank for now; revisit when EmailJS
+        // is wired up properly.
+        to_email:    "",
       });
     }catch(e){console.warn("EmailJS submit failed:",e);}
   };
