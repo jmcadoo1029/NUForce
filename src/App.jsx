@@ -3930,13 +3930,10 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   const loadFlags = async () => {
     setFlagsLoading(true);
     try {
-      const {data,error}=await supabase
-        .from("quote_flags")
-        .select("id,quote_id,opportunity,customer,flagged_by,flagged_at,note")
-        .eq("resolved",false)
-        .order("flagged_at",{ascending:false});
-      if(!error)setFlaggedQuotes(data||[]);
-    } catch(e){ console.warn("quote_flags not yet available",e); }
+      const data = await restFetch("GET",
+        "quote_flags?select=id,quote_id,opportunity,customer,flagged_by,flagged_at,note&resolved=eq.false&order=flagged_at.desc");
+      setFlaggedQuotes(data||[]);
+    } catch(e){ console.warn("[FLAGS] load failed:", e?.message||e); }
     setFlagsLoading(false);
   };
 
@@ -4187,20 +4184,15 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
 
     // ── Quotes created this month + Closed Won this month — run in parallel ──
     const thisMonth = months[3];
-    const [{ data: createdRaw }, { data: wonRaw }] = await Promise.all([
-      supabase
-        .from("quotes")
-        .select("id, opportunity, customer, total, created_at, revision, data, source")
-        .gte("created_at", thisMonth.start)
-        .lt("created_at",  thisMonth.end)
-        .order("opportunity", {ascending: true}),
-      supabase
-        .from("quotes")
-        .select("id, opportunity, customer, total, won_date, data")
-        .eq("stage","Closed Won")
-        .gte("won_date", thisMonth.start.slice(0,10))
-        .lt("won_date",  thisMonth.end.slice(0,10)),
-    ]);
+    let createdRaw = [], wonRaw = [];
+    try {
+      [createdRaw, wonRaw] = await Promise.all([
+        restFetch("GET",
+          `quotes?select=id,opportunity,customer,total,created_at,revision,data,source&created_at=gte.${encodeURIComponent(thisMonth.start)}&created_at=lt.${encodeURIComponent(thisMonth.end)}&order=opportunity.asc`),
+        restFetch("GET",
+          `quotes?select=id,opportunity,customer,total,won_date,data&stage=eq.Closed%20Won&won_date=gte.${encodeURIComponent(thisMonth.start.slice(0,10))}&won_date=lt.${encodeURIComponent(thisMonth.end.slice(0,10))}`),
+      ]);
+    } catch(e) { console.warn("[DASHBOARD] thisMonth created/won:", e?.message||e); }
     const createdAll = createdRaw || [];
     // Group by base opportunity (strip trailing rev letter).
     // For each group:
@@ -4232,13 +4224,11 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
 
     // ── Also catch Closed Won quotes where won_date column is null but wonInfo has a date this month ──
     // This covers quotes where won details were saved but won_date column wasn't written (e.g. pre-fix SF imports)
-    const { data: wonNullRaw } = await supabase
-      .from("quotes")
-      .select("id, opportunity, total, won_date, data")
-      .eq("stage","Closed Won")
-      .is("won_date", null)
-      .gte("updated_at", thisMonth.start)
-      .lt("updated_at",  thisMonth.end);
+    let wonNullRaw = [];
+    try {
+      wonNullRaw = await restFetch("GET",
+        `quotes?select=id,opportunity,total,won_date,data&stage=eq.Closed%20Won&won_date=is.null&updated_at=gte.${encodeURIComponent(thisMonth.start)}&updated_at=lt.${encodeURIComponent(thisMonth.end)}`);
+    } catch(e) { console.warn("[DASHBOARD] wonNullRaw:", e?.message||e); }
     const monthStart = new Date(thisMonth.start);
     const monthEnd   = new Date(thisMonth.end);
     const wonNullFiltered = (wonNullRaw||[]).filter(q => {
@@ -4296,12 +4286,8 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     let revisionDelta = 0;
     try {
       // Pull all approved-status revs (have a non-empty rev letter)
-      const { data: approvedRevs } = await supabase
-        .from("quotes")
-        .select("id, opportunity, revision, total, created_at, data")
-        .eq("approval_status","approved")
-        .not("revision","is",null)
-        .neq("revision","");
+      const approvedRevs = await restFetch("GET",
+        `quotes?select=id,opportunity,revision,total,created_at,data&approval_status=eq.approved&revision=not.is.null&revision=neq.`);
       const monthStartMs = new Date(thisMonth.start).getTime();
       const monthEndMs   = new Date(thisMonth.end).getTime();
       const revsDecidedThisMonth = (approvedRevs||[]).filter(r=>{
@@ -4333,10 +4319,9 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
           if(prior) lookupOppStrings.add(prior);
           lookupOppStrings.add(baseOppOf(r.opportunity));
         });
-        const { data: lookupRows } = await supabase
-          .from("quotes")
-          .select("opportunity, total, created_at")
-          .in("opportunity", Array.from(lookupOppStrings));
+        const oppList = Array.from(lookupOppStrings).map(o => encodeURIComponent(o)).join(",");
+        const lookupRows = await restFetch("GET",
+          `quotes?select=opportunity,total,created_at&opportunity=in.(${oppList})`);
         const rowByOpp = {};
         (lookupRows||[]).forEach(p=>{ rowByOpp[p.opportunity] = p; });
         revsDecidedThisMonth.forEach(r=>{
@@ -4356,7 +4341,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
           revisionDelta += (r.total||0) - (priorRow.total||0);
         });
       }
-    } catch(e) { console.warn("revisionDelta calc failed:", e); }
+    } catch(e) { console.warn("[DASHBOARD] revisionDelta:", e?.message||e); }
 
     // ── Month-over-month quote counts + totals ──
     // Each month produces 4 metrics matching the Quotes This Month widget:
@@ -4366,12 +4351,12 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     //   netTotal  = newTotal + sum of revision deltas APPROVED that month for prior-month families
     const monthCounts = await Promise.all(months.map(async m => {
       // 1) Pull all rows whose created_at is in this month
-      const { data: monthRowsRaw } = await supabase
-        .from("quotes")
-        .select("id, opportunity, revision, total, created_at")
-        .gte("created_at", m.start)
-        .lt("created_at",  m.end);
-      const monthRows = monthRowsRaw || [];
+      let monthRows = [];
+      try {
+        monthRows = await restFetch("GET",
+          `quotes?select=id,opportunity,revision,total,created_at&created_at=gte.${encodeURIComponent(m.start)}&created_at=lt.${encodeURIComponent(m.end)}`);
+        monthRows = monthRows || [];
+      } catch(e) { console.warn("[DASHBOARD] monthRows "+m.label+":", e?.message||e); }
 
       // 2) Compute base opp for each row, then determine which families have a
       //    blank-rev member in this month (those are the "new" families).
@@ -4409,12 +4394,8 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       //    revisionDelta calc above, but scoped to this loop's month.
       let monthRevDelta = 0;
       try {
-        const { data: approvedRevs } = await supabase
-          .from("quotes")
-          .select("id, opportunity, revision, total, data")
-          .eq("approval_status","approved")
-          .not("revision","is",null)
-          .neq("revision","");
+        const approvedRevs = await restFetch("GET",
+          `quotes?select=id,opportunity,revision,total,data&approval_status=eq.approved&revision=not.is.null&revision=neq.`);
         const mStartMs = new Date(m.start).getTime();
         const mEndMs   = new Date(m.end).getTime();
         const revsDecidedHere = (approvedRevs||[]).filter(r => {
@@ -4437,10 +4418,9 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
             if(p) lookupOpps.add(p);
             lookupOpps.add(baseOf(r.opportunity));
           });
-          const { data: lookupRows } = await supabase
-            .from("quotes")
-            .select("opportunity, total, created_at")
-            .in("opportunity", Array.from(lookupOpps));
+          const oppList = Array.from(lookupOpps).map(o => encodeURIComponent(o)).join(",");
+          const lookupRows = await restFetch("GET",
+            `quotes?select=opportunity,total,created_at&opportunity=in.(${oppList})`);
           const rowByOpp = {};
           (lookupRows||[]).forEach(p => { rowByOpp[p.opportunity] = p; });
           revsDecidedHere.forEach(r => {
@@ -4455,7 +4435,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
             monthRevDelta += (r.total||0) - (priorRow.total||0);
           });
         }
-      } catch(e) { console.warn("monthRevDelta calc failed for "+m.label+":", e); }
+      } catch(e) { console.warn("[DASHBOARD] monthRevDelta "+m.label+":", e?.message||e); }
 
       const netTotal = newTotal + monthRevDelta;
       return {
@@ -4486,13 +4466,8 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     // been sent since the most recent approval.
     let readyToSend = [];
     try {
-      const { data: approvedRows } = await supabase
-        .from("quotes")
-        .select("id, opportunity, revision, customer, total, data, ready_to_send_dismissed_at")
-        .eq("approval_status", "approved")
-        .is("ready_to_send_dismissed_at", null)
-        .not("stage","in","(Closed Won,Closed Lost)")
-        .limit(2000);
+      const approvedRows = await restFetch("GET",
+        `quotes?select=id,opportunity,revision,customer,total,data,ready_to_send_dismissed_at&approval_status=eq.approved&ready_to_send_dismissed_at=is.null&stage=not.in.(${encodeURIComponent("Closed Won")},${encodeURIComponent("Closed Lost")})&limit=2000`);
       const approved = approvedRows || [];
 
       // Group by base-opp; keep latest revision per family (matches dashboard
@@ -4517,11 +4492,9 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       const candidateIds = latestApprovedPerFamily.map(r => r.id);
       const sendMaxByQuoteId = {};
       if(candidateIds.length > 0){
-        const { data: fuRows } = await supabase
-          .from("follow_ups")
-          .select("quote_id, sent_at")
-          .in("quote_id", candidateIds)
-          .neq("sent_by", "manually_dismissed");   // ignore any future dismissal-like rows
+        const idList = candidateIds.map(id => encodeURIComponent(id)).join(",");
+        const fuRows = await restFetch("GET",
+          `follow_ups?select=quote_id,sent_at&quote_id=in.(${idList})&sent_by=neq.manually_dismissed`);
         (fuRows || []).forEach(fu => {
           const prev = sendMaxByQuoteId[fu.quote_id];
           if(!prev || new Date(fu.sent_at) > new Date(prev)) sendMaxByQuoteId[fu.quote_id] = fu.sent_at;
@@ -4554,14 +4527,13 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     const yrPrefix = String(year).slice(-2);
     const ytdStart = new Date(year, 0, 1).toISOString();
     const ytdEnd   = new Date(year + 1, 0, 1).toISOString();
-    const [{ data: ytdCreatedRaw }, { data: ytdWonRaw }] = await Promise.all([
-      supabase.from("quotes").select("id, opportunity, total")
-        .gte("created_at", ytdStart).lt("created_at", ytdEnd)
-        .limit(2000),
-      supabase.from("quotes").select("id, opportunity, total, won_date, data->qi->>type")
-        .eq("stage","Closed Won").gte("won_date", ytdStart.slice(0,10)).lt("won_date", ytdEnd.slice(0,10))
-        .limit(2000),
-    ]);
+    let ytdCreatedRaw = [], ytdWonRaw = [];
+    try {
+      [ytdCreatedRaw, ytdWonRaw] = await Promise.all([
+        restFetch("GET", `quotes?select=id,opportunity,total&created_at=gte.${encodeURIComponent(ytdStart)}&created_at=lt.${encodeURIComponent(ytdEnd)}&limit=2000`),
+        restFetch("GET", `quotes?select=id,opportunity,total,won_date,data->qi->>type&stage=eq.Closed%20Won&won_date=gte.${encodeURIComponent(ytdStart.slice(0,10))}&won_date=lt.${encodeURIComponent(ytdEnd.slice(0,10))}&limit=2000`),
+      ]);
+    } catch(e) { console.warn("[DASHBOARD] YTD queries failed:", e?.message||e); }
     const ytdCreated     = ytdCreatedRaw || [];
     const ytdWonAll      = (ytdWonRaw || []).map(q => ({...q, type: q.type||"New Business"}));
     const ytdWonNew      = ytdWonAll.filter(q => q.type === "New Business");
