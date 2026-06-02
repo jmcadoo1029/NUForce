@@ -9888,7 +9888,7 @@ const STANDARD_TERMS = [
     // Full 461F test definitions — only show tests selected by user
     const EMI_461F = [
       {key:"CE101", label:"Conducted Emissions, Power Leads, 30 Hz to 10 kHz",
-       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE101-2 from 30 Hz to 10 kHz with a relaxation to the limit determined during testing of 20xLog(fundamental current).",
+       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE101-2 from 30 Hz to 10 kHz with a relaxation of the limit determined during testing.",
        note:null},
       {key:"CE102", label:"Conducted Emissions, Power Leads, 10 kHz to 10 MHz",
        desc: "Tested on each "+acdc+" power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE102-1 from 10 kHz to 10 MHz with 6 dB relaxation.",
@@ -10142,7 +10142,7 @@ const STANDARD_TERMS = [
     // Full 461G test definitions
     const EMI_461G = [
       {key:"CE101", label:"Conducted Emissions, Audio Frequency Currents, Power Leads",
-       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE101-2 from 120 Hz to 10 kHz with a relaxation to the limit determined during testing of 20xLog(fundamental current).",
+       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE101-2 from 120 Hz to 10 kHz with a relaxation of the limit determined during testing.",
        note:null},
       {key:"CE102", label:"Conducted Emissions, Radio Frequency Potentials, Power Leads",
        desc: "Tested on each "+acdc+" power input lead for a total of two (2) tests. Tested to MIL-STD-461G Figure CE102-1 from 10 kHz to 10 MHz, basic curve relaxed by 6 dB.",
