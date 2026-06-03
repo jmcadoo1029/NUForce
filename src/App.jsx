@@ -1993,6 +1993,48 @@ async function restFetch(method, path, { body, returnRepresentation = false } = 
   }
 }
 
+// Invoke a Workspace/Supabase edge function via direct fetch, mirroring
+// restFetch's session-token bypass pattern. Hits the same project's
+// /functions/v1/ endpoint with the authenticated user's token + the project
+// apikey, so the function sees the actual signed-in user and can do
+// permission checks. Returns parsed JSON response. Best-effort: throws
+// on errors but the caller (notifications) typically swallows them so a
+// failed email doesn't break the user-visible action.
+const FN_BASE = "https://swuuxzmgmldvvomsgmjf.supabase.co/functions/v1";
+async function invokeFunction(fnName, body) {
+  const token = getAccessToken();
+  if (!token) throw new NoSessionError();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${FN_BASE}/${fnName}`, {
+      method: "POST",
+      headers: {
+        "apikey": REST_APIKEY,
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body || {}),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (res.status === 401) throw new NoSessionError();
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`FN ${fnName} failed: ${res.status} ${text.slice(0, 300)}`);
+    }
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) return await res.json();
+    return null;
+  } catch (err) {
+    clearTimeout(timer);
+    if (err && err.name === "AbortError") {
+      throw new Error(`FN ${fnName} timed out after ${REST_TIMEOUT_MS}ms`);
+    }
+    throw err;
+  }
+}
+
 
 // ── Supabase storage helpers ──────────────────────────────────────────────────
 // ── PDF Save-As helper ───────────────────────────────────────────────────────
@@ -7823,12 +7865,6 @@ export default function App({onLogout,currentUser}){
     toastTimer.current=setTimeout(()=>setToast(null),duration);
   };
 
-  // EmailJS config — fill in after setting up emailjs.com
-  const EMAILJS_SERVICE_ID  = "YOUR_SERVICE_ID";
-  const EMAILJS_SUBMIT_TPL  = "YOUR_SUBMIT_TEMPLATE_ID";
-  const EMAILJS_DECISION_TPL= "YOUR_DECISION_TEMPLATE_ID";
-  const EMAILJS_PUBLIC_KEY  = "YOUR_PUBLIC_KEY";
-
   // ── Permissions ─────────────────────────────────────────────────────────
   // Approver rights are sourced from Workspace's permission model:
   //   employees.role_id → permission_roles.capabilities.nuforce_approve_quotes
@@ -7840,15 +7876,19 @@ export default function App({onLogout,currentUser}){
   // before we know for sure.
   const [isApprover, setIsApprover] = useState(false);
   const [permsLoaded, setPermsLoaded] = useState(false);
+  // Workspace employees.id for the current user — used to identify them in
+  // notifications (Russ's send-notification edge function keys on this UUID,
+  // not on email). Pulled by the same lookup that resolves approver perms.
+  const [currentUserEmployeeId, setCurrentUserEmployeeId] = useState(null);
   useEffect(()=>{
     let cancelled = false;
     (async()=>{
       if(!currentUser){ setPermsLoaded(true); return; }
       try {
         const safeUser = encodeURIComponent(currentUser);
-        // Look up the employee row by either email or personal_email
+        // Pull the employee row (id + role_id) by either email or personal_email
         const empRows = await restFetch("GET",
-          `employees?select=role_id&or=(email.eq.${safeUser},personal_email.eq.${safeUser})&limit=1`);
+          `employees?select=id,role_id&or=(email.eq.${safeUser},personal_email.eq.${safeUser})&limit=1`);
         const emp = (empRows||[])[0];
         let canApprove = false;
         if(emp?.role_id){
@@ -7858,6 +7898,7 @@ export default function App({onLogout,currentUser}){
           canApprove = !!(role?.capabilities?.nuforce_approve_quotes);
         }
         if(!cancelled){
+          setCurrentUserEmployeeId(emp?.id || null);
           setIsApprover(canApprove);
           setPermsLoaded(true);
         }
@@ -8038,54 +8079,17 @@ export default function App({onLogout,currentUser}){
     }
   },[showDashboard]);
 
-  const loadEmailJS=()=>new Promise((res,rej)=>{
-    if(window.emailjs){res();return;}
-    const s=document.createElement("script");
-    s.src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js";
-    s.onload=()=>{window.emailjs.init(EMAILJS_PUBLIC_KEY);res();}
-    s.onerror=rej;
-    document.head.appendChild(s);
-  });
-
-  const sendSubmitEmail=async(submitter)=>{
-    try{
-      await loadEmailJS();
-      await window.emailjs.send(EMAILJS_SERVICE_ID,EMAILJS_SUBMIT_TPL,{
-        quote_opp:   qi.opp||"Untitled",
-        quote_rfq:   qi.rfq||"—",
-        quote_total: money(displayTotal),
-        submitted_by:submitter,
-        submitted_at:new Date().toLocaleString(),
-        // to_email used to come from the hardcoded APPROVERS array. With perms
-        // now in Workspace, this needs to be a dynamic lookup if EmailJS is
-        // ever configured (it's currently using placeholder keys and the call
-        // does not actually send). Left blank for now; revisit when EmailJS
-        // is wired up properly.
-        to_email:    "",
-      });
-    }catch(e){console.warn("EmailJS submit failed:",e);}
-  };
-
-  const sendDecisionEmail=async(decision,decider,comments,submitter)=>{
-    try{
-      await loadEmailJS();
-      await window.emailjs.send(EMAILJS_SERVICE_ID,EMAILJS_DECISION_TPL,{
-        quote_opp:   qi.opp||"Untitled",
-        quote_rfq:   qi.rfq||"—",
-        quote_total: money(displayTotal),
-        decision:    decision,
-        decided_by:  decider,
-        decided_at:  new Date().toLocaleString(),
-        comments:    comments||"None",
-        to_email:    submitter,
-      });
-    }catch(e){console.warn("EmailJS decision failed:",e);}
-  };
-
   const handleSubmitApproval=async()=>{
     recentSaveRef.current=Date.now();
     const evt={event:"submitted",by:currentUser,at:new Date().toISOString(),comments:""};
-    const newApproval={status:"pending",submittedBy:currentUser,submittedAt:new Date().toISOString(),decidedBy:"",decidedAt:"",comments:"",history:[...(approval.history||[]),evt]};
+    const newApproval={
+      status:"pending",
+      submittedBy:currentUser,
+      submittedById:currentUserEmployeeId,  // Workspace employees.id for notifications
+      submittedAt:new Date().toISOString(),
+      decidedBy:"", decidedAt:"", comments:"",
+      history:[...(approval.history||[]),evt],
+    };
     setApproval(newApproval);
     setLocked(true);
     setShowApprovalModal(false);
@@ -8106,7 +8110,32 @@ export default function App({onLogout,currentUser}){
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);setSnapshot(savedSnapshot);setIsDirty(false);showToast("Submitted for approval","info");}
     else showToast("Submit failed — check your connection","error",5000);
-    await sendSubmitEmail(currentUser);
+    // Notify approvers via Workspace. The payload is the FULL current set of
+    // pending quotes (not just this one) so the email shows everyone's queue
+    // depth. Each item only needs submittedById; Workspace resolves recipients
+    // (approvers minus self-submitted) and composes the message.
+    // Older pending quotes from before this deploy may lack submittedById —
+    // we drop those rather than backfill on-the-fly. They age out as decisions
+    // get made.
+    try {
+      const pendingForPayload = [
+        ...pendingQuotes
+          .filter(q => q.approval?.submittedById)
+          .map(q => ({ submittedById: q.approval.submittedById })),
+        // Include the quote just submitted (not yet in savedQuotes/pendingQuotes)
+        ...(currentUserEmployeeId ? [{ submittedById: currentUserEmployeeId }] : []),
+      ];
+      await invokeFunction("send-notification", {
+        type: "nuforce_quote_submitted",
+        data: {
+          pending: pendingForPayload,
+          approvalsUrl: "https://nuforce.nulabs.com/#dashboard",
+        },
+      });
+    } catch(e) {
+      // Never block the user on a failed notification — log and move on.
+      console.warn("[NOTIFY] quote_submitted failed:", e?.message||e);
+    }
   };
 
 
@@ -8130,7 +8159,8 @@ export default function App({onLogout,currentUser}){
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Quote approved ✓","success");autoUnflag(newId);}
     else showToast("Save failed — check your connection","error",5000);
-    await sendDecisionEmail("APPROVED",currentUser,approvalComments,approval.submittedBy);
+    // Event 2 (approved → ready to send) notification: pending from Russ. Will
+    // add invokeFunction call here when his send-notification handler is ready.
   };
 
   const handleReject=async()=>{
@@ -8144,7 +8174,7 @@ export default function App({onLogout,currentUser}){
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Quote rejected","info");}
     else showToast("Save failed — check your connection","error",5000);
-    await sendDecisionEmail("REJECTED",currentUser,approvalComments,approval.submittedBy);
+    // No notification on rejection per spec — submitter sees it via the dashboard.
   };
 
   const handleApproverUnlock=()=>{
@@ -8220,7 +8250,7 @@ export default function App({onLogout,currentUser}){
         const wonStatus=decision==="approved"?"won_approved":"won_rejected";
         const newWonApproval={...q.wonApproval,status:wonStatus,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(q.wonApproval?.history||[]),evtQ]};
         await saveQuoteToSupabase({...q,wonApproval:newWonApproval,chatterEntries:q.chatterEntries||[]},autoSpecs,autoNotes);
-        await sendDecisionEmail("CLOSED WON "+decision.toUpperCase(),currentUser,queueComments,q.wonApproval?.submittedBy||"");
+        // Event 3 (closed won) notification: pending from Russ.
         // If this quote is currently open in the form, sync its state
         if(currentQuoteId&&String(currentQuoteId)===String(id)){
           setWonApproval(newWonApproval);
@@ -8229,7 +8259,7 @@ export default function App({onLogout,currentUser}){
         // Regular quote approval
         const newApproval={...q.approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(q.approval?.history||[]),evtQ]};
         await saveQuoteToSupabase({...q,approval:newApproval,chatterEntries:q.chatterEntries||[]},autoSpecs,autoNotes);
-        await sendDecisionEmail(decision.toUpperCase(),currentUser,queueComments,q.approval?.submittedBy||"");
+        // Event 2 (approved → ready to send) notification: pending from Russ.
         if(decision==="approved")await autoUnflag(id);
         // If this quote is currently open in the form, sync its state
         if(currentQuoteId&&String(currentQuoteId)===String(id)){
