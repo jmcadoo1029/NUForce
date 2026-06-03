@@ -56,6 +56,22 @@ const PQ_ROWS=[
 ];
 
 const money = n => "$"+Math.round(n).toLocaleString();
+
+// Turn an email address into a friendlier display string for notifications.
+// "jordanmcadoo@nulabs.com" -> "Jordan Mcadoo" (best-effort, not perfect).
+// Splits on common separators in the local part: dot, underscore, hyphen.
+// For all-lowercase no-separator locals like "jordanmcadoo" the result is
+// just title-cased ("Jordanmcadoo"). Acceptable for now — the alternative
+// is wiring a full employees-table name lookup, deferred until needed.
+const prettifyEmail = (email) => {
+  if (!email || typeof email !== "string") return "";
+  const local = email.split("@")[0] || email;
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  if (parts.length === 0) return email;
+  return parts
+    .map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+    .join(" ");
+};
 const r25 = n => Math.round(n/25)*25;
 const sf = (v,d=0) => { const n=parseFloat(v); return isNaN(n)?d:n; };
 const mwDisc=vs=>{if(vs<=4000)return 1000;if(vs<=5000)return 1250;if(vs<=7000)return 1500;if(vs<=9000)return 1750;return 2000;};
@@ -8159,8 +8175,21 @@ export default function App({onLogout,currentUser}){
     const newId=await saveQuoteToSupabase(q,autoSpecs,autoNotes);
     if(newId){setCurrentQuoteId(newId);showToast("Quote approved ✓","success");autoUnflag(newId);}
     else showToast("Save failed — check your connection","error",5000);
-    // Event 2 (approved → ready to send) notification: pending from Russ. Will
-    // add invokeFunction call here when his send-notification handler is ready.
+    // Event 2: notify the "send approved quotes" group that this is ready to send.
+    // Best-effort — failure here doesn't block the user-visible approval.
+    try {
+      await invokeFunction("send-notification", {
+        type: "nuforce_quote_approved",
+        data: {
+          opportunity:   qi.opp || "",
+          customer:      qi.account || "",
+          total:         money(displayTotal),
+          approverName:  prettifyEmail(currentUser),
+          submitterName: prettifyEmail(approval.submittedBy || ""),
+          linkUrl:       "https://nuforce.nulabs.com/#dashboard",
+        },
+      });
+    } catch(e) { console.warn("[NOTIFY] quote_approved failed:", e?.message||e); }
   };
 
   const handleReject=async()=>{
@@ -8259,8 +8288,26 @@ export default function App({onLogout,currentUser}){
         // Regular quote approval
         const newApproval={...q.approval,status:decision,decidedBy:currentUser,decidedAt:now,comments:queueComments,history:[...(q.approval?.history||[]),evtQ]};
         await saveQuoteToSupabase({...q,approval:newApproval,chatterEntries:q.chatterEntries||[]},autoSpecs,autoNotes);
-        // Event 2 (approved → ready to send) notification: pending from Russ.
-        if(decision==="approved")await autoUnflag(id);
+        if(decision==="approved"){
+          await autoUnflag(id);
+          // Event 2: notify the "send approved quotes" group. Same payload shape
+          // as handleApprove's call, but the quote data comes from `q` (the
+          // queue row), not the currently-loaded form. money() formats total
+          // from the stored q.total field.
+          try {
+            await invokeFunction("send-notification", {
+              type: "nuforce_quote_approved",
+              data: {
+                opportunity:   q.opp || "",
+                customer:      q.customer || "",
+                total:         money(q.total || 0),
+                approverName:  prettifyEmail(currentUser),
+                submitterName: prettifyEmail(q.approval?.submittedBy || ""),
+                linkUrl:       "https://nuforce.nulabs.com/#dashboard",
+              },
+            });
+          } catch(e) { console.warn("[NOTIFY] quote_approved (queue) failed:", e?.message||e); }
+        }
         // If this quote is currently open in the form, sync its state
         if(currentQuoteId&&String(currentQuoteId)===String(id)){
           const evtQL={event:decision,by:currentUser,at:now,comments:queueComments};
@@ -9031,6 +9078,24 @@ export default function App({onLogout,currentUser}){
         `✓ Project "${jobNum}" created in NUWorkspace (${result.task_count||0} tasks, ${result.expense_count||0} expenses)`,
         "success", 4500
       );
+      // Event 3: notify owners that a job has been opened. The trigger isn't
+      // the stage flip to "Closed Won" — it's this moment, when the work
+      // actually moves into Workspace as a real project. wonDate comes from
+      // wonInfo, which the user filled in on the Won Details modal before
+      // clicking Create Project; format is "M/D/YYYY" already.
+      try {
+        await invokeFunction("send-notification", {
+          type: "nuforce_quote_closed_won",
+          data: {
+            opportunity:  qi.opp || "",
+            customer:     qi.account || "",
+            total:        money(displayTotal),
+            wonDate:      wonInfo?.wonDate || "",
+            closedByName: prettifyEmail(currentUser),
+            linkUrl:      "https://nuforce.nulabs.com/#dashboard",
+          },
+        });
+      } catch(e) { console.warn("[NOTIFY] quote_closed_won (create project) failed:", e?.message||e); }
     } catch (err) {
       showToast(`Create Project failed: ${err.message || err}`,"error",6000);
     } finally {
@@ -9127,6 +9192,20 @@ export default function App({onLogout,currentUser}){
         `✓ Added to "${target.project_name}" (${result.tasks_added||0} tasks, ${result.expenses_added||0} expenses)`,
         "success", 4500
       );
+      // Event 3: same as Create Project — owners get the "job opened" notification.
+      try {
+        await invokeFunction("send-notification", {
+          type: "nuforce_quote_closed_won",
+          data: {
+            opportunity:  qi.opp || "",
+            customer:     qi.account || "",
+            total:        money(displayTotal),
+            wonDate:      wonInfo?.wonDate || "",
+            closedByName: prettifyEmail(currentUser),
+            linkUrl:      "https://nuforce.nulabs.com/#dashboard",
+          },
+        });
+      } catch(e) { console.warn("[NOTIFY] quote_closed_won (add to existing) failed:", e?.message||e); }
     } catch (err) {
       showToast(`Add to Existing failed: ${err.message || err}`,"error",6000);
     } finally {
