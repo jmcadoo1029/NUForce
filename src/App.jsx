@@ -9171,6 +9171,15 @@ export default function App({onLogout,currentUser}){
         source_quote_id: currentQuoteId,
         source_quote_number: qi.opp,
         project: { name: jobNum },
+        // Mirror handleCreateProject by sending project_info so Workspace can
+        // append this quote's number (and PO #) to the existing project's
+        // metadata. For append, we deliberately only send fields that make
+        // sense to add — quote_number and po_number — rather than overwriting
+        // the project's primary contact, description, status, etc.
+        project_info: {
+          po_number:    wonInfo.poNum || null,
+          quote_number: qi.opp || null,
+        },
         tasks: collectQuoteLineItems({
           pickerLines, summary, custom,
           quoteNumber: qi.opp, poNumber: wonInfo.poNum,
