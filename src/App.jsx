@@ -2209,37 +2209,43 @@ async function loadQuotesFromSupabase() {
 }
 
 async function loadPendingQuotes() {
-  // Fetch only metadata first (no data blob) — avoids full table scan timeout
-  const { data, error } = await supabase
-    .from("quotes")
-    .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at")
-    .eq("approval_status", "pending")
-    .order("updated_at", { ascending: false })
-    .limit(50);
-
-  const { data: wonData } = await supabase
-    .from("quotes")
-    .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at")
-    .eq("won_approval_status", "pending_won")
-    .order("updated_at", { ascending: false })
-    .limit(50);
+  // Bypass conversion: was three sequential supabase-js queries; same shape now
+  // via restFetch. Runs on app mount AND on every realtime row change, so
+  // a wedge here used to leave the approval queue widget in loading state
+  // indefinitely. The two metadata queries run in parallel; the blob fetch
+  // runs after we know the IDs.
+  const metaCols = "id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at";
+  let data = [], wonData = [];
+  try {
+    [data, wonData] = await Promise.all([
+      restFetch("GET", `quotes?select=${metaCols}&approval_status=eq.pending&order=updated_at.desc&limit=50`),
+      restFetch("GET", `quotes?select=${metaCols}&won_approval_status=eq.pending_won&order=updated_at.desc&limit=50`),
+    ]);
+    data = data || [];
+    wonData = wonData || [];
+  } catch (e) {
+    console.error("[PENDING] metadata load failed:", e?.message || e);
+    return {};
+  }
 
   // Now fetch the data blobs only for the actual pending IDs
-  const pendingIds = [...(data||[]), ...(wonData||[])].map(r=>r.id);
+  const pendingIds = [...data, ...wonData].map(r => r.id);
   let blobMap = {};
-  if(pendingIds.length > 0){
-    const { data: blobs } = await supabase
-      .from("quotes")
-      .select("id, data")
-      .in("id", pendingIds);
-    (blobs||[]).forEach(b => { blobMap[b.id] = b.data || {}; });
+  if (pendingIds.length > 0) {
+    try {
+      const idList = pendingIds.map(id => encodeURIComponent(id)).join(",");
+      const blobs = await restFetch("GET", `quotes?select=id,data&id=in.(${idList})`);
+      (blobs || []).forEach(b => { blobMap[b.id] = b.data || {}; });
+    } catch (e) {
+      console.warn("[PENDING] blob load failed (proceeding without blobs):", e?.message || e);
+      // Proceed with metadata-only — queue still shows rows, just without full quote data.
+    }
   }
 
   // Merge metadata rows to look like the old shape
   const mergeBlob = row => ({ ...row, data: blobMap[row.id] || {} });
-  const mergedData    = (data||[]).map(mergeBlob);
-  const mergedWonData = (wonData||[]).map(mergeBlob);
-  if (error) { console.error("Supabase pending load error:", error); return {}; }
+  const mergedData    = data.map(mergeBlob);
+  const mergedWonData = wonData.map(mergeBlob);
 
   const map = {};
   [...mergedData, ...mergedWonData].forEach(row => {
@@ -8268,11 +8274,16 @@ export default function App({onLogout,currentUser}){
   const pendingQuotes=[...pendingQuoteApprovals,...pendingWonApprovals];
 
   const handleQueueDecision=async(decision,idsToProcess)=>{
+    console.warn('[QUEUE-DIAG] handleQueueDecision called', {decision, idsToProcess, idsType:Array.isArray(idsToProcess)?'array':typeof idsToProcess, count:idsToProcess?.length});
+    console.warn('[QUEUE-DIAG] savedQuotes keys:', Object.keys(savedQuotes));
+    console.warn('[QUEUE-DIAG] savedQuotes count:', Object.keys(savedQuotes).length);
     const now=new Date().toISOString();
     for(const id of idsToProcess){
       const q=savedQuotes[id];
-      if(!q)continue;
+      console.warn('[QUEUE-DIAG] processing id:', id, 'idType:', typeof id, 'foundInSavedQuotes:', !!q, 'wonApprovalStatus:', q?.wonApproval?.status, 'approvalStatus:', q?.approval?.status);
+      if(!q){console.warn('[QUEUE-DIAG] SKIP — quote not found for id:', id);continue;}
       const isWon=q.wonApproval?.status==="pending_won";
+      console.warn('[QUEUE-DIAG] isWon branch:', isWon);
       const evtQ={event:decision,by:currentUser,at:now,comments:queueComments};
       if(isWon){
         // Closed Won approval — update wonApproval, use won_approved/won_rejected statuses
@@ -8318,8 +8329,10 @@ export default function App({onLogout,currentUser}){
         }
       }
     }
+    console.warn('[QUEUE-DIAG] loop complete, reloading pending');
     // Reload from Supabase to ensure UI is fully in sync (pending only — see comment in useEffect)
     const refreshed=await loadPendingQuotes();
+    console.warn('[QUEUE-DIAG] reloaded pending count:', Object.keys(refreshed).length);
     setSavedQuotes(refreshed);
     setQueueSelected(new Set());
     setQueueComments("");
