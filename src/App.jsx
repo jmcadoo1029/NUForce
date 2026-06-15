@@ -11034,7 +11034,7 @@ const STANDARD_TERMS = [
       setF('bold',9,RED); doc.text('GOVERNMENT SOURCE INSPECTION',ML+10,y+10); y+=26;
       setF('normal', 9, DARK);
       doc.text('If Government Source Inspection is required:', ML, y); y += 14;
-      [['Navy Nuclear','Michael Auchenbach -- michael.a.auchenbach.civ@mail.mil -- T: 908-387-9866  F: 908-387-8694'],
+      [['Navy Nuclear','Naseer Murray -- naseer.t.murray.civ@mail.mil'],
        ['Non-Nuclear','Tyson Rounsaville, QAR -- tyson.rounsaville.civ@mail.mil -- T: 973-891-3850  F: 973-446-4236'],
       ].forEach(([k,v]) => {
         checkY(18);
