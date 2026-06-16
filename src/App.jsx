@@ -11396,14 +11396,15 @@ const STANDARD_TERMS = [
                 </button>
                 {/* Sent history icon — opens a modal listing every send event for this quote */}
                 <button onClick={async()=>{
-                    const {data,error}=await supabase.from("follow_ups")
-                      .select("id, sent_at, sent_by")
-                      .eq("quote_id", currentQuoteId)
-                      .neq("sent_by","salesforce_import")
-                      .order("sent_at",{ascending:false});
-                    if(error){showToast("Error loading sent history","error",4000);return;}
-                    setSentHistory(data||[]);
-                    setShowSentHistory(true);
+                    try {
+                      const data = await restFetch("GET",
+                        `follow_ups?select=id,sent_at,sent_by&quote_id=eq.${encodeURIComponent(currentQuoteId)}&sent_by=neq.salesforce_import&order=sent_at.desc`);
+                      setSentHistory(data||[]);
+                      setShowSentHistory(true);
+                    } catch(e) {
+                      console.warn("[SENT-HISTORY] failed:", e?.message||e);
+                      showToast("Error loading sent history","error",4000);
+                    }
                   }}
                   title="View sent history"
                   style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",
