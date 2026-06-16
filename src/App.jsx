@@ -3826,19 +3826,23 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     clearTimeout(acctTimer.current);
     if(!acctSearch.trim()){setAcctResults([]);setAcctOpen(false);return;}
     acctTimer.current=setTimeout(async()=>{
-      const {data:rows}=await supabase
-        .from("quotes")
-        .select("customer")
-        .ilike("customer",`%${acctSearch.trim()}%`)
-        .limit(200);
-      // Deduplicate
-      const seen=new Set();
-      const unique=(rows||[]).map(r=>r.customer).filter(n=>{
-        if(!n||seen.has(n))return false;
-        seen.add(n);return true;
-      }).sort();
-      setAcctResults(unique);
-      setAcctOpen(unique.length>0);
+      const t = acctSearch.trim().toLowerCase();
+      try {
+        // Quotes the term so commas/parens in account names don't break the ilike pattern.
+        const path = `quotes?select=customer&customer=ilike.${encodeURIComponent(`*${t}*`)}&limit=200`;
+        const rows = await restFetch("GET", path);
+        const seen = new Set();
+        const unique = (rows||[]).map(r=>r.customer).filter(n=>{
+          if(!n || seen.has(n)) return false;
+          seen.add(n); return true;
+        }).sort();
+        setAcctResults(unique);
+        setAcctOpen(unique.length>0);
+      } catch(e) {
+        console.warn("[ACCT-LOOKUP] failed:", e?.message||e);
+        setAcctResults([]);
+        setAcctOpen(false);
+      }
     },250);
     return()=>clearTimeout(acctTimer.current);
   },[acctSearch]);
@@ -4270,16 +4274,20 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     const prevEnd   = new Date(yr, mon + 1, 1).toISOString();
     const prevLabel = new Date(yr, mon, 1).toLocaleString("en-US",{month:"long",year:"numeric"});
 
-    const [
-      {data:createdRaw},
-      {data:wonRaw},
-    ] = await Promise.all([
-      supabase.from("quotes").select("id, opportunity, customer, total, data, source")
-        .gte("created_at", prevStart).lt("created_at", prevEnd),
-      supabase.from("quotes").select("id, opportunity, customer, total, won_date, data")
-        .eq("stage","Closed Won")
-        .gte("won_date", prevStart.slice(0,10)).lt("won_date", prevEnd.slice(0,10)),
-    ]);
+    let createdRaw = [], wonRaw = [];
+    try {
+      [createdRaw, wonRaw] = await Promise.all([
+        restFetch("GET",
+          `quotes?select=id,opportunity,customer,total,data,source&created_at=gte.${encodeURIComponent(prevStart)}&created_at=lt.${encodeURIComponent(prevEnd)}`),
+        restFetch("GET",
+          `quotes?select=id,opportunity,customer,total,won_date,data&stage=eq.Closed%20Won&won_date=gte.${encodeURIComponent(prevStart.slice(0,10))}&won_date=lt.${encodeURIComponent(prevEnd.slice(0,10))}`),
+      ]);
+    } catch(e) {
+      console.warn("[PREV-MONTH] failed:", e?.message||e);
+      setPrevMonthData(null);
+      setPrevMonthLoading(false);
+      return;
+    }
 
     const created = createdRaw || [];
     const won     = (wonRaw || []).map(q=>({...q, type:q.data?.qi?.type||"New Business", total:q.total||0}));
@@ -4345,23 +4353,26 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     // Fetch recently approved — filter by updated_at broadly, then narrow by decidedAt client-side
     // Use a wider window (3x) to catch quotes approved recently but saved earlier
     const wideSince = new Date(Date.now() - Math.max(days,30)*3*24*60*60*1000).toISOString();
-    const [{ data: approvedData }, { data: wonData }] = await Promise.all([
-      supabase.from("quotes")
-        .select("id, opportunity, customer, total, updated_at, approval_status, won_approval_status, data")
-        .eq("approval_status", "approved")
-        .gte("updated_at", wideSince)
-        .order("updated_at", { ascending: false })
-        .limit(500),
-      supabase.from("quotes")
-        .select("id, opportunity, customer, total, updated_at, approval_status, won_approval_status, data")
-        .eq("won_approval_status", "won_approved")
-        .gte("updated_at", wideSince)
-        .order("updated_at", { ascending: false })
-        .limit(500),
-    ]);
+    const cols = "id,opportunity,customer,total,updated_at,approval_status,won_approval_status,data";
+    let approvedData = [], wonData = [];
+    try {
+      [approvedData, wonData] = await Promise.all([
+        restFetch("GET",
+          `quotes?select=${cols}&approval_status=eq.approved&updated_at=gte.${encodeURIComponent(wideSince)}&order=updated_at.desc&limit=500`),
+        restFetch("GET",
+          `quotes?select=${cols}&won_approval_status=eq.won_approved&updated_at=gte.${encodeURIComponent(wideSince)}&order=updated_at.desc&limit=500`),
+      ]);
+      approvedData = approvedData || [];
+      wonData = wonData || [];
+    } catch(e) {
+      console.warn("[RECENT-APPROVED] failed:", e?.message||e);
+      setRecentApproved([]);
+      setRecentApprovedLoading(false);
+      return;
+    }
     // Merge, deduplicate, then filter by actual decidedAt within the requested window
     const seen = new Set();
-    const merged = [...(approvedData||[]), ...(wonData||[])]
+    const merged = [...approvedData, ...wonData]
       .filter(q => { if(seen.has(q.id))return false; seen.add(q.id); return true; });
     const rows = merged.map(q=>({
       id: q.id,
@@ -4978,21 +4989,25 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                                   <div key={q.id}
                                     onClick={async()=>{
                                       if(!onLoadQuote)return;
-                                      const {data:row}=await supabase.from("quotes")
-                                        .select("id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source")
-                                        .eq("id",q.id).single();
-                                      if(row){
-                                        const blob=row.data||{};
-                                        onLoadQuote({...blob,id:row.id,
-                                          opp:row.opportunity||blob.opp,
-                                          customer:row.customer||blob.customer,
-                                          rfq:row.rfq||blob.rfq,
-                                          total:row.total??blob.total,
-                                          savedAt:row.updated_at,
-                                          source:row.source||"nuforce",
-                                          approval:{...(blob.approval||{}),status:row.approval_status||"none"},
-                                          wonApproval:{...(blob.wonApproval||{}),status:row.won_approval_status||"none"},
-                                        });
+                                      try {
+                                        const rows = await restFetch("GET",
+                                          `quotes?select=id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source&id=eq.${encodeURIComponent(q.id)}&limit=1`);
+                                        const row = (rows||[])[0];
+                                        if(row){
+                                          const blob=row.data||{};
+                                          onLoadQuote({...blob,id:row.id,
+                                            opp:row.opportunity||blob.opp,
+                                            customer:row.customer||blob.customer,
+                                            rfq:row.rfq||blob.rfq,
+                                            total:row.total??blob.total,
+                                            savedAt:row.updated_at,
+                                            source:row.source||"nuforce",
+                                            approval:{...(blob.approval||{}),status:row.approval_status||"none"},
+                                            wonApproval:{...(blob.wonApproval||{}),status:row.won_approval_status||"none"},
+                                          });
+                                        }
+                                      } catch(e) {
+                                        console.warn("[POPOVER-LOAD] failed:", e?.message||e);
                                       }
                                       setShowPrevMonth(false);
                                       setPmWonHover(null);
