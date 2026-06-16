@@ -7488,6 +7488,26 @@ function ProductPicker({onAdd, onClose, setup, ti, vibs, hfvs, summary}){
   const [selected, setSelected] = useState({}); // {productKey: qty}
   const [thDur, setThDur] = useState("0 to 1 Day");
   const [sortMode, setSortMode] = useState("code"); // "code" | "name"
+  // Custom-line-item slot. Mirrors the Custom Line Items section's PCODE_OPTS
+  // and field shape (pcode/label/price). When `on` is true, handleAdd pushes
+  // one line built from these fields, then resets.
+  const [customItem, setCustomItem] = useState({on:false, pcode:"94", label:"", price:""});
+  // Same product-code list the Custom Line Items section uses (CustomForm).
+  // Kept identical here so quoter sees the same options in both spots.
+  const PCODE_OPTS=[
+    {code:"11",label:"Noise"},{code:"12",label:"AB/SB Noise"},
+    {code:"32",label:"High Speed Video"},{code:"33",label:"Instrumentation"},
+    {code:"41",label:"Report/CoC"},{code:"42",label:"Procedure"},
+    {code:"43",label:"EMI Report"},{code:"43",label:"DC Mag Report"},{code:"43",label:"PQ Report"},
+    {code:"44",label:"EMI Procedure"},{code:"44",label:"DC Mag Procedure"},{code:"44",label:"PQ Procedure"},
+    {code:"51",label:"EMI"},{code:"51",label:"Power Quality"},{code:"51",label:"DC Magnetics"},{code:"52",label:"HFV/Shock Other"},
+    {code:"53",label:"T&H"},{code:"54",label:"ESS"},{code:"55",label:"Salt Fog"},
+    {code:"56",label:"Altitude"},{code:"57",label:"Acceleration"},{code:"58",label:"Drip/Sub/Spray"},
+    {code:"59",label:"Insulation Resistance"},
+    {code:"91",label:"MW Shock"},{code:"92",label:"LW Shock"},{code:"93",label:"Inclination"},
+    {code:"94",label:"Vibration"},{code:"95",label:"Hydrostatic"},{code:"96",label:"Tear Down"},
+    {code:"98",label:"Subcontract"},
+  ];
 
 
   // Smart pricing helpers
@@ -7650,11 +7670,23 @@ function ProductPicker({onAdd, onClose, setup, ti, vibs, hfvs, summary}){
         lines.push({label:prod.label,code:prod.code,price:prod.price,desc:""});
       }
     });
+    // Custom one-off line item. Skip silently if both label and price are empty
+    // (same convention as collectQuoteLineItems for picker/summary/custom).
+    if (customItem.on) {
+      const lbl = customItem.label.trim();
+      const prc = parseFloat(customItem.price) || 0;
+      if (lbl || prc) {
+        lines.push({ label: lbl || "Custom Item", code: customItem.pcode || "94", price: prc, desc: "" });
+      }
+    }
     if(lines.length>0) onAdd(lines);
     onClose();
   };
 
-  const selCount = Object.keys(selected).length;
+  // selCount drives the footer enable/disable state. Counts the toggled custom
+  // item too, regardless of whether its fields are filled in — that's a soft
+  // signal "you're going to add something custom"; handleAdd filters empty.
+  const selCount = Object.keys(selected).length + (customItem.on ? 1 : 0);
 
   return (
     <div style={{position:"fixed",inset:0,zIndex:2000,display:"flex",alignItems:"flex-start",justifyContent:"center",background:"rgba(0,0,0,0.4)",overflowY:"auto",padding:"20px 0"}}>
@@ -7724,6 +7756,52 @@ function ProductPicker({onAdd, onClose, setup, ti, vibs, hfvs, summary}){
                 </div>
               );
             })}
+          </div>
+
+          {/* Custom line item — one-off slot for a quoter-defined entry.
+              Visually separated from the fixed product list because it
+              behaves differently (user types code/label/price). */}
+          <div style={{marginTop:14,paddingTop:10,borderTop:"1px dashed #d0d7de"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:7,
+              background:customItem.on?"#eaf2ff":"#f8f9fb",
+              border:"1px solid "+(customItem.on?"#1a5276":"#e8ecf0"),
+              cursor:"pointer",transition:"all 0.1s"}}
+              onClick={()=>setCustomItem(prev=>({...prev,on:!prev.on}))}>
+              <div style={{width:16,height:16,borderRadius:4,
+                border:"2px solid "+(customItem.on?"#1a5276":"#d0d7de"),
+                background:customItem.on?"#1a5276":"#fff",
+                display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {customItem.on&&<span style={{color:"#fff",fontSize:10,lineHeight:1}}>✓</span>}
+              </div>
+              <span style={{fontSize:10,color:"#9aa5b1",minWidth:22,fontFamily:"monospace"}}>—</span>
+              <span style={{flex:1,fontSize:12,color:"#1a2332",fontWeight:customItem.on?600:400}}>
+                Custom Line Item
+              </span>
+            </div>
+            {customItem.on&&(
+              <div style={{display:"flex",alignItems:"center",gap:6,padding:"8px 8px 4px 32px"}}
+                onClick={e=>e.stopPropagation()}>
+                <select value={customItem.pcode}
+                  onChange={e=>setCustomItem(prev=>({...prev,pcode:e.target.value}))}
+                  style={{fontSize:10,padding:"3px 5px",borderRadius:5,border:"1px solid #1a5276",
+                    background:"#fff",color:"#1a2332",width:170}}>
+                  {PCODE_OPTS.map(p=>(
+                    <option key={p.code+"-"+p.label} value={p.code}>{p.code} – {p.label}</option>
+                  ))}
+                </select>
+                <input type="text" value={customItem.label}
+                  onChange={e=>setCustomItem(prev=>({...prev,label:e.target.value}))}
+                  placeholder="Description (e.g. Specialized test setup)"
+                  style={{flex:1,fontSize:11,padding:"3px 7px",borderRadius:5,
+                    border:"1px solid #1a5276",background:"#fff",color:"#1a2332"}}/>
+                <span style={{fontSize:11,color:"#6b7a8d"}}>$</span>
+                <input type="text" value={customItem.price}
+                  onChange={e=>setCustomItem(prev=>({...prev,price:e.target.value}))}
+                  placeholder="0"
+                  style={{width:70,fontSize:11,padding:"3px 7px",borderRadius:5,
+                    border:"1px solid #1a5276",background:"#fff",color:"#1a2332",textAlign:"right"}}/>
+              </div>
+            )}
           </div>
 
         </div>
