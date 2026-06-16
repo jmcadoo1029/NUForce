@@ -4175,7 +4175,8 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     const {data,error} = await supabase
       .from("follow_ups")
       .select("*, quotes(id, opportunity, revision, customer, data)")
-      .eq("followed_up", false);
+      .eq("followed_up", false)
+      .or("voided.is.null,voided.eq.false");
     if(!error){
       const rows = data || [];
       const baseOf = (opp) => {
@@ -4727,7 +4728,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       if(candidateIds.length > 0){
         const idList = candidateIds.map(id => encodeURIComponent(id)).join(",");
         const fuRows = await restFetch("GET",
-          `follow_ups?select=quote_id,sent_at&quote_id=in.(${idList})&sent_by=neq.manually_dismissed`);
+          `follow_ups?select=quote_id,sent_at&quote_id=in.(${idList})&sent_by=neq.manually_dismissed&or=(voided.is.null,voided.eq.false)`);
         (fuRows || []).forEach(fu => {
           const prev = sendMaxByQuoteId[fu.quote_id];
           if(!prev || new Date(fu.sent_at) > new Date(prev)) sendMaxByQuoteId[fu.quote_id] = fu.sent_at;
@@ -7913,7 +7914,11 @@ export default function App({onLogout,currentUser}){
   const [quoteSentAt,setQuoteSentAt]=useState(null); // date string if this quote has been marked sent
   const [showSendConfirm,setShowSendConfirm]=useState(false);   // confirmation popup before marking sent
   const [showSentHistory,setShowSentHistory]=useState(false);   // modal listing every send event for this quote
-  const [sentHistory,setSentHistory]=useState([]);              // rows: {sent_at, sent_by, id}
+  const [sentHistory,setSentHistory]=useState([]);              // rows: {sent_at, sent_by, id, voided}
+  // Void confirmation: when approver clicks Void, this holds the row id awaiting
+  // confirmation. Null means no confirmation pending. Cleared on confirm/cancel.
+  const [voidConfirmId,setVoidConfirmId]=useState(null);
+  const [voidBusy,setVoidBusy]=useState(false);
   const [sentBusy,setSentBusy]=useState(false);                 // disables the Send button during the insert
   const [showFollowUpPopover,setShowFollowUpPopover]=useState(false);
   const [showProductPicker,setShowProductPicker]=useState(false);
@@ -8099,6 +8104,7 @@ export default function App({onLogout,currentUser}){
         .select("sent_at,sent_by")
         .eq("quote_id",currentQuoteId)
         .neq("sent_by","salesforce_import")
+        .or("voided.is.null,voided.eq.false")
         .order("sent_at",{ascending:false})
         .limit(1)
         .maybeSingle()
@@ -11398,7 +11404,7 @@ const STANDARD_TERMS = [
                 <button onClick={async()=>{
                     try {
                       const data = await restFetch("GET",
-                        `follow_ups?select=id,sent_at,sent_by&quote_id=eq.${encodeURIComponent(currentQuoteId)}&sent_by=neq.salesforce_import&order=sent_at.desc`);
+                        `follow_ups?select=id,sent_at,sent_by,voided&quote_id=eq.${encodeURIComponent(currentQuoteId)}&sent_by=neq.salesforce_import&order=sent_at.desc`);
                       setSentHistory(data||[]);
                       setShowSentHistory(true);
                     } catch(e) {
@@ -11490,24 +11496,135 @@ const STANDARD_TERMS = [
                     </div>
                   ):(
                     <div>
-                      {sentHistory.map(ev=>(
-                        <div key={ev.id} style={{display:"flex",alignItems:"center",gap:12,
-                          padding:"10px 0",borderBottom:"1px solid #f0f2f5"}}>
-                          <div style={{fontSize:12,color:"#1a2332",minWidth:140,fontWeight:600}}>
-                            {new Date(ev.sent_at).toLocaleDateString("en-US",
-                              {month:"short",day:"numeric",year:"numeric"})}
-                            <span style={{color:"#9aa5b1",fontWeight:400,marginLeft:6}}>
-                              {new Date(ev.sent_at).toLocaleTimeString("en-US",
-                                {hour:"numeric",minute:"2-digit"})}
-                            </span>
+                      {sentHistory.map(ev=>{
+                        const isVoided = !!ev.voided;
+                        const dateColor = isVoided ? "#9aa5b1" : "#1a2332";
+                        const byColor = isVoided ? "#b0b7c0" : "#6b7a8d";
+                        return (
+                          <div key={ev.id} style={{display:"flex",alignItems:"center",gap:12,
+                            padding:"10px 0",borderBottom:"1px solid #f0f2f5"}}>
+                            <div style={{fontSize:12,color:dateColor,minWidth:140,fontWeight:600,
+                              textDecoration:isVoided?"line-through":"none"}}>
+                              {new Date(ev.sent_at).toLocaleDateString("en-US",
+                                {month:"short",day:"numeric",year:"numeric"})}
+                              <span style={{color:"#9aa5b1",fontWeight:400,marginLeft:6}}>
+                                {new Date(ev.sent_at).toLocaleTimeString("en-US",
+                                  {hour:"numeric",minute:"2-digit"})}
+                              </span>
+                            </div>
+                            <div style={{flex:1,fontSize:12,color:byColor,
+                              textDecoration:isVoided?"line-through":"none"}}>
+                              by {ev.sent_by||"(unknown)"}
+                            </div>
+                            {isVoided && (
+                              <div style={{fontSize:9,fontWeight:700,color:"#b91c1c",
+                                background:"#fef2f2",border:"1px solid #fecaca",borderRadius:4,
+                                padding:"2px 6px",letterSpacing:.5}}>
+                                VOIDED
+                              </div>
+                            )}
+                            {isApprover && (
+                              isVoided ? (
+                                <button onClick={async()=>{
+                                    setVoidBusy(true);
+                                    try {
+                                      await restFetch("PATCH",
+                                        `follow_ups?id=eq.${encodeURIComponent(ev.id)}`,
+                                        {body:{voided:false}});
+                                      const newHistory = sentHistory.map(r=>
+                                        r.id===ev.id ? {...r,voided:false} : r);
+                                      setSentHistory(newHistory);
+                                      // Recompute "last sent" — restoring may bring a
+                                      // newer date back into play.
+                                      const latestNonVoided = newHistory.find(r => !r.voided);
+                                      setQuoteSentAt(latestNonVoided ? latestNonVoided.sent_at : null);
+                                    } catch(e) {
+                                      console.warn("[VOID] unvoid failed:", e?.message||e);
+                                      showToast("Failed to restore","error",4000);
+                                    }
+                                    setVoidBusy(false);
+                                  }}
+                                  disabled={voidBusy}
+                                  style={{background:"none",border:"1px solid #d0d7de",
+                                    borderRadius:5,padding:"3px 8px",fontSize:10,
+                                    color:"#6b7a8d",cursor:voidBusy?"default":"pointer",
+                                    fontWeight:600}}>
+                                  Restore
+                                </button>
+                              ) : (
+                                <button onClick={()=>setVoidConfirmId(ev.id)}
+                                  disabled={voidBusy}
+                                  style={{background:"none",border:"1px solid #d0d7de",
+                                    borderRadius:5,padding:"3px 8px",fontSize:10,
+                                    color:"#b91c1c",cursor:voidBusy?"default":"pointer",
+                                    fontWeight:600}}>
+                                  Void
+                                </button>
+                              )
+                            )}
                           </div>
-                          <div style={{flex:1,fontSize:12,color:"#6b7a8d"}}>
-                            by {ev.sent_by||"(unknown)"}
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* ── Void confirmation popup ── */}
+            {voidConfirmId && (
+              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1100,
+                display:"flex",alignItems:"center",justifyContent:"center",padding:20}}
+                onClick={()=>{ if(!voidBusy) setVoidConfirmId(null); }}>
+                <div onClick={e=>e.stopPropagation()}
+                  style={{background:"#fff",borderRadius:12,padding:24,maxWidth:420,width:"100%",
+                    boxShadow:"0 10px 40px rgba(0,0,0,0.3)"}}>
+                  <div style={{fontSize:14,fontWeight:700,color:"#1a2332",marginBottom:8}}>
+                    Void this send event?
+                  </div>
+                  <div style={{fontSize:13,color:"#6b7a8d",marginBottom:20,lineHeight:1.5}}>
+                    Marks this send as voided. It stays in the history (struck-through) but no
+                    longer triggers follow-ups or counts toward whether this quote has been sent.
+                    You can restore it later if needed.
+                  </div>
+                  <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+                    <button onClick={()=>setVoidConfirmId(null)} disabled={voidBusy}
+                      style={{background:"#fff",border:"1px solid #d0d7de",borderRadius:6,
+                        padding:"7px 16px",fontSize:12,cursor:voidBusy?"default":"pointer",
+                        color:"#6b7a8d"}}>
+                      Cancel
+                    </button>
+                    <button onClick={async()=>{
+                        const targetId = voidConfirmId;
+                        setVoidBusy(true);
+                        try {
+                          await restFetch("PATCH",
+                            `follow_ups?id=eq.${encodeURIComponent(targetId)}`,
+                            {body:{voided:true}});
+                          // Update local history state
+                          const newHistory = sentHistory.map(r=>
+                            r.id===targetId ? {...r,voided:true} : r);
+                          setSentHistory(newHistory);
+                          // Recompute the "last sent" indicator. If there's still a
+                          // non-voided send, use its date; otherwise clear the badge.
+                          // sentHistory is sorted desc by sent_at, so first non-voided
+                          // entry is the new latest send.
+                          const latestNonVoided = newHistory.find(r => !r.voided);
+                          setQuoteSentAt(latestNonVoided ? latestNonVoided.sent_at : null);
+                          showToast("Send event voided","info",2500);
+                        } catch(e) {
+                          console.warn("[VOID] failed:", e?.message||e);
+                          showToast("Void failed — try again","error",4000);
+                        }
+                        setVoidBusy(false);
+                        setVoidConfirmId(null);
+                      }} disabled={voidBusy}
+                      style={{background:"#b91c1c",border:"none",borderRadius:6,
+                        padding:"7px 16px",fontSize:12,fontWeight:600,
+                        cursor:voidBusy?"default":"pointer",color:"#fff"}}>
+                      {voidBusy?"Voiding…":"Void"}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
