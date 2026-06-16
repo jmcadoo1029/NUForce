@@ -2662,20 +2662,26 @@ function QuoteSearch({onLoad}){
   };
 
   const doSearch=async(term,limit=50)=>{
-    let query=supabase
-      .from("quotes")
-      .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data")
-      .order("opportunity",{ascending:false})
-      .limit(limit);
+    // Bypass conversion. Same shape as before — pulls metadata+blob, ordered by
+    // opportunity desc. Wrapping the term in CSV-style quotes lets PostgREST's
+    // or() filter handle commas and parens in the user's text.
+    const selectCols = "id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data";
+    let path = `quotes?select=${selectCols}&order=opportunity.desc&limit=${limit}`;
     if(term.trim()){
-      const t=term.trim().toLowerCase();
-      query=query.or(
-        `opportunity.ilike.%${t}%,customer.ilike.%${t}%,rfq.ilike.%${t}%,revision.ilike.%${t}%,stage.ilike.%${t}%,search_text.ilike.%${t}%`
-      );
+      const t = term.trim().toLowerCase();
+      // Pattern: opportunity.ilike."*foo*" — quotes protect commas/parens in t.
+      // Inner double-quotes don't need escaping inside ilike per PostgREST.
+      const searchCols = ["opportunity","customer","rfq","revision","stage","search_text"];
+      const orExpr = searchCols.map(c=>`${c}.ilike."*${t}*"`).join(",");
+      path += `&or=(${encodeURIComponent(orExpr)})`;
     }
-    const {data,error}=await query;
-    if(error||!data)return[];
-    return data.map(buildRow);
+    try {
+      const data = await restFetch("GET", path);
+      return (data||[]).map(buildRow);
+    } catch(e) {
+      console.warn("[SEARCH] failed:", e?.message||e);
+      return [];
+    }
   };
 
   // Dropdown search (debounced, 50 results)
@@ -2705,23 +2711,28 @@ function QuoteSearch({onLoad}){
     setOpen(false);
     setShowModal(true);
     setModalLoading(true);
-    // Fetch all matching results (no limit)
-    let allResults=[], from=0, batchSize=500;
-    while(true){
-      let query=supabase
-        .from("quotes")
-        .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data")
-        .order("opportunity",{ascending:false})
-        .range(from, from+batchSize-1);
-      if(search.trim()){
-        const t=search.trim().toLowerCase();
-        query=query.or(`opportunity.ilike.%${t}%,customer.ilike.%${t}%,rfq.ilike.%${t}%,revision.ilike.%${t}%,stage.ilike.%${t}%,search_text.ilike.%${t}%`);
+    // Fetch all matching results via paginated restFetch.
+    // Same query shape as doSearch but with offset-based pagination.
+    const selectCols = "id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data";
+    let orPart = "";
+    if(search.trim()){
+      const t = search.trim().toLowerCase();
+      const searchCols = ["opportunity","customer","rfq","revision","stage","search_text"];
+      const orExpr = searchCols.map(c=>`${c}.ilike."*${t}*"`).join(",");
+      orPart = `&or=(${encodeURIComponent(orExpr)})`;
+    }
+    let allResults=[], offset=0, batchSize=500;
+    try {
+      while(true){
+        const path = `quotes?select=${selectCols}&order=opportunity.desc${orPart}&limit=${batchSize}&offset=${offset}`;
+        const data = await restFetch("GET", path);
+        if(!data || data.length===0) break;
+        allResults = allResults.concat(data.map(buildRow));
+        if(data.length < batchSize) break;
+        offset += batchSize;
       }
-      const {data,error}=await query;
-      if(error||!data||data.length===0)break;
-      allResults=allResults.concat(data.map(buildRow));
-      if(data.length<batchSize)break;
-      from+=batchSize;
+    } catch(e) {
+      console.warn("[SEARCH-ALL] failed:", e?.message||e);
     }
     setModalResults(allResults);
     setModalLoading(false);
