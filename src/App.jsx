@@ -8718,6 +8718,22 @@ export default function App({onLogout,currentUser}){
   const prevAutoSpecs=useRef("");
   const insertedAutoSpecs=useRef(""); // tracks what we actually put into tiSpecs
   const userEditedSpecs=useRef(false); // true once user manually edits tiSpecs
+
+  // Refs + autosize logic for the spec/notes textareas. Each grows to fit its
+  // content up to a 15-line visible cap; beyond that, normal scrollbar takes
+  // over. Recalculated whenever the textarea's value changes.
+  const tiSpecsRef = useRef(null);
+  const tiNotesRef = useRef(null);
+  const AUTOSIZE_MAX_PX = 280; // ~15 lines at lineHeight 1.6 * fontSize 11 + padding
+  const fitTextarea = (el) => {
+    if (!el) return;
+    // Reset to 'auto' first so scrollHeight reflects actual content, not stale height
+    el.style.height = "auto";
+    const next = Math.min(el.scrollHeight, AUTOSIZE_MAX_PX);
+    el.style.height = next + "px";
+  };
+  useEffect(()=>{ fitTextarea(tiSpecsRef.current); }, [ti.tiSpecs]);
+  useEffect(()=>{ fitTextarea(tiNotesRef.current); }, [ti.tiNotes]);
   useEffect(()=>{
     const prev=prevAutoSpecs.current;
     prevAutoSpecs.current=autoSpecs;
@@ -12609,11 +12625,11 @@ const STANDARD_TERMS = [
                 <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2,marginBottom:3}}>SPECIFICATIONS</div>
                 <div style={{fontSize:9,color:C.dim,marginBottom:4}}>Auto-generated from enabled tests. Shown on quote PDF. Edit to override.</div>
                 <textarea
+                  ref={tiSpecsRef}
                   value={ti.tiSpecs||""}
                   onChange={e=>{userEditedSpecs.current=true;setTi({...ti,tiSpecs:e.target.value})}}
                   placeholder="Enable test sections to auto-generate scope text, or type here..."
-                  rows={5}
-                  style={{...inp,width:"100%",resize:"vertical",fontSize:11,lineHeight:1.6}}/>
+                  style={{...inp,width:"100%",fontSize:11,lineHeight:1.6,minHeight:88,overflow:"auto"}}/>
                 {userEditedSpecs.current&&autoSpecs&&(
                   <button onClick={()=>{userEditedSpecs.current=false;setTi({...ti,tiSpecs:""});insertedAutoSpecs.current="";}}
                     style={{fontSize:9,color:C.dim,background:"none",border:"none",cursor:"pointer",padding:"2px 0",marginTop:2,display:"block"}}>
@@ -12629,11 +12645,11 @@ const STANDARD_TERMS = [
                 <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2,marginBottom:3}}>NOTES</div>
                 <div style={{fontSize:9,color:C.dim,marginBottom:4}}>Customer-facing notes. Shown on quote PDF. Auto-populates based on selected tests.</div>
                 <textarea
+                  ref={tiNotesRef}
                   value={ti.tiNotes||""}
                   onChange={e=>{userEditedNotes.current=true;setTi({...ti,tiNotes:e.target.value})}}
                   placeholder="Notes will auto-populate based on selected tests..."
-                  rows={5}
-                  style={{...inp,width:"100%",resize:"vertical",fontSize:11,lineHeight:1.6}}/>
+                  style={{...inp,width:"100%",fontSize:11,lineHeight:1.6,minHeight:88,overflow:"auto"}}/>
                 {ti.tiNotes&&ti.tiNotes!==autoNotes&&(
                   <button onClick={()=>{userEditedNotes.current=false;setTi({...ti,tiNotes:""});insertedAutoNotes.current="";}}
                     style={{fontSize:9,color:C.dim,background:"none",border:"none",cursor:"pointer",padding:"2px 0",marginTop:2}}>
