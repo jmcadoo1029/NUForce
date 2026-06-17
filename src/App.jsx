@@ -11033,9 +11033,20 @@ const STANDARD_TERMS = [
       // Use unifiedOrder if available — matches sidebar exactly
       let allRows;
       if(unifiedOrder&&unifiedOrder.length===(autoRowPool.length+pickerRowPool.length)){
+        // Consume rows as matched (see sidebar comment) so duplicate-labeled
+        // picker entries can't resolve to the same source row twice.
+        const claimedAuto=new Set();
+        const claimedPicker=new Set();
         allRows=unifiedOrder.map(u=>{
-          if(u.type==='auto') return autoRowPool.find(r=>r.origIdx===u.origIdx);
-          else return pickerRowPool.find(r=>(r.pl.id||r.pl.label)===(u.id||u.label));
+          if(u.type==='auto'){
+            const r=autoRowPool.find(r=>r.origIdx===u.origIdx && !claimedAuto.has(r.origIdx));
+            if(r) claimedAuto.add(r.origIdx);
+            return r;
+          }
+          const r=pickerRowPool.find(r=>
+            (r.pl.id||r.pl.label)===(u.id||u.label) && !claimedPicker.has(r.pli));
+          if(r) claimedPicker.add(r.pli);
+          return r;
         }).filter(Boolean);
         if(allRows.length!==autoRowPool.length+pickerRowPool.length)
           allRows=null; // fallback if any mismatch
@@ -12692,11 +12703,26 @@ const STANDARD_TERMS = [
                     // Build allRows: use unifiedOrder if set, else default auto-then-picker
                     let allRows;
                     if(unifiedOrder&&unifiedOrder.length===(autoRows.length+pickerRows.length)){
+                      // Consume rows as they're matched so duplicates can't resolve to the
+                      // same source row twice. This prevented the "edit-one-syncs-the-other"
+                      // bug when an old unifiedOrder (with label-only identity for legacy
+                      // entries) tried to claim five picker lines all sharing one label.
+                      const claimedAuto=new Set();
+                      const claimedPicker=new Set();
                       allRows=unifiedOrder.map(u=>{
-                        if(u.type==='auto') return autoRows.find(r=>r.origIdx===u.origIdx);
-                        else return pickerRows.find(r=>(r.pl.id||r.pl.label)===(u.id||u.label));
+                        if(u.type==='auto'){
+                          const r=autoRows.find(r=>r.origIdx===u.origIdx && !claimedAuto.has(r.origIdx));
+                          if(r) claimedAuto.add(r.origIdx);
+                          return r;
+                        }
+                        const r=pickerRows.find(r=>
+                          (r.pl.id||r.pl.label)===(u.id||u.label) && !claimedPicker.has(r.pli));
+                        if(r) claimedPicker.add(r.pli);
+                        return r;
                       }).filter(Boolean);
-                      // Fall back if any row not found (e.g. line was deleted)
+                      // Fall back if any row not found (e.g. line was deleted) OR if the
+                      // unifiedOrder couldn't claim all the source rows (stale order from
+                      // a quote whose lines were re-added under different ids).
                       if(allRows.length!==autoRows.length+pickerRows.length)
                         allRows=[...autoRows,...pickerRows];
                     } else {
