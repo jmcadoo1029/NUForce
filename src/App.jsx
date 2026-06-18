@@ -8274,11 +8274,10 @@ export default function App({onLogout,currentUser}){
   const autoUnflag = async (qid) => {
     if(!qid) return;
     try {
-      await supabase.from("quote_flags")
-        .update({resolved:true,resolved_by:"auto_approval",resolved_at:new Date().toISOString()})
-        .eq("quote_id",qid)
-        .eq("resolved",false);
-    } catch(e){ console.warn("Auto-unflag failed:",e); }
+      await restFetch("PATCH",
+        `quote_flags?quote_id=eq.${encodeURIComponent(qid)}&resolved=eq.false`,
+        {body:{resolved:true,resolved_by:"auto_approval",resolved_at:new Date().toISOString()}});
+    } catch(e){ console.warn("[AUTO-UNFLAG] failed:",e?.message||e); }
   };
   const handleApprove=async()=>{
     const evtA={event:"approved",by:currentUser,at:new Date().toISOString(),comments:approvalComments};
