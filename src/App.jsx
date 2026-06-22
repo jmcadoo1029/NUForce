@@ -4434,7 +4434,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     // Paginate through all quotes pulling the data blob; for each quote, extract
     // line items from pickerLines, custom.rows, and summary.lines. One report
     // entry per code-bearing line.
-    const cols = "id,opportunity,customer,total,stage,won_date,created_at,data";
+    const cols = "id,opportunity,customer,total,stage,won_date,created_at,source,data";
     let allQuotes = [], offset = 0, batchSize = 500;
     try {
       while(true){
@@ -4494,22 +4494,26 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
           src: "custom",
         });
       });
-      // Source 3: summary.lines (auto-generated from test sections like Vibs,
-      // Shocks, EMIs, etc, plus Salesforce imports). This is INDEPENDENT of
-      // pickerLines and custom.rows — they're separate inventories. For NUForce
-      // built quotes, summary.lines reflects enabled test sections; picker and
-      // custom add explicit line items on top. All three should be summed.
-      (blob.summary?.lines || []).forEach(l => {
-        const code = (l.code || "").toString().trim();
-        if (!code) return;
-        entries.push({
-          ...common,
-          code,
-          lineLabel: l.label || "",
-          price: sf(l.val, 0),
-          src: "summary",
+      // Source 3: summary.lines (auto-generated from test sections plus
+      // Salesforce imports). INDEPENDENT of pickerLines/custom.rows for normal
+      // NUForce quotes — but for SALESFORCE imports, the line at App.jsx ~9565
+      // copies summary.lines into custom.rows when the quote is opened. If both
+      // are populated on an SF-sourced quote, they're the SAME data in two
+      // places — count once.
+      const isSfDup = q.source === "salesforce" && (blob.custom?.rows || []).length > 0;
+      if (!isSfDup) {
+        (blob.summary?.lines || []).forEach(l => {
+          const code = (l.code || "").toString().trim();
+          if (!code) return;
+          entries.push({
+            ...common,
+            code,
+            lineLabel: l.label || "",
+            price: sf(l.val, 0),
+            src: "summary",
+          });
         });
-      });
+      }
     }
     setCodeReportData(entries);
     setCodeReportLoading(false);
