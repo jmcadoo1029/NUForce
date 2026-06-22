@@ -4069,6 +4069,15 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   // Tracks which Closed Won breakdown card is hovered ("new" | "ex" | null) so
   // we can show a popover listing the underlying quotes for that bucket.
   const [pmWonHover, setPmWonHover] = useState(null);
+  // ── Product Codes report state ────────────────────────────────────────────
+  // codeReportData: flat array of { code, label, price, opp, customer, stage,
+  //   year, quoteId, lineLabel, src }. One entry per code-bearing line item across
+  //   all quotes. Loaded fresh on panel open. Year derived from opp prefix.
+  const [codeReportLoading, setCodeReportLoading] = useState(false);
+  const [codeReportData, setCodeReportData] = useState(null);   // null = not loaded yet
+  const [codeReportYear, setCodeReportYear] = useState("all");  // "all" | "2026" | etc | "unknown"
+  const [codeReportCode, setCodeReportCode] = useState("");     // empty = no code chosen
+  const [codeReportPanelOpen, setCodeReportPanelOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(()=>{
     // Default to last completed month (never current or future)
     const d = new Date();
@@ -4395,6 +4404,115 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     filteredRows.sort((a,b)=>new Date(b.decidedAt)-new Date(a.decidedAt));
     setRecentApproved(filteredRows);
     setRecentApprovedLoading(false);
+  };
+
+  // ── Product Codes report ──────────────────────────────────────────────────
+  // The canonical PCODE_OPTS list (mirrors CustomForm and ProductPicker — would
+  // be nice to share via module-level constant, but duplicating for now to
+  // avoid disturbing working code).
+  const CODE_REPORT_PCODES = [
+    {code:"11",label:"Noise"},{code:"12",label:"AB/SB Noise"},
+    {code:"32",label:"High Speed Video"},{code:"33",label:"Instrumentation"},
+    {code:"41",label:"Report/CoC"},{code:"42",label:"Procedure"},
+    {code:"43",label:"EMI/DC Mag/PQ Report"},{code:"44",label:"EMI/DC Mag/PQ Procedure"},
+    {code:"51",label:"EMI / PQ / DC Magnetics"},{code:"52",label:"HFV/Shock Other"},
+    {code:"53",label:"T&H"},{code:"54",label:"ESS"},{code:"55",label:"Salt Fog"},
+    {code:"56",label:"Altitude"},{code:"57",label:"Acceleration"},{code:"58",label:"Drip/Sub/Spray"},
+    {code:"59",label:"Insulation Resistance"},
+    {code:"91",label:"MW Shock"},{code:"92",label:"LW Shock"},{code:"93",label:"Inclination"},
+    {code:"94",label:"Vibration"},{code:"95",label:"Hydrostatic"},{code:"96",label:"Tear Down"},
+    {code:"98",label:"Subcontract"},
+  ];
+  const codeLabelLookup = (code) => {
+    const opt = CODE_REPORT_PCODES.find(p => p.code === code);
+    return opt?.label || "";
+  };
+
+  const loadCodeReport = async () => {
+    setCodeReportLoading(true);
+    setCodeReportData(null);
+    // Paginate through all quotes pulling the data blob; for each quote, extract
+    // line items from pickerLines, custom.rows, and summary.lines. One report
+    // entry per code-bearing line.
+    const cols = "id,opportunity,customer,total,stage,won_date,created_at,data";
+    let allQuotes = [], offset = 0, batchSize = 500;
+    try {
+      while(true){
+        const path = `quotes?select=${cols}&order=opportunity.desc&limit=${batchSize}&offset=${offset}`;
+        const data = await restFetch("GET", path);
+        if(!data || data.length===0) break;
+        allQuotes = allQuotes.concat(data);
+        if(data.length < batchSize) break;
+        offset += batchSize;
+      }
+    } catch(e) {
+      console.warn("[CODE-REPORT-LOAD] failed:", e?.message||e);
+      setCodeReportLoading(false);
+      return;
+    }
+
+    // Extract line items into a flat report-friendly structure
+    const yearFromOpp = (opp) => {
+      if (!opp) return "unknown";
+      const m = opp.match(/^(\d{2})-/);
+      if (!m) return "unknown";
+      // 20YY for any reasonable 2-digit prefix
+      return "20" + m[1];
+    };
+    const entries = [];
+    for (const q of allQuotes) {
+      const blob = q.data || {};
+      const year = yearFromOpp(q.opportunity);
+      const common = {
+        quoteId: q.id,
+        opp: q.opportunity || "",
+        customer: q.customer || blob.qi?.account || "(Unknown)",
+        stage: q.stage || blob.qi?.stage || "",
+        year,
+      };
+      // Source 1: pickerLines (current standard)
+      (blob.pickerLines || []).forEach(l => {
+        const code = (l.code || "").toString().trim();
+        if (!code) return;
+        entries.push({
+          ...common,
+          code,
+          lineLabel: l.label || "",
+          price: sf(l.price, 0),
+          src: "picker",
+        });
+      });
+      // Source 2: custom.rows (uses pcode)
+      (blob.custom?.rows || []).forEach(l => {
+        const code = (l.pcode || l.code || "").toString().trim();
+        if (!code) return;
+        entries.push({
+          ...common,
+          code,
+          lineLabel: l.label || "",
+          price: sf(l.price, 0),
+          src: "custom",
+        });
+      });
+      // Source 3: summary.lines (auto-generated from test sections like Vibs,
+      // Shocks, EMIs, etc, plus Salesforce imports). This is INDEPENDENT of
+      // pickerLines and custom.rows — they're separate inventories. For NUForce
+      // built quotes, summary.lines reflects enabled test sections; picker and
+      // custom add explicit line items on top. All three should be summed.
+      (blob.summary?.lines || []).forEach(l => {
+        const code = (l.code || "").toString().trim();
+        if (!code) return;
+        entries.push({
+          ...common,
+          code,
+          lineLabel: l.label || "",
+          price: sf(l.val, 0),
+          src: "summary",
+        });
+      });
+    }
+    setCodeReportData(entries);
+    setCodeReportLoading(false);
   };
 
   const load = async () => {
@@ -5855,6 +5973,211 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                 )}
               </div>
             )}
+
+            {/* ── Product Codes panel — drilldown by code with year filter ── */}
+            <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
+              border:"1px solid #e8ecf0",overflow:"hidden",marginBottom:20}}>
+              <div style={{padding:"14px 24px",borderBottom:codeReportPanelOpen?"1px solid #e8ecf0":"none",
+                display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}
+                onClick={()=>{
+                  const next = !codeReportPanelOpen;
+                  setCodeReportPanelOpen(next);
+                  if (next) loadCodeReport(); // Fresh load every open per Jordan's pref
+                }}>
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>📊 PRODUCT CODES</div>
+                  <div style={{fontSize:11,color:"#9aa5b1",marginTop:2}}>
+                    Drilldown by product code — totals, win rate, per quote
+                  </div>
+                </div>
+                <div style={{fontSize:14,color:"#9aa5b1"}}>{codeReportPanelOpen?"▼":"▶"}</div>
+              </div>
+              {codeReportPanelOpen&&(
+                <div style={{padding:"14px 24px"}}>
+                  {codeReportLoading&&(
+                    <div style={{padding:"24px",textAlign:"center",color:"#9aa5b1",fontSize:12}}>
+                      Loading product code data...
+                    </div>
+                  )}
+                  {!codeReportLoading&&codeReportData&&(()=>{
+                    // Compute year options: all years present in data, plus "all" and "unknown" if present
+                    const yearSet = new Set(codeReportData.map(e=>e.year));
+                    const sortedYears = [...yearSet].filter(y=>y!=="unknown").sort().reverse();
+                    const hasUnknown = yearSet.has("unknown");
+                    const years = ["all", ...sortedYears, ...(hasUnknown?["unknown"]:[])];
+                    // Apply year filter
+                    const yearFiltered = codeReportYear==="all"
+                      ? codeReportData
+                      : codeReportData.filter(e=>e.year===codeReportYear);
+                    // Code dropdown options: union of canonical PCODES + any extra codes found in data
+                    const dataCodes = [...new Set(yearFiltered.map(e=>e.code))].sort();
+                    // Filtered by selected code
+                    const selected = codeReportCode
+                      ? yearFiltered.filter(e=>e.code===codeReportCode)
+                      : [];
+                    // Aggregate metrics for the selected code
+                    const winStages = new Set(["Closed Won"]);
+                    const lostStages = new Set(["Closed Lost"]);
+                    const wonItems = selected.filter(e=>winStages.has(e.stage));
+                    const lostItems = selected.filter(e=>lostStages.has(e.stage));
+                    const openItems = selected.filter(e=>!winStages.has(e.stage)&&!lostStages.has(e.stage));
+                    const uniqueQuotes = new Set(selected.map(e=>e.quoteId)).size;
+                    const totalValue = selected.reduce((a,e)=>a+(e.price||0),0);
+                    const wonValue = wonItems.reduce((a,e)=>a+(e.price||0),0);
+                    const lostValue = lostItems.reduce((a,e)=>a+(e.price||0),0);
+                    const openValue = openItems.reduce((a,e)=>a+(e.price||0),0);
+                    const uniqueWonQuotes = new Set(wonItems.map(e=>e.quoteId)).size;
+                    const uniqueLostQuotes = new Set(lostItems.map(e=>e.quoteId)).size;
+                    const uniqueOpenQuotes = new Set(openItems.map(e=>e.quoteId)).size;
+                    // Win rate (closed quotes only): won / (won + lost)
+                    const closedQuotes = uniqueWonQuotes + uniqueLostQuotes;
+                    const winRate = closedQuotes>0
+                      ? Math.round((uniqueWonQuotes/closedQuotes)*100)
+                      : null;
+                    return (<>
+                      {/* Year filter — pill row */}
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+                        {years.map(y=>(
+                          <button key={y} onClick={()=>setCodeReportYear(y)}
+                            style={{background:codeReportYear===y?"#1a2332":"#f4f6f9",
+                              border:"1px solid "+(codeReportYear===y?"#1a2332":"#e8ecf0"),
+                              borderRadius:14,padding:"3px 10px",fontSize:11,cursor:"pointer",
+                              color:codeReportYear===y?"#fff":"#4a5568",fontWeight:600}}>
+                            {y==="all"?"All Time":(y==="unknown"?"Unknown":y)}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Code selector */}
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+                        <span style={{fontSize:11,color:"#6b7a8d",fontWeight:600}}>Code:</span>
+                        <select value={codeReportCode}
+                          onChange={e=>setCodeReportCode(e.target.value)}
+                          style={{fontSize:11,padding:"4px 8px",borderRadius:6,
+                            border:"1px solid #d0d7de",background:"#fff",color:"#1a2332",minWidth:220}}>
+                          <option value="">— Select a code —</option>
+                          {dataCodes.map(c=>{
+                            const label = codeLabelLookup(c);
+                            return (
+                              <option key={c} value={c}>
+                                {c}{label?" – "+label:" – (unknown)"}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <span style={{fontSize:11,color:"#9aa5b1"}}>
+                          {dataCodes.length} codes in {codeReportYear==="all"?"all time":codeReportYear}
+                        </span>
+                      </div>
+                      {/* Summary cards (only if a code is selected) */}
+                      {codeReportCode&&(<>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}}>
+                          <div style={{background:"#f8f9fb",border:"1px solid #e8ecf0",borderRadius:8,padding:"10px 12px"}}>
+                            <div style={{fontSize:9,color:"#9aa5b1",fontWeight:700,letterSpacing:1}}>TOTAL LINE ITEMS</div>
+                            <div style={{fontSize:20,fontWeight:800,color:"#1a2332",marginTop:4}}>{selected.length}</div>
+                            <div style={{fontSize:10,color:"#6b7a8d",marginTop:2}}>in {uniqueQuotes} quotes</div>
+                          </div>
+                          <div style={{background:"#f8f9fb",border:"1px solid #e8ecf0",borderRadius:8,padding:"10px 12px"}}>
+                            <div style={{fontSize:9,color:"#9aa5b1",fontWeight:700,letterSpacing:1}}>TOTAL VALUE</div>
+                            <div style={{fontSize:20,fontWeight:800,color:"#1a2332",marginTop:4}}>${Math.round(totalValue).toLocaleString()}</div>
+                            <div style={{fontSize:10,color:"#6b7a8d",marginTop:2}}>across all stages</div>
+                          </div>
+                          <div style={{background:"#eafaf1",border:"1px solid #cbeed6",borderRadius:8,padding:"10px 12px"}}>
+                            <div style={{fontSize:9,color:"#239b56",fontWeight:700,letterSpacing:1}}>WON</div>
+                            <div style={{fontSize:20,fontWeight:800,color:"#1a6b3a",marginTop:4}}>${Math.round(wonValue).toLocaleString()}</div>
+                            <div style={{fontSize:10,color:"#1a6b3a",marginTop:2}}>{uniqueWonQuotes} quotes</div>
+                          </div>
+                          <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 12px"}}>
+                            <div style={{fontSize:9,color:"#b91c1c",fontWeight:700,letterSpacing:1}}>LOST</div>
+                            <div style={{fontSize:20,fontWeight:800,color:"#b91c1c",marginTop:4}}>${Math.round(lostValue).toLocaleString()}</div>
+                            <div style={{fontSize:10,color:"#b91c1c",marginTop:2}}>{uniqueLostQuotes} quotes</div>
+                          </div>
+                        </div>
+                        {/* Win rate + open */}
+                        <div style={{display:"flex",gap:14,fontSize:11,color:"#6b7a8d",marginBottom:12,
+                          padding:"8px 12px",background:"#f8f9fb",borderRadius:6}}>
+                          <div><b>Win rate:</b> {winRate===null?"—":winRate+"%"} <span style={{color:"#9aa5b1"}}>({uniqueWonQuotes} won / {closedQuotes} closed)</span></div>
+                          <div><b>Open:</b> ${Math.round(openValue).toLocaleString()} <span style={{color:"#9aa5b1"}}>({uniqueOpenQuotes} quotes)</span></div>
+                        </div>
+                        {/* Per-quote rows */}
+                        <div style={{maxHeight:360,overflowY:"auto",border:"1px solid #e8ecf0",borderRadius:8}}>
+                          <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
+                            <thead style={{background:"#f4f6f9",position:"sticky",top:0}}>
+                              <tr>
+                                <th style={{padding:"6px 10px",textAlign:"left",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>OPP</th>
+                                <th style={{padding:"6px 10px",textAlign:"left",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>CUSTOMER</th>
+                                <th style={{padding:"6px 10px",textAlign:"left",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>LINE LABEL</th>
+                                <th style={{padding:"6px 10px",textAlign:"left",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>STAGE</th>
+                                <th style={{padding:"6px 10px",textAlign:"right",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>$ AT CODE</th>
+                                <th style={{padding:"6px 10px",textAlign:"center",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selected.sort((a,b)=>b.price-a.price).map((e,i)=>{
+                                const isWon = winStages.has(e.stage);
+                                const isLost = lostStages.has(e.stage);
+                                const stageColor = isWon?"#239b56":(isLost?"#b91c1c":"#1a5276");
+                                return (
+                                  <tr key={i} style={{borderBottom:"1px solid #f0f2f5"}}>
+                                    <td style={{padding:"6px 10px",fontWeight:600,color:"#1a2332"}}>{e.opp}</td>
+                                    <td style={{padding:"6px 10px",color:"#4a5568"}}>{e.customer}</td>
+                                    <td style={{padding:"6px 10px",color:"#6b7a8d",fontSize:10}}>{e.lineLabel||"(no label)"}</td>
+                                    <td style={{padding:"6px 10px",color:stageColor,fontWeight:600,fontSize:10}}>{e.stage||"(none)"}</td>
+                                    <td style={{padding:"6px 10px",textAlign:"right",fontWeight:600,color:"#1a2332"}}>${Math.round(e.price).toLocaleString()}</td>
+                                    <td style={{padding:"6px 10px",textAlign:"center"}}>
+                                      <button onClick={async()=>{
+                                          if(!onLoadQuote)return;
+                                          try {
+                                            const rows = await restFetch("GET",
+                                              `quotes?select=id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source&id=eq.${encodeURIComponent(e.quoteId)}&limit=1`);
+                                            const row = (rows||[])[0];
+                                            if(!row)return;
+                                            const blob=row.data||{};
+                                            onLoadQuote({...blob,id:row.id,
+                                              opp:row.opportunity||blob.opp,
+                                              customer:row.customer||blob.customer,
+                                              rfq:row.rfq||blob.rfq,
+                                              total:row.total??blob.total,
+                                              savedAt:row.updated_at,
+                                              source:row.source||"nuforce",
+                                              approval:{...(blob.approval||{}),status:row.approval_status||"none"},
+                                              wonApproval:{...(blob.wonApproval||{}),status:row.won_approval_status||"none"},
+                                            });
+                                          } catch(err) {
+                                            console.warn("[CODE-REPORT-OPEN] failed:", err?.message||err);
+                                          }
+                                        }}
+                                        style={{background:"none",border:"1px solid #d0d7de",
+                                          borderRadius:5,padding:"2px 8px",fontSize:10,
+                                          cursor:"pointer",color:"#1a5276",fontWeight:600}}>
+                                        Open
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>)}
+                      {!codeReportCode&&(
+                        <div style={{padding:"20px",textAlign:"center",color:"#9aa5b1",fontSize:12,
+                          background:"#f8f9fb",borderRadius:8}}>
+                          Pick a code from the dropdown above to see metrics and quotes.
+                        </div>
+                      )}
+                      <div style={{fontSize:10,color:"#9aa5b1",marginTop:10,textAlign:"right"}}>
+                        Loaded {codeReportData.length.toLocaleString()} code-tagged line items from {new Set(codeReportData.map(e=>e.quoteId)).size.toLocaleString()} quotes
+                        <button onClick={loadCodeReport}
+                          style={{marginLeft:10,background:"none",border:"none",color:"#1a5276",
+                            fontSize:10,cursor:"pointer",textDecoration:"underline"}}>
+                          Reload
+                        </button>
+                      </div>
+                    </>);
+                  })()}
+                </div>
+              )}
+            </div>
 
 
             {/* ── Ready to Send widget (visible to everyone) ── */}
