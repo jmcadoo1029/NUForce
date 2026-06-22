@@ -4451,6 +4451,29 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       return;
     }
 
+    // [DUPE-DIAG] One-time diagnostic — what does source look like? where are dupes?
+    const sourceCounts = {};
+    const dupesSample = [];
+    allQuotes.forEach(q => {
+      const s = q.source ?? "(null)";
+      sourceCounts[s] = (sourceCounts[s]||0)+1;
+      const blob = q.data || {};
+      const customCodes = (blob.custom?.rows || []).map(r => (r.pcode||r.code||"").toString().trim()).filter(Boolean);
+      const summaryCodes = (blob.summary?.lines || []).map(l => (l.code||"").toString().trim()).filter(Boolean);
+      const overlap = customCodes.filter(c => summaryCodes.includes(c));
+      if (overlap.length > 0 && dupesSample.length < 5) {
+        dupesSample.push({
+          opp: q.opportunity,
+          source: q.source,
+          customCount: customCodes.length,
+          summaryCount: summaryCodes.length,
+          overlapping_codes: overlap,
+        });
+      }
+    });
+    console.warn("[DUPE-DIAG] source distribution:", sourceCounts);
+    console.warn("[DUPE-DIAG] sample quotes with custom+summary overlap:", dupesSample);
+
     // Extract line items into a flat report-friendly structure
     const yearFromOpp = (opp) => {
       if (!opp) return "unknown";
