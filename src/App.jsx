@@ -6112,7 +6112,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                               </tr>
                             </thead>
                             <tbody>
-                              {selected.sort((a,b)=>b.price-a.price).map((e,i)=>{
+                              {selected.sort((a,b)=>(b.opp||"").localeCompare(a.opp||"")).map((e,i)=>{
                                 const isWon = winStages.has(e.stage);
                                 const isLost = lostStages.has(e.stage);
                                 const stageColor = isWon?"#239b56":(isLost?"#b91c1c":"#1a5276");
