@@ -4451,29 +4451,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       return;
     }
 
-    // [DUPE-DIAG] One-time diagnostic — what does source look like? where are dupes?
-    const sourceCounts = {};
-    const dupesSample = [];
-    allQuotes.forEach(q => {
-      const s = q.source ?? "(null)";
-      sourceCounts[s] = (sourceCounts[s]||0)+1;
-      const blob = q.data || {};
-      const customCodes = (blob.custom?.rows || []).map(r => (r.pcode||r.code||"").toString().trim()).filter(Boolean);
-      const summaryCodes = (blob.summary?.lines || []).map(l => (l.code||"").toString().trim()).filter(Boolean);
-      const overlap = customCodes.filter(c => summaryCodes.includes(c));
-      if (overlap.length > 0 && dupesSample.length < 5) {
-        dupesSample.push({
-          opp: q.opportunity,
-          source: q.source,
-          customCount: customCodes.length,
-          summaryCount: summaryCodes.length,
-          overlapping_codes: overlap,
-        });
-      }
-    });
-    console.warn("[DUPE-DIAG] source distribution:", sourceCounts);
-    console.warn("[DUPE-DIAG] sample quotes with custom+summary overlap:", dupesSample);
-
     // Extract line items into a flat report-friendly structure
     const yearFromOpp = (opp) => {
       if (!opp) return "unknown";
@@ -4517,26 +4494,33 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
           src: "custom",
         });
       });
-      // Source 3: summary.lines (auto-generated from test sections plus
-      // Salesforce imports). INDEPENDENT of pickerLines/custom.rows for normal
-      // NUForce quotes — but for SALESFORCE imports, the line at App.jsx ~9565
-      // copies summary.lines into custom.rows when the quote is opened. If both
-      // are populated on an SF-sourced quote, they're the SAME data in two
-      // places — count once.
-      const isSfDup = q.source === "salesforce" && (blob.custom?.rows || []).length > 0;
-      if (!isSfDup) {
-        (blob.summary?.lines || []).forEach(l => {
-          const code = (l.code || "").toString().trim();
-          if (!code) return;
-          entries.push({
-            ...common,
-            code,
-            lineLabel: l.label || "",
-            price: sf(l.val, 0),
-            src: "summary",
-          });
+      // Source 3: summary.lines (auto-generated from test sections plus the
+      // contents of custom.rows — calcSummary appends every custom row as a
+      // 'user line' into summary.lines). So custom and summary overlap by
+      // design on any quote with custom rows. Dedup content-based: for each
+      // summary line, if there's an exact match in custom.rows (same code +
+      // label + price), skip it — it's the mirror, not a new line.
+      const customSet = new Set((blob.custom?.rows || []).map(r => {
+        const code = (r.pcode || r.code || "").toString().trim();
+        const label = (r.label || "").trim();
+        const price = sf(r.price, 0);
+        return code + "|" + label + "|" + price;
+      }));
+      (blob.summary?.lines || []).forEach(l => {
+        const code = (l.code || "").toString().trim();
+        if (!code) return;
+        const label = (l.label || "").trim();
+        const price = sf(l.val, 0);
+        // Skip summary lines that mirror a custom row exactly
+        if (customSet.has(code + "|" + label + "|" + price)) return;
+        entries.push({
+          ...common,
+          code,
+          lineLabel: label,
+          price,
+          src: "summary",
         });
-      }
+      });
     }
     setCodeReportData(entries);
     setCodeReportLoading(false);
