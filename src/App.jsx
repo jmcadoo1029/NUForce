@@ -6040,10 +6040,13 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     const uniqueWonQuotes = new Set(wonItems.map(e=>e.quoteId)).size;
                     const uniqueLostQuotes = new Set(lostItems.map(e=>e.quoteId)).size;
                     const uniqueOpenQuotes = new Set(openItems.map(e=>e.quoteId)).size;
-                    // Win rate (closed quotes only): won / (won + lost)
-                    const closedQuotes = uniqueWonQuotes + uniqueLostQuotes;
-                    const winRate = closedQuotes>0
-                      ? Math.round((uniqueWonQuotes/closedQuotes)*100)
+                    // Win rate: won quotes / total quotes (includes open/pending in denominator)
+                    const winRate = uniqueQuotes>0
+                      ? Math.round((uniqueWonQuotes/uniqueQuotes)*100)
+                      : null;
+                    // Won value rate: dollars won / total dollars quoted at this code
+                    const wonValueRate = totalValue>0
+                      ? Math.round((wonValue/totalValue)*100)
                       : null;
                     return (<>
                       {/* Year filter — pill row */}
@@ -6103,10 +6106,11 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                             <div style={{fontSize:10,color:"#b91c1c",marginTop:2}}>{uniqueLostQuotes} quotes</div>
                           </div>
                         </div>
-                        {/* Win rate + open */}
+                        {/* Win rate + won value + open */}
                         <div style={{display:"flex",gap:14,fontSize:11,color:"#6b7a8d",marginBottom:12,
-                          padding:"8px 12px",background:"#f8f9fb",borderRadius:6}}>
-                          <div><b>Win rate:</b> {winRate===null?"—":winRate+"%"} <span style={{color:"#9aa5b1"}}>({uniqueWonQuotes} won / {closedQuotes} closed)</span></div>
+                          padding:"8px 12px",background:"#f8f9fb",borderRadius:6,flexWrap:"wrap"}}>
+                          <div><b>Win rate:</b> {winRate===null?"—":winRate+"%"} <span style={{color:"#9aa5b1"}}>({uniqueWonQuotes} won / {uniqueQuotes} total)</span></div>
+                          <div><b>Won value:</b> {wonValueRate===null?"—":wonValueRate+"%"} <span style={{color:"#9aa5b1"}}>(${Math.round(wonValue).toLocaleString()} / ${Math.round(totalValue).toLocaleString()} quoted)</span></div>
                           <div><b>Open:</b> ${Math.round(openValue).toLocaleString()} <span style={{color:"#9aa5b1"}}>({uniqueOpenQuotes} quotes)</span></div>
                         </div>
                         {/* Per-quote rows */}
@@ -6118,7 +6122,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                                 <th style={{padding:"6px 10px",textAlign:"left",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>CUSTOMER</th>
                                 <th style={{padding:"6px 10px",textAlign:"left",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>LINE LABEL</th>
                                 <th style={{padding:"6px 10px",textAlign:"left",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>STAGE</th>
-                                <th style={{padding:"6px 10px",textAlign:"center",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>SRC</th>
                                 <th style={{padding:"6px 10px",textAlign:"right",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>$ AT CODE</th>
                                 <th style={{padding:"6px 10px",textAlign:"center",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}></th>
                               </tr>
@@ -6134,14 +6137,6 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                                     <td style={{padding:"6px 10px",color:"#4a5568"}}>{e.customer}</td>
                                     <td style={{padding:"6px 10px",color:"#6b7a8d",fontSize:10}}>{e.lineLabel||"(no label)"}</td>
                                     <td style={{padding:"6px 10px",color:stageColor,fontWeight:600,fontSize:10}}>{e.stage||"(none)"}</td>
-                                    <td style={{padding:"6px 10px",textAlign:"center"}}>
-                                      <span style={{fontSize:9,fontWeight:700,letterSpacing:.5,
-                                        padding:"2px 5px",borderRadius:3,
-                                        background: e.src==="picker"?"#dbe9f7":(e.src==="custom"?"#fef3c7":"#e5e7eb"),
-                                        color: e.src==="picker"?"#1a5276":(e.src==="custom"?"#92400e":"#4b5563")}}>
-                                        {e.src}
-                                      </span>
-                                    </td>
                                     <td style={{padding:"6px 10px",textAlign:"right",fontWeight:600,color:"#1a2332"}}>${Math.round(e.price).toLocaleString()}</td>
                                     <td style={{padding:"6px 10px",textAlign:"center"}}>
                                       <button onClick={async()=>{
