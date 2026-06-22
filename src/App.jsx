@@ -4181,12 +4181,20 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     // client-side. This lets a brand-new revision that isn't due yet still
     // suppress an older revision that IS due (otherwise the older one would
     // appear on the list incorrectly).
-    const {data,error} = await supabase
-      .from("follow_ups")
-      .select("*, quotes(id, opportunity, revision, customer, data)")
-      .eq("followed_up", false)
-      .or("voided.is.null,voided.eq.false");
-    if(!error){
+    let data = [];
+    try {
+      // PostgREST embedded join: `quotes(...)` resolves the FK from follow_ups
+      // to the quotes table and selects those columns into the row.
+      data = await restFetch("GET",
+        `follow_ups?select=*,quotes(id,opportunity,revision,customer,data)&followed_up=eq.false&or=(voided.is.null,voided.eq.false)`);
+      data = data || [];
+    } catch(e) {
+      console.warn("[FOLLOW-UPS-LOAD] failed:", e?.message||e);
+      setFuLoading(false);
+      setFollowUps([]);
+      return;
+    }
+    {
       const rows = data || [];
       const baseOf = (opp) => {
         if(!opp) return "";
@@ -5248,21 +5256,25 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                       <div key={q.id}
                         onClick={async()=>{
                           if(!onLoadQuote)return;
-                          const {data:row}=await supabase.from("quotes")
-                            .select("id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source")
-                            .eq("id",q.id).single();
-                          if(row){
-                            const blob=row.data||{};
-                            onLoadQuote({...blob,id:row.id,
-                              opp:row.opportunity||blob.opp,
-                              customer:row.customer||blob.customer,
-                              rfq:row.rfq||blob.rfq,
-                              total:row.total??blob.total,
-                              savedAt:row.updated_at,
-                              source:row.source||"nuforce",
-                              approval:{...(blob.approval||{}),status:row.approval_status||"none"},
-                              wonApproval:{...(blob.wonApproval||{}),status:row.won_approval_status||"none"},
-                            });
+                          try {
+                            const rows = await restFetch("GET",
+                              `quotes?select=id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source&id=eq.${encodeURIComponent(q.id)}&limit=1`);
+                            const row = (rows||[])[0];
+                            if(row){
+                              const blob=row.data||{};
+                              onLoadQuote({...blob,id:row.id,
+                                opp:row.opportunity||blob.opp,
+                                customer:row.customer||blob.customer,
+                                rfq:row.rfq||blob.rfq,
+                                total:row.total??blob.total,
+                                savedAt:row.updated_at,
+                                source:row.source||"nuforce",
+                                approval:{...(blob.approval||{}),status:row.approval_status||"none"},
+                                wonApproval:{...(blob.wonApproval||{}),status:row.won_approval_status||"none"},
+                              });
+                            }
+                          } catch(e) {
+                            console.warn("[QUOTE-LOAD recent] failed:", e?.message||e);
                           }
                           setShowRecentApproved(false);
                         }}
@@ -5733,23 +5745,24 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                   {flaggedQuotes.map(f=>(
                     <div key={f.id}
                       data-quoteid={String(f.quote_id)}
-                      onClick={e=>{
+                      onClick={async(e)=>{
                         if(!onLoadQuote)return;
                         const qid=Number(e.currentTarget.getAttribute('data-quoteid'));
-                        supabase.from("quotes")
-                          .select("id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source")
-                          .eq("id",qid)
-                          .single()
-                          .then(({data:row})=>{
-                            if(!row)return;
-                            const q=row.data||{};
-                            const match={...q,id:row.id,opp:row.opportunity||q.opp,
-                              customer:row.customer||q.customer,rfq:row.rfq||q.rfq,
-                              total:row.total??q.total,savedAt:row.updated_at,
-                              source:"nuforce",
-                              approval:{...(q.approval||{}),status:row.approval_status||q.approval?.status||"none"}};
-                            onLoadQuote(match);
-                          });
+                        try {
+                          const rows = await restFetch("GET",
+                            `quotes?select=id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source&id=eq.${encodeURIComponent(qid)}&limit=1`);
+                          const row = (rows||[])[0];
+                          if(!row)return;
+                          const q=row.data||{};
+                          const match={...q,id:row.id,opp:row.opportunity||q.opp,
+                            customer:row.customer||q.customer,rfq:row.rfq||q.rfq,
+                            total:row.total??q.total,savedAt:row.updated_at,
+                            source:"nuforce",
+                            approval:{...(q.approval||{}),status:row.approval_status||q.approval?.status||"none"}};
+                          onLoadQuote(match);
+                        } catch(err) {
+                          console.warn("[QUOTE-LOAD flagged] failed:", err?.message||err);
+                        }
                       }}
                       style={{padding:"12px 24px",borderBottom:"1px solid #fee2e2",
                         cursor:"pointer",display:"flex",alignItems:"flex-start",
@@ -6250,22 +6263,26 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                           </div>
                           <div style={{flex:"0 0 auto",display:"flex",gap:6}}>
                             <button onClick={async()=>{
-                                const {data:row,error}=await supabase.from("quotes")
-                                  .select("id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source")
-                                  .eq("id", rts.id)
-                                  .single();
-                                if(error||!row){ alert("Could not open quote — please refresh and try again."); return; }
-                                const blob=row.data||{};
-                                onLoadQuote({...blob,id:row.id,
-                                  opp:row.opportunity||blob.opp,
-                                  customer:row.customer||blob.customer,
-                                  rfq:row.rfq||blob.rfq,
-                                  total:row.total??blob.total,
-                                  savedAt:row.updated_at,
-                                  source:row.source||"nuforce",
-                                  approval:{...(blob.approval||{}),status:row.approval_status||"none"},
-                                  wonApproval:{...(blob.wonApproval||{}),status:row.won_approval_status||"none"},
-                                });
+                                try {
+                                  const rows = await restFetch("GET",
+                                    `quotes?select=id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source&id=eq.${encodeURIComponent(rts.id)}&limit=1`);
+                                  const row = (rows||[])[0];
+                                  if(!row){ alert("Could not open quote — please refresh and try again."); return; }
+                                  const blob=row.data||{};
+                                  onLoadQuote({...blob,id:row.id,
+                                    opp:row.opportunity||blob.opp,
+                                    customer:row.customer||blob.customer,
+                                    rfq:row.rfq||blob.rfq,
+                                    total:row.total??blob.total,
+                                    savedAt:row.updated_at,
+                                    source:row.source||"nuforce",
+                                    approval:{...(blob.approval||{}),status:row.approval_status||"none"},
+                                    wonApproval:{...(blob.wonApproval||{}),status:row.won_approval_status||"none"},
+                                  });
+                                } catch(e) {
+                                  console.warn("[QUOTE-LOAD ready-to-send] failed:", e?.message||e);
+                                  alert("Could not open quote — please refresh and try again.");
+                                }
                               }}
                               style={{background:"#fff",border:"1px solid #d0d7de",borderRadius:5,
                                 padding:"4px 10px",fontSize:11,cursor:"pointer",color:"#1a2332",fontWeight:600}}>
@@ -8438,23 +8455,27 @@ export default function App({onLogout,currentUser}){
     if(currentQuoteId){
       localStorage.setItem("vibrato_last_quote_id",String(currentQuoteId));
       // Load sent status for this quote
-      supabase.from("follow_ups")
-        .select("sent_at,sent_by")
-        .eq("quote_id",currentQuoteId)
-        .neq("sent_by","salesforce_import")
-        .or("voided.is.null,voided.eq.false")
-        .order("sent_at",{ascending:false})
-        .limit(1)
-        .maybeSingle()
-        .then(({data})=>setQuoteSentAt(data?.sent_at||null));
+      (async()=>{
+        try {
+          const rows = await restFetch("GET",
+            `follow_ups?select=sent_at,sent_by&quote_id=eq.${encodeURIComponent(currentQuoteId)}&sent_by=neq.salesforce_import&or=(voided.is.null,voided.eq.false)&order=sent_at.desc&limit=1`);
+          setQuoteSentAt((rows||[])[0]?.sent_at || null);
+        } catch(e) {
+          console.warn("[QUOTE-SENT-IND] failed:", e?.message||e);
+        }
+      })();
       // Load flag
-      supabase.from("quote_flags")
-        .select("id,note,flagged_by,flagged_at")
-        .eq("quote_id",currentQuoteId)
-        .eq("resolved",false)
-        .maybeSingle()
-        .then(({data,error})=>{ if(!error){setQuoteFlag(data||null);setFlagNote(data?.note||"");} })
-        .catch(()=>{});
+      (async()=>{
+        try {
+          const rows = await restFetch("GET",
+            `quote_flags?select=id,note,flagged_by,flagged_at&quote_id=eq.${encodeURIComponent(currentQuoteId)}&resolved=eq.false&limit=1`);
+          const data = (rows||[])[0] || null;
+          setQuoteFlag(data);
+          setFlagNote(data?.note||"");
+        } catch(e) {
+          console.warn("[QUOTE-FLAG-LOAD] failed:", e?.message||e);
+        }
+      })();
     } else {
       setQuoteSentAt(null);
       setQuoteFlag(null);
@@ -9913,22 +9934,24 @@ export default function App({onLogout,currentUser}){
     }
   };
   // Keep ref pointing at latest handleLoad so realtime toast button can call it
-  reloadOpenQuoteRef.current=(id)=>{
-    supabase.from("quotes")
-      .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data, source")
-      .eq("id",id).single()
-      .then(({data:row,error})=>{
-        if(error||!row)return;
-        const q=row.data||{};
-        handleLoad({...q,id:row.id,opp:row.opportunity||q.opp,
-          customer:row.customer||q.customer,rfq:row.rfq||q.rfq,
-          total:row.total??q.total,savedAt:row.updated_at,
-          source:row.source||"nuforce",
-          approval:{...(q.approval||{}),status:row.approval_status||q.approval?.status||"none"},
-          wonApproval:{...(q.wonApproval||{}),status:row.won_approval_status||q.wonApproval?.status||"none"},
-        });
-        showToast("Quote reloaded ✓","success");
+  reloadOpenQuoteRef.current = async (id)=>{
+    try {
+      const rows = await restFetch("GET",
+        `quotes?select=id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source&id=eq.${encodeURIComponent(id)}&limit=1`);
+      const row = (rows||[])[0];
+      if(!row)return;
+      const q=row.data||{};
+      handleLoad({...q,id:row.id,opp:row.opportunity||q.opp,
+        customer:row.customer||q.customer,rfq:row.rfq||q.rfq,
+        total:row.total??q.total,savedAt:row.updated_at,
+        source:row.source||"nuforce",
+        approval:{...(q.approval||{}),status:row.approval_status||q.approval?.status||"none"},
+        wonApproval:{...(q.wonApproval||{}),status:row.won_approval_status||q.wonApproval?.status||"none"},
       });
+      showToast("Quote reloaded ✓","success");
+    } catch(e) {
+      console.warn("[RELOAD-QUOTE] failed:", e?.message||e);
+    }
   };
 
   const setupProps={setup};
@@ -9942,12 +9965,12 @@ export default function App({onLogout,currentUser}){
   useEffect(()=>{
     const lastId=localStorage.getItem("vibrato_last_quote_id");
     if(!lastId)return;
-    supabase.from("quotes")
-      .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data, source")
-      .eq("id",lastId)
-      .single()
-      .then(({data,error})=>{
-        if(error||!data)return;
+    (async()=>{
+      try {
+        const rows = await restFetch("GET",
+          `quotes?select=id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data,source&id=eq.${encodeURIComponent(lastId)}&limit=1`);
+        const data = (rows||[])[0];
+        if(!data)return;
         const q=data.data||{};
         const restored={
           ...q,
@@ -9961,7 +9984,10 @@ export default function App({onLogout,currentUser}){
           approval:{...(q.approval||{}),status:data.approval_status||q.approval?.status||"none"},
         };
         handleLoad(restored);
-      });
+      } catch(e) {
+        console.warn("[RESTORE-LAST] failed:", e?.message||e);
+      }
+    })();
   },[]);
 
 const STANDARD_TERMS = [
