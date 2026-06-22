@@ -6107,6 +6107,7 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                                 <th style={{padding:"6px 10px",textAlign:"left",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>CUSTOMER</th>
                                 <th style={{padding:"6px 10px",textAlign:"left",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>LINE LABEL</th>
                                 <th style={{padding:"6px 10px",textAlign:"left",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>STAGE</th>
+                                <th style={{padding:"6px 10px",textAlign:"center",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>SRC</th>
                                 <th style={{padding:"6px 10px",textAlign:"right",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}>$ AT CODE</th>
                                 <th style={{padding:"6px 10px",textAlign:"center",fontSize:9,color:"#9aa5b1",letterSpacing:1,fontWeight:700}}></th>
                               </tr>
@@ -6122,6 +6123,14 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                                     <td style={{padding:"6px 10px",color:"#4a5568"}}>{e.customer}</td>
                                     <td style={{padding:"6px 10px",color:"#6b7a8d",fontSize:10}}>{e.lineLabel||"(no label)"}</td>
                                     <td style={{padding:"6px 10px",color:stageColor,fontWeight:600,fontSize:10}}>{e.stage||"(none)"}</td>
+                                    <td style={{padding:"6px 10px",textAlign:"center"}}>
+                                      <span style={{fontSize:9,fontWeight:700,letterSpacing:.5,
+                                        padding:"2px 5px",borderRadius:3,
+                                        background: e.src==="picker"?"#dbe9f7":(e.src==="custom"?"#fef3c7":"#e5e7eb"),
+                                        color: e.src==="picker"?"#1a5276":(e.src==="custom"?"#92400e":"#4b5563")}}>
+                                        {e.src}
+                                      </span>
+                                    </td>
                                     <td style={{padding:"6px 10px",textAlign:"right",fontWeight:600,color:"#1a2332"}}>${Math.round(e.price).toLocaleString()}</td>
                                     <td style={{padding:"6px 10px",textAlign:"center"}}>
                                       <button onClick={async()=>{
