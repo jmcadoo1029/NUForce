@@ -9550,25 +9550,43 @@ export default function App({onLogout,currentUser}){
         qid=newId;
       }
       if(quoteFlag){
-        await supabase.from("quote_flags").update({resolved:true,resolved_by:currentUser,resolved_at:new Date().toISOString()}).eq("id",quoteFlag.id);
-        setQuoteFlag(null);
-        setFlagNote("");
-        showToast("🚩 Flag removed","info");
+        try {
+          await restFetch("PATCH",
+            `quote_flags?id=eq.${encodeURIComponent(quoteFlag.id)}`,
+            {body:{resolved:true,resolved_by:currentUser,resolved_at:new Date().toISOString()}});
+          setQuoteFlag(null);
+          setFlagNote("");
+          showToast("🚩 Flag removed","info");
+        } catch(e) {
+          showToast("Flag remove failed: " + (e?.message||e), "error");
+        }
       } else {
         // Verify currentQuoteId is the right quote before inserting
         // Re-fetch to confirm it matches qi.opp
-        const {data:check}=await supabase.from("quotes").select("id,opportunity").eq("id",qid).single();
-        const confirmedId=check?.opportunity===qi.opp ? qid : null;
+        let confirmedId = null;
+        try {
+          const checkRows = await restFetch("GET",
+            `quotes?select=id,opportunity&id=eq.${encodeURIComponent(qid)}&limit=1`);
+          const check = (checkRows||[])[0];
+          confirmedId = check?.opportunity===qi.opp ? qid : null;
+        } catch(e) {
+          console.warn("[FLAG-VERIFY] failed:", e?.message||e);
+        }
         if(!confirmedId){showToast("Flag error: quote ID mismatch, try again","error");setFlagLoading(false);setShowFlagPopover(false);return;}
-        const {data,error}=await supabase.from("quote_flags").insert({
-          quote_id:confirmedId,
-          opportunity:qi.opp,
-          customer:qi.account,
-          flagged_by:currentUser,
-          note:flagNote.trim()||null,
-        }).select().single();
-        if(!error&&data){setQuoteFlag(data);showToast("🚩 Quote flagged","success");setDashboardNeedsRefresh(true);}
-        else showToast("Flag failed","error");
+        try {
+          const rows = await restFetch("POST", "quote_flags", {body:{
+            quote_id:confirmedId,
+            opportunity:qi.opp,
+            customer:qi.account,
+            flagged_by:currentUser,
+            note:flagNote.trim()||null,
+          }, returnRepresentation:true});
+          const data = (rows||[])[0];
+          if(data){setQuoteFlag(data);showToast("🚩 Quote flagged","success");setDashboardNeedsRefresh(true);}
+          else showToast("Flag failed","error");
+        } catch(e) {
+          showToast("Flag failed: " + (e?.message||e), "error");
+        }
       }
     } catch(e){ showToast("Flag error: "+e.message,"error"); }
     setShowFlagPopover(false);
