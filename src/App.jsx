@@ -4471,11 +4471,27 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       // 20YY for any reasonable 2-digit prefix
       return "20" + m[1];
     };
-    // Year from an ISO date string ("2024-03-15" or similar). Returns null on failure.
+    // Year from an ISO date string ("2024-03-15") or any other date format. Only
+    // returns a year if it's plausible (2000-2099). Returns null otherwise so the
+    // fallback chain can try opp prefix instead. This guards against odd values
+    // in the wonDate field (some imports had non-date content there).
     const yearFromDate = (s) => {
-      if (!s || typeof s !== "string") return null;
-      const m = s.match(/^(\d{4})/);
-      return m ? m[1] : null;
+      if (!s) return null;
+      // Try a clean ISO-like prefix first: "2024-03-15" -> "2024"
+      if (typeof s === "string") {
+        const m = s.match(/^(\d{4})-\d{2}-\d{2}/);
+        if (m) {
+          const y = parseInt(m[1], 10);
+          if (y >= 2000 && y <= 2099) return String(y);
+        }
+      }
+      // Fallback: try Date parsing. Catches "3/15/2024", "March 15, 2024", etc.
+      const d = new Date(s);
+      if (!isNaN(d)) {
+        const y = d.getFullYear();
+        if (y >= 2000 && y <= 2099) return String(y);
+      }
+      return null;
     };
     const entries = [];
     for (const q of allQuotes) {
