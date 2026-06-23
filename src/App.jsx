@@ -12223,19 +12223,20 @@ const STANDARD_TERMS = [
                     <button onClick={async()=>{
                         setSentBusy(true);
                         try {
-                          const {error,data}=await supabase.from("follow_ups").insert({
-                            quote_id:currentQuoteId,
-                            opportunity:qi.opp,
-                            customer:qi.account,
-                            sent_by:currentUser,
-                          }).select("sent_at").single();
-                          if(error) throw error;
-                          setQuoteSentAt(data.sent_at);
+                          const rows = await restFetch("POST", "follow_ups?select=sent_at",
+                            {body:{
+                              quote_id:currentQuoteId,
+                              opportunity:qi.opp,
+                              customer:qi.account,
+                              sent_by:currentUser,
+                            }, returnRepresentation:true});
+                          const data = (rows||[])[0];
+                          setQuoteSentAt(data?.sent_at || new Date().toISOString());
                           setShowSendConfirm(false);
                           showToast("✉️ Marked as sent — will appear in Follow-ups in 30 days","success",4000);
                         } catch(e){
-                          console.warn("Send action failed:",e);
-                          showToast("Error marking as sent","error",4000);
+                          console.warn("[SEND-MARK] failed:",e?.message||e);
+                          showToast("Error marking as sent: " + (e?.message||e),"error",5000);
                         } finally {
                           setSentBusy(false);
                         }
