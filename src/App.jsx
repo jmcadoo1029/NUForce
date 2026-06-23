@@ -2297,26 +2297,30 @@ function ClientContactPicker({qi, setQi, resetKey}){
     if(!clientSearch.trim()){setClientResults([]);return;}
     clientTimer.current=setTimeout(async()=>{
       const term=clientSearch.trim();
-      const {data,error}=await supabase
-        .from("clients")
-        .select("id, name, address, city, state, zip")
-        .ilike("name",`%${term}%`)
-        .order("name")
-        .limit(30);
-      if(error)console.error("Clients query error:",error);
-      setClientResults(data||[]);
+      try {
+        const data = await restFetch("GET",
+          `clients?select=id,name,address,city,state,zip&name=ilike.${encodeURIComponent("*"+term+"*")}&order=name&limit=30`);
+        setClientResults(data||[]);
+      } catch(e) {
+        console.warn("[CLIENT-SEARCH] failed:", e?.message||e);
+        setClientResults([]);
+      }
     },250);
     return()=>clearTimeout(clientTimer.current);
   },[clientSearch]);
 
   useEffect(()=>{
     if(!selectedClient){setContacts([]);return;}
-    supabase
-      .from("contacts")
-      .select("id, first_name, last_name, email")
-      .eq("client_id", selectedClient.id)
-      .order("last_name")
-      .then(({data})=>setContacts(data||[]));
+    (async()=>{
+      try {
+        const data = await restFetch("GET",
+          `contacts?select=id,first_name,last_name,email&client_id=eq.${encodeURIComponent(selectedClient.id)}&order=last_name`);
+        setContacts(data||[]);
+      } catch(e) {
+        console.warn("[CONTACTS-LOAD] failed:", e?.message||e);
+        setContacts([]);
+      }
+    })();
   },[selectedClient]);
 
   useEffect(()=>{
