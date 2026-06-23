@@ -4082,6 +4082,10 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   const [codeReportYear, setCodeReportYear] = useState("all");  // "all" | "2026" | etc | "unknown"
   const [codeReportCode, setCodeReportCode] = useState("");     // empty = no code chosen
   const [codeReportPanelOpen, setCodeReportPanelOpen] = useState(false);
+  // Code Comparison panel — two codes selected, charted across all history
+  const [codeCompareOpen, setCodeCompareOpen] = useState(false);
+  const [codeCompareA, setCodeCompareA] = useState("");
+  const [codeCompareB, setCodeCompareB] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(()=>{
     // Default to last completed month (never current or future)
     const d = new Date();
@@ -6294,6 +6298,255 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                       </div>
                     </>);
                   })()}
+                </div>
+              )}
+            </div>
+
+            {/* ── Code Comparison panel — chart won-value-rate of two codes across all years ── */}
+            <div style={{background:"#fff",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
+              border:"1px solid #e8ecf0",overflow:"hidden",marginBottom:20}}>
+              <div style={{padding:"14px 24px",borderBottom:codeCompareOpen?"1px solid #e8ecf0":"none",
+                display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}
+                onClick={()=>{
+                  const next = !codeCompareOpen;
+                  setCodeCompareOpen(next);
+                  // If opening and data hasn't been loaded yet, kick off a load.
+                  // The Product Codes panel uses the same dataset.
+                  if (next && !codeReportData && !codeReportLoading) loadCodeReport();
+                }}>
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>📈 CODE COMPARISON</div>
+                  <div style={{fontSize:11,color:"#9aa5b1",marginTop:2}}>
+                    Compare won value % between two product codes across all years
+                  </div>
+                </div>
+                <div style={{fontSize:14,color:"#9aa5b1"}}>{codeCompareOpen?"▼":"▶"}</div>
+              </div>
+              {codeCompareOpen&&(
+                <div style={{padding:"14px 24px"}}>
+                  {codeReportLoading&&(
+                    <div style={{padding:"24px",textAlign:"center",color:"#9aa5b1",fontSize:12}}>
+                      Loading product code data...
+                    </div>
+                  )}
+                  {!codeReportLoading&&codeReportData&&(()=>{
+                    // Build the list of available codes (only those with any data)
+                    const dataCodes = [...new Set(codeReportData.map(e=>e.code))].sort();
+                    // Each selected code: compute yearly won-value-rate + lifetime + 3yr avg
+                    const computeStats = (code) => {
+                      if (!code) return null;
+                      const all = codeReportData.filter(e => e.code === code);
+                      // Group by year (skip "unknown")
+                      const byYear = {};
+                      const winStages = new Set(["Closed Won"]);
+                      all.forEach(e => {
+                        if (e.year === "unknown") return;
+                        if (!byYear[e.year]) byYear[e.year] = {total:0, won:0};
+                        byYear[e.year].total += e.price || 0;
+                        if (winStages.has(e.stage)) byYear[e.year].won += e.price || 0;
+                      });
+                      const series = Object.entries(byYear)
+                        .map(([yr, v]) => ({
+                          year: yr,
+                          rate: v.total > 0 ? Math.round((v.won / v.total) * 100) : null,
+                          total: v.total,
+                          won: v.won,
+                        }))
+                        .filter(p => p.rate !== null)
+                        .sort((a, b) => a.year.localeCompare(b.year));
+                      // Lifetime + 3yr (volume-weighted, last 3 complete years before current)
+                      const lifetimeTotal = all.reduce((a,e)=>a+(e.price||0),0);
+                      const lifetimeWon = all.filter(e=>winStages.has(e.stage)).reduce((a,e)=>a+(e.price||0),0);
+                      const lifetimeRate = lifetimeTotal > 0 ? Math.round((lifetimeWon/lifetimeTotal)*100) : null;
+                      // 3yr: last 3 years present in the data (excluding current year)
+                      const nowYr = new Date().getFullYear();
+                      const threeYrItems = all.filter(e => {
+                        if (e.year === "unknown") return false;
+                        const y = parseInt(e.year, 10);
+                        return y >= nowYr-3 && y < nowYr;
+                      });
+                      const threeYrTotal = threeYrItems.reduce((a,e)=>a+(e.price||0),0);
+                      const threeYrWon = threeYrItems.filter(e=>winStages.has(e.stage)).reduce((a,e)=>a+(e.price||0),0);
+                      const threeYrRate = threeYrTotal > 0 ? Math.round((threeYrWon/threeYrTotal)*100) : null;
+                      return {code, series, lifetimeRate, threeYrRate};
+                    };
+                    const statsA = computeStats(codeCompareA);
+                    const statsB = computeStats(codeCompareB);
+                    // Build x-axis: union of all years present in either series
+                    const allYearsSet = new Set();
+                    if (statsA) statsA.series.forEach(p => allYearsSet.add(p.year));
+                    if (statsB) statsB.series.forEach(p => allYearsSet.add(p.year));
+                    const xYears = [...allYearsSet].sort();
+
+                    return (<>
+                      {/* Two code selectors side by side */}
+                      <div style={{display:"flex",gap:14,marginBottom:14,flexWrap:"wrap"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:11,color:"#1a5276",fontWeight:700,
+                            background:"#dbe9f7",padding:"2px 6px",borderRadius:4}}>A</span>
+                          <select value={codeCompareA}
+                            onChange={e=>setCodeCompareA(e.target.value)}
+                            style={{fontSize:11,padding:"4px 8px",borderRadius:6,
+                              border:"1px solid #d0d7de",background:"#fff",color:"#1a2332",minWidth:220}}>
+                            <option value="">— Select first code —</option>
+                            {dataCodes.map(c=>{
+                              const label = codeLabelLookup(c);
+                              return (
+                                <option key={c} value={c}>{c}{label?" – "+label:" – (unknown)"}</option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:11,color:"#92400e",fontWeight:700,
+                            background:"#fef3c7",padding:"2px 6px",borderRadius:4}}>B</span>
+                          <select value={codeCompareB}
+                            onChange={e=>setCodeCompareB(e.target.value)}
+                            style={{fontSize:11,padding:"4px 8px",borderRadius:6,
+                              border:"1px solid #d0d7de",background:"#fff",color:"#1a2332",minWidth:220}}>
+                            <option value="">— Select second code —</option>
+                            {dataCodes.map(c=>{
+                              const label = codeLabelLookup(c);
+                              return (
+                                <option key={c} value={c}>{c}{label?" – "+label:" – (unknown)"}</option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Summary numbers + chart */}
+                      {(statsA || statsB) && (
+                        <>
+                          {/* Summary block: lifetime + 3yr avg for each */}
+                          <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+                            {statsA && (
+                              <div style={{flex:1,minWidth:220,background:"#f4f7fb",
+                                border:"1px solid #dbe9f7",borderRadius:8,padding:"10px 12px"}}>
+                                <div style={{fontSize:10,color:"#1a5276",fontWeight:700,marginBottom:4}}>
+                                  A — {statsA.code}{codeLabelLookup(statsA.code)?" – "+codeLabelLookup(statsA.code):""}
+                                </div>
+                                <div style={{display:"flex",gap:18,fontSize:11,color:"#4a5568"}}>
+                                  <div><b>Lifetime:</b> {statsA.lifetimeRate===null?"—":statsA.lifetimeRate+"%"}</div>
+                                  <div><b>3yr avg:</b> {statsA.threeYrRate===null?"—":statsA.threeYrRate+"%"}</div>
+                                </div>
+                              </div>
+                            )}
+                            {statsB && (
+                              <div style={{flex:1,minWidth:220,background:"#fffbeb",
+                                border:"1px solid #fef3c7",borderRadius:8,padding:"10px 12px"}}>
+                                <div style={{fontSize:10,color:"#92400e",fontWeight:700,marginBottom:4}}>
+                                  B — {statsB.code}{codeLabelLookup(statsB.code)?" – "+codeLabelLookup(statsB.code):""}
+                                </div>
+                                <div style={{display:"flex",gap:18,fontSize:11,color:"#4a5568"}}>
+                                  <div><b>Lifetime:</b> {statsB.lifetimeRate===null?"—":statsB.lifetimeRate+"%"}</div>
+                                  <div><b>3yr avg:</b> {statsB.threeYrRate===null?"—":statsB.threeYrRate+"%"}</div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Chart — hand-built SVG */}
+                          {xYears.length > 0 && (()=>{
+                            // SVG dimensions
+                            const W = 700, H = 240;
+                            const PAD_L = 40, PAD_R = 20, PAD_T = 20, PAD_B = 30;
+                            const innerW = W - PAD_L - PAD_R;
+                            const innerH = H - PAD_T - PAD_B;
+                            // X: years evenly spaced
+                            const xStep = xYears.length > 1 ? innerW / (xYears.length - 1) : 0;
+                            const xFor = (yr) => {
+                              const idx = xYears.indexOf(yr);
+                              return PAD_L + (xYears.length > 1 ? idx * xStep : innerW/2);
+                            };
+                            // Y: 0-100% (top of chart = 100, bottom = 0)
+                            const yFor = (rate) => PAD_T + innerH * (1 - rate/100);
+                            // Build point arrays
+                            const pointsFor = (series) => series
+                              .filter(p => xYears.includes(p.year))
+                              .map(p => ({x: xFor(p.year), y: yFor(p.rate), year: p.year, rate: p.rate}));
+                            const ptsA = statsA ? pointsFor(statsA.series) : [];
+                            const ptsB = statsB ? pointsFor(statsB.series) : [];
+                            const pathFor = (pts) => pts.length === 0 ? "" :
+                              "M " + pts.map(p => p.x+","+p.y).join(" L ");
+                            return (
+                              <div style={{background:"#fafbfc",border:"1px solid #e8ecf0",borderRadius:8,padding:14}}>
+                                <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`}
+                                  preserveAspectRatio="xMidYMid meet"
+                                  style={{display:"block"}}>
+                                  {/* Y-axis gridlines + labels: 0, 25, 50, 75, 100 */}
+                                  {[0,25,50,75,100].map(pct => {
+                                    const y = yFor(pct);
+                                    return (
+                                      <g key={pct}>
+                                        <line x1={PAD_L} y1={y} x2={W-PAD_R} y2={y}
+                                          stroke="#e8ecf0" strokeWidth="1" strokeDasharray={pct===0?"":"2,3"}/>
+                                        <text x={PAD_L-6} y={y+3} textAnchor="end"
+                                          fontSize="10" fill="#9aa5b1">{pct}%</text>
+                                      </g>
+                                    );
+                                  })}
+                                  {/* X-axis year labels */}
+                                  {xYears.map(yr => (
+                                    <text key={yr} x={xFor(yr)} y={H-PAD_B+16}
+                                      textAnchor="middle" fontSize="10" fill="#6b7a8d">{yr}</text>
+                                  ))}
+                                  {/* Line A (blue) */}
+                                  {ptsA.length > 1 && (
+                                    <path d={pathFor(ptsA)} fill="none" stroke="#1a5276" strokeWidth="2"/>
+                                  )}
+                                  {ptsA.map((p,i) => (
+                                    <g key={"a"+i}>
+                                      <circle cx={p.x} cy={p.y} r="4" fill="#1a5276"/>
+                                      <title>{statsA.code} — {p.year}: {p.rate}%</title>
+                                    </g>
+                                  ))}
+                                  {/* Line B (amber) */}
+                                  {ptsB.length > 1 && (
+                                    <path d={pathFor(ptsB)} fill="none" stroke="#92400e" strokeWidth="2"/>
+                                  )}
+                                  {ptsB.map((p,i) => (
+                                    <g key={"b"+i}>
+                                      <circle cx={p.x} cy={p.y} r="4" fill="#92400e"/>
+                                      <title>{statsB.code} — {p.year}: {p.rate}%</title>
+                                    </g>
+                                  ))}
+                                </svg>
+                                {/* Legend */}
+                                <div style={{display:"flex",gap:18,marginTop:8,fontSize:11,color:"#6b7a8d",
+                                  justifyContent:"center"}}>
+                                  {statsA && (
+                                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                      <span style={{width:16,height:3,background:"#1a5276",display:"inline-block",borderRadius:1}}></span>
+                                      A — {statsA.code}
+                                    </div>
+                                  )}
+                                  {statsB && (
+                                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                      <span style={{width:16,height:3,background:"#92400e",display:"inline-block",borderRadius:1}}></span>
+                                      B — {statsB.code}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </>
+                      )}
+                      {!statsA && !statsB && (
+                        <div style={{padding:"20px",textAlign:"center",color:"#9aa5b1",fontSize:12,
+                          background:"#f8f9fb",borderRadius:8}}>
+                          Pick two product codes above to compare their won-value-rate over time.
+                        </div>
+                      )}
+                    </>);
+                  })()}
+                  {!codeReportLoading&&!codeReportData&&(
+                    <div style={{padding:"20px",textAlign:"center",color:"#9aa5b1",fontSize:12,
+                      background:"#f8f9fb",borderRadius:8}}>
+                      Click to load product code data...
+                    </div>
+                  )}
                 </div>
               )}
             </div>
