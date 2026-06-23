@@ -455,7 +455,10 @@ function cellXml(text,w,bold,fill){
 }
 function rowXmlOut(cells,widths,bold,fill,isHeader){let tr="<w:tr>";if(isHeader)tr+="<w:trPr><w:tblHeader/></w:trPr>";for(let i=0;i<cells.length;i++)tr+=cellXml(cells[i],widths[i],bold,fill);return tr+"</w:tr>";}
 function buildTableXml(columns,rows){
-  const cw=9936,n=columns.length;if(n===0)return"";
+  // 9360 dxa = 6.5" — matches US Letter with 1" margins on each side. Previously
+  // was 9936 (~6.9") which pushed the table past the right margin and caused
+  // the rightmost border line to be clipped in printed/rendered output.
+  const cw=9360,n=columns.length;if(n===0)return"";
   const base=Math.floor(cw/n),widths=[];for(let i=0;i<n;i++)widths.push(i===n-1?cw-base*(n-1):base);
   const b='<w:top w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:left w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:right w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="000000"/>';
   let t=`<w:tbl><w:tblPr><w:tblW w:w="${cw}" w:type="dxa"/><w:jc w:val="center"/><w:tblBorders>${b}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="40" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>`;

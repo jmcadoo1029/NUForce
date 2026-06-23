@@ -6688,25 +6688,23 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                         setRtsBusy(true);
                         try {
                           if(rtsConfirm.mode==="send"){
-                            const {error} = await supabase.from("follow_ups").insert({
+                            await restFetch("POST", "follow_ups", {body:{
                               quote_id: rtsConfirm.row.id,
                               opportunity: rtsConfirm.row.opportunity,
                               customer: rtsConfirm.row.customer,
                               sent_by: currentUser,
-                            });
-                            if(error) throw error;
+                            }});
                           } else {
-                            const {error} = await supabase.from("quotes")
-                              .update({ready_to_send_dismissed_at: new Date().toISOString()})
-                              .eq("id", rtsConfirm.row.id);
-                            if(error) throw error;
+                            await restFetch("PATCH",
+                              `quotes?id=eq.${encodeURIComponent(rtsConfirm.row.id)}`,
+                              {body:{ready_to_send_dismissed_at: new Date().toISOString()}});
                           }
                           // Optimistically remove the row from the widget without reloading the whole dashboard.
                           setData(d => d ? {...d, readyToSend: d.readyToSend.filter(r=>r.id!==rtsConfirm.row.id)} : d);
                           setRtsConfirm(null);
                         } catch(e){
-                          console.warn("Ready to Send action failed:", e);
-                          alert("Action failed — please try again.");
+                          console.warn("[RTS-ACTION] failed:", e?.message||e);
+                          alert("Action failed — " + (e?.message||"please try again."));
                         } finally {
                           setRtsBusy(false);
                         }
@@ -12484,17 +12482,22 @@ const STANDARD_TERMS = [
                     <button onClick={async()=>{
                         const today=new Date().toISOString().slice(0,10);
                         const followupAt=new Date(Date.now()-30*24*60*60*1000).toISOString().slice(0,10);
-                        const {error}=await supabase.from("follow_ups").insert({
-                          quote_id:currentQuoteId,
-                          opportunity:qi.opp,
-                          customer:qi.account,
-                          sent_by:currentUser,
-                          sent_at:new Date(Date.now()-30*24*60*60*1000-1000).toISOString(), // 30 days ago = shows immediately
-                          followup_again_at:null,
-                        });
-                        setShowFollowUpPopover(false);
-                        if(error)showToast("Error adding follow-up","error",4000);
-                        else showToast("📌 Added to follow-ups now","success",3000);
+                        try {
+                          await restFetch("POST", "follow_ups", {body:{
+                            quote_id:currentQuoteId,
+                            opportunity:qi.opp,
+                            customer:qi.account,
+                            sent_by:currentUser,
+                            sent_at:new Date(Date.now()-30*24*60*60*1000-1000).toISOString(), // 30 days ago = shows immediately
+                            followup_again_at:null,
+                          }});
+                          setShowFollowUpPopover(false);
+                          showToast("📌 Added to follow-ups now","success",3000);
+                        } catch(e) {
+                          console.warn("[FOLLOW-UP-NOW] failed:", e?.message||e);
+                          setShowFollowUpPopover(false);
+                          showToast("Error adding follow-up: "+(e?.message||e),"error",4000);
+                        }
                       }}
                       style={{width:"100%",background:"#1a5276",border:"none",borderRadius:7,
                         padding:"8px 12px",color:"#fff",fontWeight:700,fontSize:12,
@@ -12514,20 +12517,25 @@ const STANDARD_TERMS = [
                     <button onClick={async()=>{
                         if(!followUpDate){showToast("Pick a date first","info");return;}
                         // Set sent_at far enough back that it won't show until followup_again_at
-                        const {error}=await supabase.from("follow_ups").insert({
-                          quote_id:currentQuoteId,
-                          opportunity:qi.opp,
-                          customer:qi.account,
-                          sent_by:currentUser,
-                          sent_at:new Date(Date.now()-31*24*60*60*1000).toISOString(), // already 31d old
-                          followed_up:true,  // hide from list initially
-                          followed_up_at:new Date().toISOString(),
-                          followed_up_by:currentUser,
-                          followup_again_at:followUpDate, // show on this date
-                        });
-                        setShowFollowUpPopover(false);
-                        if(error)showToast("Error scheduling follow-up","error",4000);
-                        else showToast(`📌 Follow-up scheduled for ${new Date(followUpDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`,"success",4000);
+                        try {
+                          await restFetch("POST", "follow_ups", {body:{
+                            quote_id:currentQuoteId,
+                            opportunity:qi.opp,
+                            customer:qi.account,
+                            sent_by:currentUser,
+                            sent_at:new Date(Date.now()-31*24*60*60*1000).toISOString(), // already 31d old
+                            followed_up:true,  // hide from list initially
+                            followed_up_at:new Date().toISOString(),
+                            followed_up_by:currentUser,
+                            followup_again_at:followUpDate, // show on this date
+                          }});
+                          setShowFollowUpPopover(false);
+                          showToast(`📌 Follow-up scheduled for ${new Date(followUpDate+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}`,"success",4000);
+                        } catch(e) {
+                          console.warn("[FOLLOW-UP-SCHEDULE] failed:", e?.message||e);
+                          setShowFollowUpPopover(false);
+                          showToast("Error scheduling follow-up: "+(e?.message||e),"error",4000);
+                        }
                       }}
                       disabled={!followUpDate}
                       style={{width:"100%",background:followUpDate?"#1e8449":"#ccc",border:"none",
