@@ -10429,6 +10429,24 @@ const STANDARD_TERMS = [
   const exportPDF = async () => { loadJsPDF(()=>buildPDF(false)); };
   const exportBudgetPDF = async () => { loadJsPDF(()=>buildPDF(true)); };
 
+  // Advanced tools visibility toggle. Persisted in localStorage so each user
+  // can independently choose to see the secondary tool launchers. Defaults to
+  // hidden so the export panel stays uncluttered.
+  const [showAdvancedTools, setShowAdvancedTools] = useState(
+    () => localStorage.getItem("nuforce_show_advanced_tools") === "true"
+  );
+  useEffect(()=>{
+    localStorage.setItem("nuforce_show_advanced_tools", String(showAdvancedTools));
+  },[showAdvancedTools]);
+
+  // Classic Spec Builder launcher — opens the standalone HTML tool in a new
+  // tab with the current quote number prefilled via URL query string.
+  const openClassicSpecBuilder = () => {
+    const q = encodeURIComponent(qi?.opp || "");
+    const url = q ? `/classic-spec-builder.html?quote=${q}` : `/classic-spec-builder.html`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   const exportDcMagPDF = async () => {
     if(window.jspdf){await buildDcMagPDF();return;}
     const script = document.createElement("script");
@@ -13654,6 +13672,24 @@ const STANDARD_TERMS = [
                       461G — TEST SPECIFICATIONS
                     </button>
                   )}
+
+                  {/* Advanced tools (hidden by default; persists per browser) */}
+                  {showAdvancedTools && (
+                    <button onClick={openClassicSpecBuilder}
+                      title="Open the standalone Classic Test Spec Builder in a new tab"
+                      style={{width:"100%",marginTop:6,background:"#1F6F6B",border:"none",borderRadius:8,
+                        padding:"9px 0",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:1}}>
+                      CLASSIC SPEC BUILDER ↗
+                    </button>
+                  )}
+                  <div style={{marginTop:8,textAlign:"right"}}>
+                    <button onClick={()=>setShowAdvancedTools(v=>!v)}
+                      title="Toggle visibility of advanced tool launchers"
+                      style={{background:"none",border:"none",color:"#9aa5b1",fontSize:9,
+                        cursor:"pointer",textDecoration:"underline",padding:0}}>
+                      {showAdvancedTools ? "Hide advanced tools" : "Show advanced tools"}
+                    </button>
+                  </div>
                   </div>{/* end pointerEvents:auto buttons wrapper */}
                 </>
               )}
