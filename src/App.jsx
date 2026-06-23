@@ -9574,16 +9574,15 @@ export default function App({onLogout,currentUser}){
         }
         if(!confirmedId){showToast("Flag error: quote ID mismatch, try again","error");setFlagLoading(false);setShowFlagPopover(false);return;}
         try {
-          const rows = await restFetch("POST", "quote_flags", {body:{
+          const {data,error}=await supabase.from("quote_flags").insert({
             quote_id:confirmedId,
             opportunity:qi.opp,
             customer:qi.account,
             flagged_by:currentUser,
             note:flagNote.trim()||null,
-          }, returnRepresentation:true});
-          const data = (rows||[])[0];
-          if(data){setQuoteFlag(data);showToast("🚩 Quote flagged","success");setDashboardNeedsRefresh(true);}
-          else showToast("Flag failed","error");
+          }).select().single();
+          if(!error&&data){setQuoteFlag(data);showToast("🚩 Quote flagged","success");setDashboardNeedsRefresh(true);}
+          else showToast("Flag failed: "+(error?.message||"unknown error"),"error");
         } catch(e) {
           showToast("Flag failed: " + (e?.message||e), "error");
         }
