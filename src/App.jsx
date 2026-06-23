@@ -6065,6 +6065,47 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     const wonValueRate = totalValue>0
                       ? Math.round((wonValue/totalValue)*100)
                       : null;
+
+                    // ── Lifetime + 3yr-average won-value-rate (volume-weighted) ──
+                    // Computed across ALL entries for this code (ignoring the year filter)
+                    // so they don't shift when the user switches year pills.
+                    const allForCode = codeReportCode
+                      ? codeReportData.filter(e=>e.code===codeReportCode)
+                      : [];
+                    const lifetimeWonItems = allForCode.filter(e=>winStages.has(e.stage));
+                    const lifetimeTotal = allForCode.reduce((a,e)=>a+(e.price||0),0);
+                    const lifetimeWon = lifetimeWonItems.reduce((a,e)=>a+(e.price||0),0);
+                    const lifetimeRate = lifetimeTotal>0
+                      ? Math.round((lifetimeWon/lifetimeTotal)*100)
+                      : null;
+
+                    // 3yr avg = volume-weighted rate across the 3 years immediately
+                    // BEFORE the selected year. Excludes the selected year itself so
+                    // it's a clean past-vs-current comparison.
+                    let threeYrRate = null;
+                    let threeYrLabel = "";
+                    if (codeReportYear !== "all" && codeReportYear !== "unknown") {
+                      const yr = parseInt(codeReportYear, 10);
+                      if (!isNaN(yr)) {
+                        const includedYears = [String(yr-1), String(yr-2), String(yr-3)];
+                        threeYrLabel = `${yr-3}–${yr-1}`;
+                        const threeYrItems = allForCode.filter(e=>includedYears.includes(e.year));
+                        const threeYrTotal = threeYrItems.reduce((a,e)=>a+(e.price||0),0);
+                        const threeYrWon = threeYrItems.filter(e=>winStages.has(e.stage))
+                          .reduce((a,e)=>a+(e.price||0),0);
+                        threeYrRate = threeYrTotal>0
+                          ? Math.round((threeYrWon/threeYrTotal)*100)
+                          : null;
+                      }
+                    }
+                    // Comparison arrow vs lifetime (only meaningful when viewing a specific year)
+                    const isYearSpecific = codeReportYear !== "all" && codeReportYear !== "unknown";
+                    let trendArrow = "", trendColor = "#9aa5b1";
+                    if (isYearSpecific && wonValueRate !== null && lifetimeRate !== null) {
+                      const diff = wonValueRate - lifetimeRate;
+                      if (diff > 5) { trendArrow = "↑"; trendColor = "#239b56"; }
+                      else if (diff < -5) { trendArrow = "↓"; trendColor = "#b91c1c"; }
+                    }
                     return (<>
                       {/* Year filter — pill row */}
                       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
@@ -6124,11 +6165,22 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                           </div>
                         </div>
                         {/* Win rate + won value + open */}
-                        <div style={{display:"flex",gap:14,fontSize:11,color:"#6b7a8d",marginBottom:12,
+                        <div style={{display:"flex",gap:14,fontSize:11,color:"#6b7a8d",marginBottom:8,
                           padding:"8px 12px",background:"#f8f9fb",borderRadius:6,flexWrap:"wrap"}}>
                           <div><b>Win rate:</b> {winRate===null?"—":winRate+"%"} <span style={{color:"#9aa5b1"}}>({uniqueWonQuotes} won / {uniqueQuotes} total)</span></div>
-                          <div><b>Won value:</b> {wonValueRate===null?"—":wonValueRate+"%"} <span style={{color:"#9aa5b1"}}>(${Math.round(wonValue).toLocaleString()} / ${Math.round(totalValue).toLocaleString()} quoted)</span></div>
+                          <div><b>Won value:</b> {wonValueRate===null?"—":wonValueRate+"%"} {trendArrow&&<span style={{color:trendColor,fontWeight:700,marginLeft:2}}>{trendArrow}</span>} <span style={{color:"#9aa5b1"}}>(${Math.round(wonValue).toLocaleString()} / ${Math.round(totalValue).toLocaleString()} quoted)</span></div>
                           <div><b>Open:</b> ${Math.round(openValue).toLocaleString()} <span style={{color:"#9aa5b1"}}>({uniqueOpenQuotes} quotes)</span></div>
+                        </div>
+                        {/* Won-value-rate comparison row: this year vs 3yr avg vs lifetime */}
+                        <div style={{display:"flex",gap:14,fontSize:11,color:"#6b7a8d",marginBottom:12,
+                          padding:"8px 12px",background:"#fafbfc",border:"1px dashed #e8ecf0",borderRadius:6,flexWrap:"wrap"}}>
+                          {isYearSpecific && (
+                            <div><b>{codeReportYear} won value:</b> {wonValueRate===null?"—":wonValueRate+"%"}</div>
+                          )}
+                          {threeYrRate !== null && (
+                            <div><b>{threeYrLabel} avg:</b> {threeYrRate}%</div>
+                          )}
+                          <div><b>Lifetime avg:</b> {lifetimeRate===null?"—":lifetimeRate+"%"} <span style={{color:"#9aa5b1"}}>(volume-weighted across all years)</span></div>
                         </div>
                         {/* Per-quote rows */}
                         <div style={{maxHeight:360,overflowY:"auto",border:"1px solid #e8ecf0",borderRadius:8}}>
