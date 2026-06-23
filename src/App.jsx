@@ -4471,10 +4471,29 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       // 20YY for any reasonable 2-digit prefix
       return "20" + m[1];
     };
+    // Year from an ISO date string ("2024-03-15" or similar). Returns null on failure.
+    const yearFromDate = (s) => {
+      if (!s || typeof s !== "string") return null;
+      const m = s.match(/^(\d{4})/);
+      return m ? m[1] : null;
+    };
     const entries = [];
     for (const q of allQuotes) {
       const blob = q.data || {};
-      const year = yearFromOpp(q.opportunity);
+      // For Closed Won quotes, year buckets by WHEN THE QUOTE WAS WON, not when
+      // the opp was created. Fallback chain: won_date column → wonInfo.wonDate
+      // in blob (handles pre-fix SF imports) → opp prefix. For everything else
+      // (open / lost / etc), use opp prefix — those don't have a meaningful
+      // "won year" to bucket by.
+      const isWon = (q.stage || blob.qi?.stage) === "Closed Won";
+      let year;
+      if (isWon) {
+        year = yearFromDate(q.won_date)
+            || yearFromDate(blob.wonInfo?.wonDate)
+            || yearFromOpp(q.opportunity);
+      } else {
+        year = yearFromOpp(q.opportunity);
+      }
       const common = {
         quoteId: q.id,
         opp: q.opportunity || "",
