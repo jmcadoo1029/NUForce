@@ -6330,12 +6330,20 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     </div>
                   )}
                   {!codeReportLoading&&codeReportData&&(()=>{
-                    // Build the list of available codes (only those with any data)
-                    const dataCodes = [...new Set(codeReportData.map(e=>e.code))].sort();
+                    // Comparison panel scope: exclude pre-2016 data entirely.
+                    // Both the chart and the summary numbers respect this cutoff.
+                    const CUTOFF_YEAR = 2016;
+                    const inScope = codeReportData.filter(e => {
+                      if (e.year === "unknown") return false;
+                      const y = parseInt(e.year, 10);
+                      return !isNaN(y) && y >= CUTOFF_YEAR;
+                    });
+                    // Build the list of available codes (only those with any data in-scope)
+                    const dataCodes = [...new Set(inScope.map(e=>e.code))].sort();
                     // Each selected code: compute yearly won-value-rate + lifetime + 3yr avg
                     const computeStats = (code) => {
                       if (!code) return null;
-                      const all = codeReportData.filter(e => e.code === code);
+                      const all = inScope.filter(e => e.code === code);
                       // Group by year (skip "unknown")
                       const byYear = {};
                       const winStages = new Set(["Closed Won"]);
