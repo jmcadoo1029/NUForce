@@ -13673,21 +13673,21 @@ const STANDARD_TERMS = [
                     </button>
                   )}
 
-                  {/* Advanced tools (hidden by default; persists per browser) */}
+                  {/* Classic Test Spec Builder — hidden by default, persists per browser */}
                   {showAdvancedTools && (
                     <button onClick={openClassicSpecBuilder}
                       title="Open the standalone Classic Test Spec Builder in a new tab"
                       style={{width:"100%",marginTop:6,background:"#1F6F6B",border:"none",borderRadius:8,
                         padding:"9px 0",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:1}}>
-                      CLASSIC SPEC BUILDER ↗
+                      CLASSIC TEST SPEC BUILDER ↗
                     </button>
                   )}
-                  <div style={{marginTop:8,textAlign:"right"}}>
+                  <div style={{marginTop:10,textAlign:"right"}}>
                     <button onClick={()=>setShowAdvancedTools(v=>!v)}
-                      title="Toggle visibility of advanced tool launchers"
-                      style={{background:"none",border:"none",color:"#9aa5b1",fontSize:9,
-                        cursor:"pointer",textDecoration:"underline",padding:0}}>
-                      {showAdvancedTools ? "Hide advanced tools" : "Show advanced tools"}
+                      title="Toggle visibility of the Classic Test Spec Builder launcher"
+                      style={{background:"none",border:"none",color:"#6b7a8d",fontSize:12,
+                        cursor:"pointer",textDecoration:"underline",padding:0,fontWeight:600}}>
+                      {showAdvancedTools ? "Hide Classic Test Spec Builder" : "Show Classic Test Spec Builder"}
                     </button>
                   </div>
                   </div>{/* end pointerEvents:auto buttons wrapper */}
