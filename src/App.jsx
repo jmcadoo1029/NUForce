@@ -1965,7 +1965,7 @@ class NoSessionError extends Error {
 // "quotes?id=eq.123&select=id". body: object for writes. Returns parsed JSON
 // (array for selects, array/obj for writes per Prefer). Throws on non-2xx,
 // on timeout (AbortController), or NoSessionError when there's no valid token.
-async function restFetch(method, path, { body, returnRepresentation = false } = {}) {
+async function restFetch(method, path, { body, returnRepresentation = false, upsert = false } = {}) {
   const token = getAccessToken();
   if (!token) throw new NoSessionError();
 
@@ -1977,7 +1977,11 @@ async function restFetch(method, path, { body, returnRepresentation = false } = 
     "Authorization": `Bearer ${token}`,
     "Content-Type": "application/json",
   };
-  if (returnRepresentation) headers["Prefer"] = "return=representation";
+  // Combine Prefer headers when both are set. PostgREST accepts comma-separated values.
+  const prefer = [];
+  if (returnRepresentation) prefer.push("return=representation");
+  if (upsert) prefer.push("resolution=merge-duplicates");
+  if (prefer.length) headers["Prefer"] = prefer.join(",");
 
   try {
     const res = await fetch(`${REST_BASE}/${path}`, {
@@ -9603,13 +9607,22 @@ export default function App({onLogout,currentUser}){
         }
         if(!confirmedId){showToast("Flag error: quote ID mismatch, try again","error");setFlagLoading(false);setShowFlagPopover(false);return;}
         try {
+          // UPSERT (insert-or-merge): the quote_flags table has a UNIQUE constraint
+          // on quote_id, so a quote that was previously flagged + resolved has a
+          // dormant row. A plain INSERT hits 409. With merge-duplicates, PostgREST
+          // updates the existing row with our payload. We explicitly null out the
+          // resolved fields so a re-flagged quote is "active" again.
           const rows = await restFetch("POST", "quote_flags", {body:{
             quote_id:confirmedId,
             opportunity:qi.opp,
             customer:qi.account,
             flagged_by:currentUser,
+            flagged_at: new Date().toISOString(),
             note:flagNote.trim()||null,
-          }, returnRepresentation:true});
+            resolved: false,
+            resolved_by: null,
+            resolved_at: null,
+          }, returnRepresentation:true, upsert:true});
           const data = (rows||[])[0];
           if(data){setQuoteFlag(data);showToast("🚩 Quote flagged","success");setDashboardNeedsRefresh(true);}
           else showToast("Flag failed: insert returned no row","error");
