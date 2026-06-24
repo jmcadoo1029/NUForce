@@ -2017,6 +2017,43 @@ async function restFetch(method, path, { body, returnRepresentation = false } = 
 // on errors but the caller (notifications) typically swallows them so a
 // failed email doesn't break the user-visible action.
 const FN_BASE = "https://swuuxzmgmldvvomsgmjf.supabase.co/functions/v1";
+
+// PostgREST RPC bypass — same wedge avoidance pattern as restFetch for table
+// queries, applied to RPC calls. Posts to /rest/v1/rpc/<fn> with args in body.
+// Response body IS the function's return value (not wrapped). Throws on error.
+async function rpcCall(fnName, args = {}) {
+  const token = getAccessToken();
+  if (!token) throw new NoSessionError();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${REST_BASE}/rpc/${fnName}`, {
+      method: "POST",
+      headers: {
+        "apikey": REST_APIKEY,
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(args),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "(no body)");
+      throw new Error(`RPC ${fnName} failed: ${res.status} ${errBody.slice(0,300)}`);
+    }
+    const text = await res.text();
+    if (!text) return null;
+    try { return JSON.parse(text); } catch (_) { return text; }
+  } catch (e) {
+    if (e?.name === "AbortError") {
+      console.warn(`[RPC ${fnName}] timed out after ${REST_TIMEOUT_MS}ms`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function invokeFunction(fnName, body) {
   const token = getAccessToken();
   if (!token) throw new NoSessionError();
@@ -9866,10 +9903,13 @@ export default function App({onLogout,currentUser}){
       setSnapshot(savedSnapshot);
       setIsDirty(false);
       // 1. Pre-check: Job # must NOT already exist
-      const { data: lookup, error: lookupErr } = await supabase.rpc(
-        'lookup_project_by_job_number', { job_number: jobNum }
-      );
-      if (lookupErr) throw lookupErr;
+      let lookup;
+      try {
+        lookup = await rpcCall('lookup_project_by_job_number', { job_number: jobNum });
+      } catch (e) {
+        showToast("Couldn't check workspace for existing project: " + (e?.message||e), "error", 6000);
+        return;
+      }
       if (lookup?.found) {
         showToast(
           `Job # "${jobNum}" already exists on project "${lookup.project_name}". Use Add to Existing instead, or change the Job #.`,
@@ -9919,10 +9959,12 @@ export default function App({onLogout,currentUser}){
       console.warn('[EXPENSE-DIAG] payload.expenses:', JSON.stringify(payload.expenses));
       // ── end diagnostic
       // 3. Call the RPC
-      const { data: result, error: rpcErr } = await supabase.rpc(
-        'create_project_from_nuforce', { payload }
-      );
-      if (rpcErr) throw rpcErr;
+      let result;
+      try {
+        result = await rpcCall('create_project_from_nuforce', { payload });
+      } catch (e) {
+        throw e;
+      }
       if (!result?.project_id) throw new Error("Project creation returned no project_id");
       // 4. Persist the linkage to NUForce's quote row
       const { error: updateErr } = await supabase
@@ -9974,10 +10016,13 @@ export default function App({onLogout,currentUser}){
     if (!currentQuoteId) { showToast("Save the quote first before adding to a project","error",3500); return; }
     setWorkspaceBusy(true);
     try {
-      const { data: lookup, error: lookupErr } = await supabase.rpc(
-        'lookup_project_by_job_number', { job_number: jobNum }
-      );
-      if (lookupErr) throw lookupErr;
+      let lookup;
+      try {
+        lookup = await rpcCall('lookup_project_by_job_number', { job_number: jobNum });
+      } catch (e) {
+        showToast("Couldn't look up workspace project: " + (e?.message||e), "error", 6000);
+        return;
+      }
       if (!lookup?.found) {
         showToast(
           `No project with Job # "${jobNum}" found in workspace. Check the Job # or use Create Project instead.`,
@@ -10050,10 +10095,12 @@ export default function App({onLogout,currentUser}){
         }),
         expenses: collectBudgetExpenses(budget),
       };
-      const { data: result, error: rpcErr } = await supabase.rpc(
-        'append_to_project_from_nuforce', { payload }
-      );
-      if (rpcErr) throw rpcErr;
+      let result;
+      try {
+        result = await rpcCall('append_to_project_from_nuforce', { payload });
+      } catch (e) {
+        throw e;
+      }
       const { error: updateErr } = await supabase
         .from("quotes")
         .update({ workspace_project_id: result.project_id })
@@ -10102,10 +10149,13 @@ export default function App({onLogout,currentUser}){
     }
     setWorkspaceBusy(true);
     try {
-      const { data: lookup, error: lookupErr } = await supabase.rpc(
-        'lookup_project_by_job_number', { job_number: jobNum }
-      );
-      if (lookupErr) throw lookupErr;
+      let lookup;
+      try {
+        lookup = await rpcCall('lookup_project_by_job_number', { job_number: jobNum });
+      } catch (e) {
+        showToast(`Couldn't open workspace project: ${e?.message || e}`,"error",6000);
+        return;
+      }
       if (!lookup?.found || !lookup?.project_id) {
         showToast(`No workspace project found for Job # "${jobNum}". It may not have been created yet.`,"error",6000);
         return;
