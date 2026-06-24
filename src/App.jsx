@@ -3860,6 +3860,14 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   const [acctOpen, setAcctOpen]       = useState(false);
   const [acctModal, setAcctModal]     = useState(null); // account name string
   const [hoveredMonthIdx, setHoveredMonthIdx] = useState(null); // for Last-4-Months chart tooltip
+  // Last-4-Months chart: "count" shows quote counts, "value" shows dollar totals.
+  // Persisted in localStorage so the user's preferred view sticks across sessions.
+  const [chartMode, setChartMode] = useState(
+    () => localStorage.getItem("nuforce_chart_mode") === "value" ? "value" : "count"
+  );
+  useEffect(()=>{
+    localStorage.setItem("nuforce_chart_mode", chartMode);
+  },[chartMode]);
   // Ready to Send widget state — { mode: 'send'|'dismiss', row: {id, opportunity, ...} } | null
   const [rtsConfirm, setRtsConfirm] = useState(null);
   const [rtsBusy, setRtsBusy] = useState(false);
@@ -6854,35 +6862,34 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
             )}
 
 
-            {/* ── Month over month combo chart ── */}
+            {/* ── Month over month chart (toggleable Count vs Value) ── */}
             {(()=>{
               const months = data.monthCounts;
-              // Bars: overlay design — "allCount" bar in the back (lighter), "newCount" bar in front (darker).
-              // Lines: newTotal (solid) + netTotal (dashed).
-              const maxCount = Math.max(...months.map(m=>m.allCount||m.count), 1);
-              const maxTotal = Math.max(
-                ...months.map(m=>Math.max(m.newTotal||0, m.netTotal||0)),
-                1
-              );
-              const W=560, H=160, PAD={t:24,r:60,b:32,l:44};
+              // Mode-aware data resolution. Each month exposes:
+              //   - count mode: newCount (front bar), allCount (back bar)
+              //   - value mode: newTotal (front bar), netTotal (back bar incl. revision deltas)
+              const isValueMode = chartMode === "value";
+              const getBack = (m) => isValueMode ? (m.netTotal||0) : (m.allCount||m.count||0);
+              const getFront = (m) => isValueMode ? (m.newTotal||0) : (m.newCount||0);
+              const maxVal = Math.max(...months.map(getBack), 1);
+              const W=560, H=160, PAD={t:24,r:24,b:32,l:54}; // wider left for $ labels, narrower right (no second axis)
               const chartW=W-PAD.l-PAD.r, chartH=H-PAD.t-PAD.b;
               const barW=chartW/months.length*0.45;
               const xCenter=i=>PAD.l+(i+0.5)*(chartW/months.length);
               const barX=i=>xCenter(i)-barW/2;
-              const barH=v=>Math.max(0,Math.round((v/maxCount)*chartH));
-              const lineY=v=>PAD.t+chartH-Math.round((v/maxTotal)*chartH);
-              // Polyline endpoints: drop trailing zero-net months so the
-              // current-month-with-no-data-yet case doesn't make the line dive
-              // to the X-axis (which looks like revenue collapsed). Zero values
-              // in the MIDDLE of the series are still drawn — those represent
-              // an actual empty month, not "we haven't accumulated data yet."
-              const lastNonZeroIdx = months.reduce(
-                (acc,m,i)=>((m.netTotal||0)>0?i:acc), -1
-              );
-              const netPts = months
-                .map((m,i)=>i<=lastNonZeroIdx ? xCenter(i)+","+lineY(m.netTotal||0) : null)
-                .filter(Boolean)
-                .join(" ");
+              const barH=v=>Math.max(0,Math.round((v/maxVal)*chartH));
+              const fmtVal = (v) => {
+                if (isValueMode) {
+                  return v>=1000 ? "$"+(v/1000).toFixed(1)+"k" : "$"+Math.round(v);
+                }
+                return String(v);
+              };
+              const fmtAxis = (v) => {
+                if (isValueMode) {
+                  return v>=1000 ? "$"+(v/1000).toFixed(0)+"k" : "$"+Math.round(v);
+                }
+                return String(Math.round(v));
+              };
               return(
                 <div style={{background:"#fff",borderRadius:12,padding:"20px 24px",
                   boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e8ecf0",marginBottom:20,position:"relative"}}>
@@ -6890,7 +6897,18 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                     <div style={{fontSize:10,fontWeight:700,letterSpacing:1.5,color:"#9aa5b1"}}>
                       QUOTES — LAST 4 MONTHS
                     </div>
-                    <div style={{display:"flex",gap:14,fontSize:10,color:"#6b7a8d",flexWrap:"wrap"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:14,fontSize:10,color:"#6b7a8d",flexWrap:"wrap"}}>
+                      {/* Mode toggle */}
+                      <div style={{display:"flex",gap:0,background:"#f4f6f9",border:"1px solid #e8ecf0",borderRadius:14,padding:2}}>
+                        {[["count","Count"],["value","Value"]].map(([key,label])=>(
+                          <button key={key} onClick={()=>setChartMode(key)}
+                            style={{background:chartMode===key?"#1a2332":"transparent",
+                              border:"none",borderRadius:12,padding:"3px 10px",fontSize:10,
+                              color:chartMode===key?"#fff":"#6b7a8d",fontWeight:600,cursor:"pointer"}}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                       <div style={{display:"flex",alignItems:"center",gap:5}}>
                         <div style={{width:12,height:12,borderRadius:2,background:"#1a5276"}}/>
                         <span>New</span>
@@ -6899,82 +6917,45 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
                         <div style={{width:12,height:12,borderRadius:2,background:"#5499c7"}}/>
                         <span>+ Revs</span>
                       </div>
-                      <div style={{display:"flex",alignItems:"center",gap:5}}>
-                        <div style={{width:16,height:2,background:"#c0392b",borderRadius:1}}/>
-                        <span>Total</span>
-                      </div>
                     </div>
                   </div>
                   <svg viewBox={"0 0 "+W+" "+H} style={{width:"100%",height:"auto",overflow:"visible"}}>
-                    {/* Y-axis gridlines (count, left) */}
+                    {/* Y-axis gridlines + labels */}
                     {[0,0.25,0.5,0.75,1].map(t=>{
                       const y=PAD.t+chartH*(1-t);
                       return <g key={t}>
                         <line x1={PAD.l} y1={y} x2={PAD.l+chartW} y2={y} stroke="#f0f2f5" strokeWidth="1"/>
                         <text x={PAD.l-6} y={y+4} textAnchor="end" fontSize="9" fill="#9aa5b1">
-                          {Math.round(maxCount*t)}
+                          {fmtAxis(maxVal*t)}
                         </text>
                       </g>;
                     })}
-                    {/* Y-axis right (total value) */}
-                    {[0,0.5,1].map(t=>{
-                      const y=PAD.t+chartH*(1-t);
-                      const val=maxTotal*t;
-                      const label=val>=1000?"$"+(val/1000).toFixed(0)+"k":"$"+Math.round(val);
-                      return <text key={t} x={PAD.l+chartW+8} y={y+4} fontSize="9" fill="#c0392b">{label}</text>;
-                    })}
                     {/* Bars — overlay: light "+ Revs" bar in back, dark "New" bar in front */}
                     {months.map((m,i)=>{
-                      const allC = m.allCount||m.count||0;
-                      const newC = m.newCount||0;
-                      const allH = barH(allC);
-                      const newH = barH(newC);
+                      const back = getBack(m);
+                      const front = getFront(m);
+                      const backH = barH(back);
+                      const frontH = barH(front);
                       const lightFill = m.isCurrent?"#5499c7":"#d0d7de";
                       const darkFill  = m.isCurrent?"#1a5276":"#7a8593";
                       return (
                         <g key={m.label}>
-                          {/* Back bar: total count incl. revisions */}
-                          <rect x={barX(i)} y={PAD.t+chartH-allH}
-                            width={barW} height={allH}
+                          {/* Back bar: revision-inclusive total */}
+                          <rect x={barX(i)} y={PAD.t+chartH-backH}
+                            width={barW} height={backH}
                             fill={lightFill} rx="3"/>
-                          {/* Front bar: new families only */}
-                          <rect x={barX(i)} y={PAD.t+chartH-newH}
-                            width={barW} height={newH}
+                          {/* Front bar: new only */}
+                          <rect x={barX(i)} y={PAD.t+chartH-frontH}
+                            width={barW} height={frontH}
                             fill={darkFill} rx="3"/>
-                          {/* Label above the taller bar (the "+ Revs" bar) — shows "N / N+R" */}
-                          <text x={xCenter(i)} y={PAD.t+chartH-allH-5}
+                          {/* Label above the taller bar */}
+                          <text x={xCenter(i)} y={PAD.t+chartH-backH-5}
                             textAnchor="middle" fontSize="10"
                             fontWeight={m.isCurrent?"500":"400"}
                             fill={m.isCurrent?"#1a5276":"#6b7a8d"}>
-                            {allC===newC?newC:(newC+" / "+allC)}
-                          </text>
-                        </g>
-                      );
-                    })}
-                    {/* Total value line (solid red) — represents Net Total
-                        (new families this month + revision deltas approved this month).
-                        Detail breakdown is in the hover tooltip. */}
-                    <polyline points={netPts} fill="none" stroke="#c0392b" strokeWidth="1.5"
-                      strokeLinejoin="round"/>
-                    {/* Dots + value label per month — skipped when net total is $0
-                        (the dot would sit on the X-axis baseline and produce a
-                        broken-ring visual artifact; empty months should look empty). */}
-                    {months.map((m,i)=>{
-                      const cx=xCenter(i);
-                      const netT = m.netTotal||0;
-                      if(netT === 0) return null;
-                      const netCY = lineY(netT);
-                      const fmt = v => v>=1000?"$"+(v/1000).toFixed(1)+"k":"$"+Math.round(v);
-                      const labelFill = m.isCurrent?"#fff":"#c0392b";
-                      // Position label above or below the dot based on which half of the
-                      // chart it falls in — keeps it clear of the bar tops.
-                      const labelY = netCY < PAD.t + chartH/2 ? netCY + 14 : netCY - 7;
-                      return (
-                        <g key={m.label}>
-                          <circle cx={cx} cy={netCY} r="3" fill="#c0392b" stroke="#fff" strokeWidth="1.5"/>
-                          <text x={cx} y={labelY} textAnchor="middle" fontSize="9"
-                            fill={labelFill} fontWeight="600">
-                            {fmt(netT)}
+                            {isValueMode
+                              ? (back===front?fmtVal(front):fmtVal(back))
+                              : (back===front?front:(front+" / "+back))}
                           </text>
                         </g>
                       );
