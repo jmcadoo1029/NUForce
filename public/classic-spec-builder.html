@@ -100,7 +100,7 @@
   .doc-wordmark .wm-small{font-size:19px}
   .doc-title{text-align:center;font-weight:700;font-size:12pt;margin:26px 0 16px}
   .doc-intro{margin:16px 0 8px}
-  .doctable{width:100%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:10pt;margin-bottom:6px}
+  .doctable{width:99%;border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:10pt;margin-bottom:6px;box-sizing:border-box}
   .doctable th,.doctable td{border:1px solid #000;padding:3px 6px;text-align:left;vertical-align:top}
   .doctable th{background:#D9D9D9;text-align:center;font-weight:700}
   .doc-empty{color:#888;font-style:italic;font-family:var(--sans);font-size:11px}
@@ -455,13 +455,44 @@ function cellXml(text,w,bold,fill){
 }
 function rowXmlOut(cells,widths,bold,fill,isHeader){let tr="<w:tr>";if(isHeader)tr+="<w:trPr><w:tblHeader/></w:trPr>";for(let i=0;i<cells.length;i++)tr+=cellXml(cells[i],widths[i],bold,fill);return tr+"</w:tr>";}
 function buildTableXml(columns,rows){
-  // 9360 dxa = 6.5" — matches US Letter with 1" margins on each side. Previously
-  // was 9936 (~6.9") which pushed the table past the right margin and caused
-  // the rightmost border line to be clipped in printed/rendered output.
+  // 9360 dxa = 6.5" — matches US Letter with 1" margins on each side.
   const cw=9360,n=columns.length;if(n===0)return"";
-  const base=Math.floor(cw/n),widths=[];for(let i=0;i<n;i++)widths.push(i===n-1?cw-base*(n-1):base);
+  // First column auto-sizes to its content (matches HTML's natural behavior).
+  // Estimate width from longest text in column 0: ~110 dxa per character at 10pt
+  // Arial, plus ~280 dxa cell padding. Clamp to a sensible range so a one-row
+  // table with a very long label doesn't make column 1 take over the page, and
+  // a table with a short label doesn't shrink so much that the heading wraps.
+  const COL1_MIN = 1200; // ~0.83" — enough for short labels like "Test #1"
+  const COL1_MAX = Math.floor(cw * 0.45); // up to 45% of table width
+  const CHAR_DXA = 110;  // rough average char width at 10pt Arial in dxa
+  const PAD_DXA = 280;   // cell L+R padding combined
+  const widths = [];
+  if (n === 1) {
+    widths.push(cw);
+  } else {
+    // Gather the longest string in column 0, considering header + rows.
+    // For multi-line cells, use the longest line so wrapping isn't penalized.
+    const longestInCol0 = [columns[0]||"", ...rows.map(r=>r[0]||"")]
+      .reduce((maxLen, s) => {
+        const lines = String(s).split(/\r?\n/);
+        const lineMax = lines.reduce((m,l)=>Math.max(m,l.length),0);
+        return Math.max(maxLen, lineMax);
+      }, 0);
+    let col1 = longestInCol0 * CHAR_DXA + PAD_DXA;
+    col1 = Math.max(COL1_MIN, Math.min(COL1_MAX, col1));
+    widths.push(col1);
+    // Distribute remaining width across columns 1..n-1
+    const remaining = cw - col1;
+    const baseRem = Math.floor(remaining / (n-1));
+    for (let i=1; i<n; i++) {
+      widths.push(i===n-1 ? remaining - baseRem*(n-2) : baseRem);
+    }
+  }
   const b='<w:top w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:left w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:right w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="000000"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="000000"/>';
-  let t=`<w:tbl><w:tblPr><w:tblW w:w="${cw}" w:type="dxa"/><w:jc w:val="center"/><w:tblBorders>${b}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="40" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>`;
+  // tblLayout=autofit lets Word grow the column past the gridCol width if
+  // content needs it. Combined with our content-based estimate, the first
+  // column should hug its text in most realistic cases.
+  let t=`<w:tbl><w:tblPr><w:tblW w:w="${cw}" w:type="dxa"/><w:jc w:val="center"/><w:tblBorders>${b}</w:tblBorders><w:tblLayout w:type="autofit"/><w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="40" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>`;
   for(let i=0;i<n;i++)t+=`<w:gridCol w:w="${widths[i]}"/>`;t+="</w:tblGrid>";
   t+=rowXmlOut(columns,widths,true,"D9D9D9",true);
   for(const r of rows){const c=[];for(let i=0;i<n;i++)c.push(r[i]!=null?r[i]:"");t+=rowXmlOut(c,widths,false,null,false);}
