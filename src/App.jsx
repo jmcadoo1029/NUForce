@@ -9603,15 +9603,16 @@ export default function App({onLogout,currentUser}){
         }
         if(!confirmedId){showToast("Flag error: quote ID mismatch, try again","error");setFlagLoading(false);setShowFlagPopover(false);return;}
         try {
-          const {data,error}=await supabase.from("quote_flags").insert({
+          const rows = await restFetch("POST", "quote_flags", {body:{
             quote_id:confirmedId,
             opportunity:qi.opp,
             customer:qi.account,
             flagged_by:currentUser,
             note:flagNote.trim()||null,
-          }).select().single();
-          if(!error&&data){setQuoteFlag(data);showToast("🚩 Quote flagged","success");setDashboardNeedsRefresh(true);}
-          else showToast("Flag failed: "+(error?.message||"unknown error"),"error");
+          }, returnRepresentation:true});
+          const data = (rows||[])[0];
+          if(data){setQuoteFlag(data);showToast("🚩 Quote flagged","success");setDashboardNeedsRefresh(true);}
+          else showToast("Flag failed: insert returned no row","error");
         } catch(e) {
           showToast("Flag failed: " + (e?.message||e), "error");
         }
