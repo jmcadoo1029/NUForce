@@ -9612,7 +9612,7 @@ export default function App({onLogout,currentUser}){
           // dormant row. A plain INSERT hits 409. With merge-duplicates, PostgREST
           // updates the existing row with our payload. We explicitly null out the
           // resolved fields so a re-flagged quote is "active" again.
-          const rows = await restFetch("POST", "quote_flags", {body:{
+          const rows = await restFetch("POST", "quote_flags?on_conflict=quote_id", {body:{
             quote_id:confirmedId,
             opportunity:qi.opp,
             customer:qi.account,
