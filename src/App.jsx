@@ -2123,7 +2123,6 @@ async function savePdfAs(doc, suggestedName) {
 }
 
 async function saveQuoteToSupabase(quote, autoSpecs, autoNotes, opts) {
-  console.warn('[SAVE-ENTRY] saveQuoteToSupabase entered', new Date().toISOString());
   const forceInsert = opts && opts.forceInsert;
   const row = {
     id: forceInsert ? undefined : (quote.id || undefined),
@@ -9151,16 +9150,11 @@ export default function App({onLogout,currentUser}){
   const pendingQuotes=[...pendingQuoteApprovals,...pendingWonApprovals];
 
   const handleQueueDecision=async(decision,idsToProcess)=>{
-    console.warn('[QUEUE-DIAG] handleQueueDecision called', {decision, idsToProcess, idsType:Array.isArray(idsToProcess)?'array':typeof idsToProcess, count:idsToProcess?.length});
-    console.warn('[QUEUE-DIAG] savedQuotes keys:', Object.keys(savedQuotes));
-    console.warn('[QUEUE-DIAG] savedQuotes count:', Object.keys(savedQuotes).length);
     const now=new Date().toISOString();
     for(const id of idsToProcess){
       const q=savedQuotes[id];
-      console.warn('[QUEUE-DIAG] processing id:', id, 'idType:', typeof id, 'foundInSavedQuotes:', !!q, 'wonApprovalStatus:', q?.wonApproval?.status, 'approvalStatus:', q?.approval?.status);
-      if(!q){console.warn('[QUEUE-DIAG] SKIP — quote not found for id:', id);continue;}
+      if(!q) continue;
       const isWon=q.wonApproval?.status==="pending_won";
-      console.warn('[QUEUE-DIAG] isWon branch:', isWon);
       const evtQ={event:decision,by:currentUser,at:now,comments:queueComments};
       if(isWon){
         // Closed Won approval — update wonApproval, use won_approved/won_rejected statuses
@@ -9206,10 +9200,8 @@ export default function App({onLogout,currentUser}){
         }
       }
     }
-    console.warn('[QUEUE-DIAG] loop complete, reloading pending');
     // Reload from Supabase to ensure UI is fully in sync (pending only — see comment in useEffect)
     const refreshed=await loadPendingQuotes();
-    console.warn('[QUEUE-DIAG] reloaded pending count:', Object.keys(refreshed).length);
     setSavedQuotes(refreshed);
     setQueueSelected(new Set());
     setQueueComments("");
