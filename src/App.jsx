@@ -4318,7 +4318,11 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
         followed_up_by: currentUser,
         followup_again_at: d.toISOString().slice(0,10),
       };
-      await supabase.from("follow_ups").update(update).eq("id",fuId);
+      try {
+        await restFetch("PATCH", `follow_ups?id=eq.${encodeURIComponent(fuId)}`, {body:update});
+      } catch(e) {
+        console.warn("[FU-RESCHEDULE] failed:", e?.message||e);
+      }
     } else {
       // Secondary path: never show again. Clear any future reminder to be safe.
       const update = {
@@ -4327,7 +4331,11 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
         followed_up_by: currentUser,
         followup_again_at: null,
       };
-      await supabase.from("follow_ups").update(update).eq("id",fuId);
+      try {
+        await restFetch("PATCH", `follow_ups?id=eq.${encodeURIComponent(fuId)}`, {body:update});
+      } catch(e) {
+        console.warn("[FU-DISMISS] failed:", e?.message||e);
+      }
     }
     // Either action removes the row from the visible list. Reschedules reappear
     // 90 days later via a fresh load. Permanent removals never reappear.
