@@ -2303,8 +2303,12 @@ async function loadPendingQuotes() {
 }
 
 async function deleteQuoteFromSupabase(id) {
-  const { error } = await supabase.from("quotes").delete().eq("id", id);
-  if (error) console.error("Supabase delete error:", error);
+  try {
+    await restFetch("DELETE", `quotes?id=eq.${encodeURIComponent(id)}`);
+  } catch(e) {
+    console.error("[QUOTE-DELETE] failed:", e?.message||e);
+    throw e; // let caller decide how to react
+  }
 }
 
 // ── Client / Contact picker ───────────────────────────────────────────────────
@@ -3949,9 +3953,10 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     const c = campaigns.find(x => x.id === id);
     if (!c) return;
     if (!confirm(`Delete campaign "${c.name}"? Contacts themselves won't be deleted, only their membership in this campaign.`)) return;
-    const { error } = await supabase.from("campaigns").delete().eq("id", id);
-    if (error) {
-      alert("Could not delete: " + error.message);
+    try {
+      await restFetch("DELETE", `campaigns?id=eq.${encodeURIComponent(id)}`);
+    } catch(e) {
+      alert("Could not delete: " + (e?.message||e));
       return;
     }
     setCampaigns(prev => prev.filter(x => x.id !== id));
@@ -10206,10 +10211,14 @@ export default function App({onLogout,currentUser}){
     if(!currentQuoteId){alert("This quote hasn't been saved yet — nothing to delete.");return;}
     const confirmed=window.confirm("Are you sure you want to delete this quote? You cannot retrieve it once deleted.");
     if(!confirmed)return;
-    await deleteQuoteFromSupabase(currentQuoteId);
-    setCurrentQuoteId(null);
-    localStorage.removeItem("vibrato_last_quote_id");
-    alert("Quote deleted.");
+    try {
+      await deleteQuoteFromSupabase(currentQuoteId);
+      setCurrentQuoteId(null);
+      localStorage.removeItem("vibrato_last_quote_id");
+      alert("Quote deleted.");
+    } catch(e) {
+      alert("Delete failed: " + (e?.message||e));
+    }
   };
 
   // Load quote from search
