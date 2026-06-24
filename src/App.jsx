@@ -9966,13 +9966,14 @@ export default function App({onLogout,currentUser}){
         throw e;
       }
       if (!result?.project_id) throw new Error("Project creation returned no project_id");
-      // 4. Persist the linkage to NUForce's quote row
-      const { error: updateErr } = await supabase
-        .from("quotes")
-        .update({ workspace_project_id: result.project_id })
-        .eq("id", currentQuoteId);
-      if (updateErr) {
-        console.error("Project created but failed to save workspace_project_id locally:", updateErr);
+      // 4. Persist the linkage to NUForce's quote row. Best-effort — if it
+      // fails, the RPC already succeeded server-side. Log and continue.
+      try {
+        await restFetch("PATCH",
+          `quotes?id=eq.${encodeURIComponent(currentQuoteId)}`,
+          {body:{ workspace_project_id: result.project_id }});
+      } catch (e) {
+        console.error("[WS-LINK] Project created but failed to save workspace_project_id locally:", e?.message||e);
         showToast(
           "Project created in workspace, but couldn't save the link locally. Refresh and try again if needed.",
           "info", 6000
@@ -10101,11 +10102,16 @@ export default function App({onLogout,currentUser}){
       } catch (e) {
         throw e;
       }
-      const { error: updateErr } = await supabase
-        .from("quotes")
-        .update({ workspace_project_id: result.project_id })
-        .eq("id", currentQuoteId);
-      if (updateErr) console.error("Append succeeded but failed to save link locally:", updateErr);
+      // Persist the workspace_project_id linkage locally. Best-effort — if it
+      // fails, the RPC already succeeded server-side, so we log and move on
+      // rather than aborting the user-visible success flow.
+      try {
+        await restFetch("PATCH",
+          `quotes?id=eq.${encodeURIComponent(currentQuoteId)}`,
+          {body:{ workspace_project_id: result.project_id }});
+      } catch (e) {
+        console.error("[WS-LINK] Append succeeded but failed to save link locally:", e?.message||e);
+      }
       setWorkspaceProjectId(result.project_id);
       setShowAppendConfirm(null);
       showToast(
@@ -10163,8 +10169,11 @@ export default function App({onLogout,currentUser}){
       // Cache the UUID locally so the link is direct next time, and persist it to the quote
       setWorkspaceProjectId(lookup.project_id);
       if (currentQuoteId) {
-        supabase.from("quotes").update({ workspace_project_id: lookup.project_id }).eq("id", currentQuoteId)
-          .then(({ error }) => { if (error) console.warn("Couldn't cache workspace_project_id:", error); });
+        // Fire-and-forget: a failure to cache is non-fatal (next click will look up again)
+        restFetch("PATCH",
+          `quotes?id=eq.${encodeURIComponent(currentQuoteId)}`,
+          {body:{ workspace_project_id: lookup.project_id }})
+          .catch(e => console.warn("[WS-LINK-CACHE] failed:", e?.message||e));
       }
       window.open(`https://workspace.nulabs.com/#project/${lookup.project_id}/info`, "_blank", "noopener,noreferrer");
     } catch (err) {
@@ -10179,11 +10188,9 @@ export default function App({onLogout,currentUser}){
     if (!currentQuoteId) return;
     setWorkspaceBusy(true);
     try {
-      const { error } = await supabase
-        .from("quotes")
-        .update({ workspace_project_id: null })
-        .eq("id", currentQuoteId);
-      if (error) throw error;
+      await restFetch("PATCH",
+        `quotes?id=eq.${encodeURIComponent(currentQuoteId)}`,
+        {body:{ workspace_project_id: null }});
       setWorkspaceProjectId(null);
       setShowClearLinkConfirm(false);
       showToast("Workspace link cleared. Buttons re-enabled.","info",3500);
