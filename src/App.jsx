@@ -2218,13 +2218,14 @@ async function loadQuotesFromSupabase() {
   let from = 0;
   const batchSize = 1000;
   while(true){
-    const { data, error } = await supabase
-      .from("quotes")
-      .select("id, opportunity, customer, rfq, revision, stage, total, approval_status, won_approval_status, updated_at, data")
-      .gte("updated_at", cutoff.toISOString())
-      .order("updated_at", { ascending: false })
-      .range(from, from + batchSize - 1);
-    if (error) { console.error("Supabase load error:", error); break; }
+    let data = null;
+    try {
+      data = await restFetch("GET",
+        `quotes?select=id,opportunity,customer,rfq,revision,stage,total,approval_status,won_approval_status,updated_at,data&updated_at=gte.${encodeURIComponent(cutoff.toISOString())}&order=updated_at.desc&limit=${batchSize}&offset=${from}`);
+    } catch(e) {
+      console.error("[LOAD-ALL-QUOTES] failed:", e?.message||e);
+      break;
+    }
     if (!data || data.length === 0) break;
     allData = allData.concat(data);
     if (data.length < batchSize) break;
@@ -2579,26 +2580,32 @@ function RelatedContactRow({row, existingIds, accountName, onChange, onRemove}){
       const tokens = term.split(/\s+/).filter(Boolean);
       const firstToken = tokens[0];
       const select = hasPhone
-        ? "id, first_name, last_name, email, phone, client_id, clients(name)"
-        : "id, first_name, last_name, email, client_id, clients(name)";
-      let q = await supabase
-        .from("contacts")
-        .select(select)
-        .or(`first_name.ilike.%${firstToken}%,last_name.ilike.%${firstToken}%,email.ilike.%${firstToken}%`)
-        .order("last_name")
-        .limit(50);
-      if (q.error && hasPhone && /phone/i.test(q.error.message || "")) {
-        setHasPhone(false);
-        q = await supabase
-          .from("contacts")
-          .select("id, first_name, last_name, email, client_id, clients(name)")
-          .or(`first_name.ilike.%${firstToken}%,last_name.ilike.%${firstToken}%,email.ilike.%${firstToken}%`)
-          .order("last_name")
-          .limit(50);
+        ? "id,first_name,last_name,email,phone,client_id,clients(name)"
+        : "id,first_name,last_name,email,client_id,clients(name)";
+      const orParam = `or=(first_name.ilike.*${encodeURIComponent(firstToken)}*,last_name.ilike.*${encodeURIComponent(firstToken)}*,email.ilike.*${encodeURIComponent(firstToken)}*)`;
+      let data = null;
+      try {
+        data = await restFetch("GET",
+          `contacts?select=${encodeURIComponent(select)}&${orParam}&order=last_name&limit=50`);
+      } catch (e) {
+        if (hasPhone && /phone/i.test(e?.message || "")) {
+          setHasPhone(false);
+          try {
+            data = await restFetch("GET",
+              `contacts?select=id,first_name,last_name,email,client_id,clients(name)&${orParam}&order=last_name&limit=50`);
+          } catch (e2) {
+            console.error("[CONTACT-SEARCH retry] failed:", e2?.message||e2);
+            setResults([]);
+            return;
+          }
+        } else {
+          console.error("[CONTACT-SEARCH] failed:", e?.message||e);
+          setResults([]);
+          return;
+        }
       }
-      if (q.error) { console.error("Related contacts search error:", q.error); setResults([]); return; }
       // Client-side multi-word filter
-      const matches = (q.data || []).filter(c => {
+      const matches = (data || []).filter(c => {
         const hay = ((c.first_name||"")+" "+(c.last_name||"")+" "+(c.email||"")+" "+(c.clients?.name||"")).toLowerCase();
         return tokens.every(t => hay.includes(t.toLowerCase()));
       });
@@ -3652,13 +3659,15 @@ function AccountDashboard({accountName, onClose, onLoadQuote, onNewQuote}){
       // Fetch all quotes for this exact account name
       let allRows=[], from=0, batch=500;
       while(true){
-        const {data:rows,error}=await supabase
-          .from("quotes")
-          .select("id, opportunity, revision, stage, total, won_date, data, source, created_at")
-          .eq("customer", accountName)
-          .order("opportunity", {ascending:false})
-          .range(from, from+batch-1);
-        if(error||!rows||rows.length===0)break;
+        let rows = null;
+        try {
+          rows = await restFetch("GET",
+            `quotes?select=id,opportunity,revision,stage,total,won_date,data,source,created_at&customer=eq.${encodeURIComponent(accountName)}&order=opportunity.desc&limit=${batch}&offset=${from}`);
+        } catch(e) {
+          console.error("[ACCOUNT-LOAD] failed:", e?.message||e);
+          break;
+        }
+        if(!rows||rows.length===0)break;
         allRows=allRows.concat(rows);
         if(rows.length<batch)break;
         from+=batch;
@@ -3923,11 +3932,13 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   // Load campaigns list
   const loadCampaigns = async () => {
     setCampaignsLoading(true);
-    const { data, error } = await supabase
-      .from("campaigns")
-      .select("id, name, description, created_at")
-      .order("created_at", { ascending: false });
-    if (error) console.error("Load campaigns error:", error);
+    let data = [];
+    try {
+      data = await restFetch("GET",
+        `campaigns?select=id,name,description,created_at&order=created_at.desc`);
+    } catch(e) {
+      console.error("[LOAD-CAMPAIGNS] failed:", e?.message||e);
+    }
     setCampaigns(data || []);
     setCampaignsLoading(false);
   };
@@ -3943,21 +3954,25 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   const createCampaign = async () => {
     const name = newCampaignName.trim();
     if (!name) return;
-    const { data, error } = await supabase
-      .from("campaigns")
-      .insert([{ name, description: newCampaignDesc.trim() || null }])
-      .select()
-      .single();
-    if (error) {
-      alert("Could not create campaign: " + error.message);
+    let row = null;
+    try {
+      const rows = await restFetch("POST", "campaigns",
+        {body:[{name, description: newCampaignDesc.trim() || null}], returnRepresentation:true});
+      row = (rows||[])[0];
+    } catch(e) {
+      alert("Could not create campaign: " + (e?.message||e));
+      return;
+    }
+    if (!row) {
+      alert("Could not create campaign: no row returned");
       return;
     }
     // Newest at top
-    setCampaigns(prev => [data, ...prev]);
+    setCampaigns(prev => [row, ...prev]);
     setNewCampaignName("");
     setNewCampaignDesc("");
     setShowNewCampaignForm(false);
-    setSelectedCampaignId(data.id);
+    setSelectedCampaignId(row.id);
   };
 
   // Delete campaign (memberships cascade)
@@ -3986,32 +4001,37 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
 
   // Build contact select string based on whether phone column exists
   const contactSelect = () => contactsHasPhone
-    ? "id, first_name, last_name, email, phone, client_id, clients(name)"
-    : "id, first_name, last_name, email, client_id, clients(name)";
+    ? "id,first_name,last_name,email,phone,client_id,clients(name)"
+    : "id,first_name,last_name,email,client_id,clients(name)";
 
   // Load contacts in selected campaign (joined with contact details + client name)
   const loadCampaignContacts = async (campaignId) => {
     if (!campaignId) { setCampaignContacts([]); return; }
     setContactsLoading(true);
-    let q = await supabase
-      .from("campaign_contacts")
-      .select("contact_id, added_at, contacts(" + contactSelect() + ")")
-      .eq("campaign_id", campaignId);
-    // If phone column doesn't exist, the inner query may fail. Detect & retry.
-    if (q.error && contactsHasPhone && /phone/i.test(q.error.message || "")) {
-      setContactsHasPhone(false);
-      q = await supabase
-        .from("campaign_contacts")
-        .select("contact_id, added_at, contacts(id, first_name, last_name, email, client_id, clients(name))")
-        .eq("campaign_id", campaignId);
+    let data = null;
+    try {
+      data = await restFetch("GET",
+        `campaign_contacts?select=${encodeURIComponent("contact_id,added_at,contacts("+contactSelect()+")")}&campaign_id=eq.${encodeURIComponent(campaignId)}`);
+    } catch(e) {
+      if (contactsHasPhone && /phone/i.test(e?.message || "")) {
+        setContactsHasPhone(false);
+        try {
+          data = await restFetch("GET",
+            `campaign_contacts?select=${encodeURIComponent("contact_id,added_at,contacts(id,first_name,last_name,email,client_id,clients(name))")}&campaign_id=eq.${encodeURIComponent(campaignId)}`);
+        } catch(e2) {
+          console.error("[LOAD-CAMPAIGN-CONTACTS retry] failed:", e2?.message||e2);
+          setCampaignContacts([]);
+          setContactsLoading(false);
+          return;
+        }
+      } else {
+        console.error("[LOAD-CAMPAIGN-CONTACTS] failed:", e?.message||e);
+        setCampaignContacts([]);
+        setContactsLoading(false);
+        return;
+      }
     }
-    if (q.error) {
-      console.error("Load campaign contacts error:", q.error);
-      setCampaignContacts([]);
-      setContactsLoading(false);
-      return;
-    }
-    const flat = (q.data || []).map(r => ({
+    const flat = (data || []).map(r => ({
       contact_id: r.contact_id,
       added_at: r.added_at,
       ...r.contacts,
@@ -4043,28 +4063,30 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
       const firstToken = tokens[0];
       // Server-side: match the FIRST token against any of first_name/last_name/email
       // Then client-side filter requires ALL tokens to appear somewhere in (first_name + " " + last_name + " " + email)
-      let q = await supabase
-        .from("contacts")
-        .select(contactSelect())
-        .or(`first_name.ilike.%${firstToken}%,last_name.ilike.%${firstToken}%,email.ilike.%${firstToken}%`)
-        .order("last_name")
-        .limit(50);
-      if (q.error && contactsHasPhone && /phone/i.test(q.error.message || "")) {
-        setContactsHasPhone(false);
-        q = await supabase
-          .from("contacts")
-          .select("id, first_name, last_name, email, client_id, clients(name)")
-          .or(`first_name.ilike.%${firstToken}%,last_name.ilike.%${firstToken}%,email.ilike.%${firstToken}%`)
-          .order("last_name")
-          .limit(50);
-      }
-      if (q.error) {
-        console.error("Contact search error:", q.error);
-        setContactSearchResults([]);
-        return;
+      const orParam = `or=(first_name.ilike.*${encodeURIComponent(firstToken)}*,last_name.ilike.*${encodeURIComponent(firstToken)}*,email.ilike.*${encodeURIComponent(firstToken)}*)`;
+      let data = null;
+      try {
+        data = await restFetch("GET",
+          `contacts?select=${encodeURIComponent(contactSelect())}&${orParam}&order=last_name&limit=50`);
+      } catch(e) {
+        if (contactsHasPhone && /phone/i.test(e?.message || "")) {
+          setContactsHasPhone(false);
+          try {
+            data = await restFetch("GET",
+              `contacts?select=id,first_name,last_name,email,client_id,clients(name)&${orParam}&order=last_name&limit=50`);
+          } catch(e2) {
+            console.error("[CAMPAIGN-CONTACT-SEARCH retry] failed:", e2?.message||e2);
+            setContactSearchResults([]);
+            return;
+          }
+        } else {
+          console.error("[CAMPAIGN-CONTACT-SEARCH] failed:", e?.message||e);
+          setContactSearchResults([]);
+          return;
+        }
       }
       // Client-side: every token must appear in (first + last + email + company)
-      const matches = (q.data || []).filter(c => {
+      const matches = (data || []).filter(c => {
         const haystack = ((c.first_name||"")+" "+(c.last_name||"")+" "+(c.email||"")+" "+(c.clients?.name||"")).toLowerCase();
         return tokens.every(t => haystack.includes(t.toLowerCase()));
       });
@@ -4084,12 +4106,12 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
   // Add a contact to selected campaign
   const addContactToCampaign = async (contact) => {
     if (!selectedCampaignId) return;
-    const { error } = await supabase
-      .from("campaign_contacts")
-      .insert([{ campaign_id: selectedCampaignId, contact_id: contact.id }]);
-    if (error) {
+    try {
+      await restFetch("POST", "campaign_contacts",
+        {body:[{campaign_id: selectedCampaignId, contact_id: contact.id}]});
+    } catch(e) {
       // Likely duplicate key — silently re-load
-      console.error("Add contact error:", error);
+      console.error("[CAMPAIGN-ADD-CONTACT] failed:", e?.message||e);
     }
     setContactSearchTerm("");
     setContactSearchResults([]);
@@ -4103,13 +4125,11 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     const c = campaignContacts.find(x => x.id === contactId);
     const name = c ? ((c.first_name||"") + " " + (c.last_name||"")).trim() || c.email || "this contact" : "this contact";
     if (!confirm(`Remove ${name} from this campaign? (The contact record itself is not deleted.)`)) return;
-    const { error } = await supabase
-      .from("campaign_contacts")
-      .delete()
-      .eq("campaign_id", selectedCampaignId)
-      .eq("contact_id", contactId);
-    if (error) {
-      alert("Could not remove: " + error.message);
+    try {
+      await restFetch("DELETE",
+        `campaign_contacts?campaign_id=eq.${encodeURIComponent(selectedCampaignId)}&contact_id=eq.${encodeURIComponent(contactId)}`);
+    } catch(e) {
+      alert("Could not remove: " + (e?.message||e));
       return;
     }
     setCampaignContacts(prev => prev.filter(x => x.id !== contactId));
@@ -4165,17 +4185,21 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     setAiLoading(true);
     try {
       // Fetch quotes — rich data for Claude to reason about
-      const {data:quotes} = await supabase
-        .from('quotes')
-        .select('opportunity,customer,total,created_at,won_date,data')
-        .order('created_at',{ascending:false})
-        .limit(1000);
+      let quotes = [];
+      try {
+        quotes = await restFetch("GET",
+          `quotes?select=opportunity,customer,total,created_at,won_date,data&order=created_at.desc&limit=1000`) || [];
+      } catch(e) {
+        console.warn("[AI-FETCH quotes] failed:", e?.message||e);
+      }
 
-      const {data:followUpsData} = await supabase
-        .from('follow_ups')
-        .select('opportunity,customer,sent_at,followed_up,followup_again_at')
-        .eq('followed_up',false)
-        .limit(500);
+      let followUpsData = [];
+      try {
+        followUpsData = await restFetch("GET",
+          `follow_ups?select=opportunity,customer,sent_at,followed_up,followup_again_at&followed_up=eq.false&limit=500`) || [];
+      } catch(e) {
+        console.warn("[AI-FETCH followups] failed:", e?.message||e);
+      }
 
       // Build compact but rich summary — enough for Claude to answer specific questions
       const quoteSummary = (quotes||[]).map(q=>{
@@ -9756,12 +9780,12 @@ export default function App({onLogout,currentUser}){
     const baseOpp = oppMatch ? oppMatch[1] : qi.opp;
     // Query for the base + any single-letter rev variants. Use ilike with a wildcard,
     // then client-side filter to ensure suffix is either empty or exactly one A-Z.
-    const { data, error } = await supabase
-      .from("quotes")
-      .select("id, opportunity, revision, total, updated_at, created_at, data")
-      .ilike("opportunity", baseOpp + "%");
-    if (error) {
-      console.error("Rev history load error:", error);
+    let data = null;
+    try {
+      data = await restFetch("GET",
+        `quotes?select=id,opportunity,revision,total,updated_at,created_at,data&opportunity=ilike.${encodeURIComponent(baseOpp+"*")}`);
+    } catch(e) {
+      console.warn("[REV-HISTORY] failed:", e?.message||e);
       setRevHistoryList([]);
       setRevHistoryLoading(false);
       return;
