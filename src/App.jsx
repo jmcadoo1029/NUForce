@@ -3082,6 +3082,88 @@ function getEmiTestText(testKey, rev, locsObj) {
   return entries.join(" Additionally, ");
 }
 
+// ── EMI 461F test definitions — shared between PDF export and Spec Builder ────
+// Given a single active EMI section (already chosen by caller), produces the
+// FULL list of MIL-STD-461F test definitions with descriptions interpolated
+// using that section's parameters (dimensions, cables, phases, power type).
+// The caller is responsible for filtering by which tests are actually selected.
+// Used by both buildEmi461fPDF (for the in-app PDF export) and the Spec Builder
+// payload builder (for the standalone HTML tool).
+function getEmi461fTestDefinitions(activeEmi, ti, setup) {
+  const dispL = activeEmi.dimL || ti?.dimL || '0';
+  const dispW = activeEmi.dimW || ti?.dimW || '0';
+  const dispH = activeEmi.dimH || ti?.dimH || '0';
+  const emiCalcData = calcEmiShifts({
+    dimL: dispL, dimW: dispW, dimH: dispH,
+    cables: activeEmi.cables || '0',
+    setupCables: setup?.cables || '0',
+    phases: activeEmi.phases || ti?.phase || '3',
+    revs: {'Rev F': true},
+  });
+  const c114 = emiCalcData.CS114;
+  const c116 = emiCalcData.CS116;
+  const re102p = emiCalcData.RE102.pos;
+  const rs101p = emiCalcData.RS101.pos;
+  const rs103p = emiCalcData.RS103.pos;
+  const pos = (n) => n + ' position' + (n !== 1 ? 's' : '');
+  const isDCquote = (ti?.pwrType || 'AC') === 'DC';
+  const acdc = isDCquote ? 'DC' : 'AC';
+
+  return [
+    {key:"CE101", label:"Conducted Emissions, Power Leads, 30 Hz to 10 kHz",
+     desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE101-2 from 30 Hz to 10 kHz with a relaxation of the limit determined during testing.",
+     note:null},
+    {key:"CE102", label:"Conducted Emissions, Power Leads, 10 kHz to 10 MHz",
+     desc: "Tested on each "+acdc+" power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE102-1 from 10 kHz to 10 MHz with 6 dB relaxation.",
+     note:null},
+    {key:"CS101", label:"Conducted Susceptibility, Power Leads, 30 Hz to 150 kHz",
+     desc: "Tested on each "+acdc+" high side for a total of one (1) test. Tested to MIL-STD-461F Figure CS101-1 (Curve 1 or 2) and Figure CS101-2.",
+     note:null},
+    {key:"CS106", label:"Conducted Susceptibility, Transients, Power Leads",
+     desc: isDCquote
+           ? "Tested on the DC high side for a total of one (1) test. Tested to MIL-STD-461F Figure CS106-1. Testing performed with a test generator compliant with CS06. Tested in charged mode of operation only."
+           : "Tested on each AC high side for a total of two (2) tests. Tested to MIL-STD-461F Figure CS106-1. Testing performed with a test generator compliant with CS06. Tested in charged mode of operation only.",
+     note:"The overshoot on this generator is slightly higher than specified in CS106 but test results are generally accepted as this is considered worst case."},
+    {key:"CS114", label:"Conducted Susceptibility, Bulk Cable Injection, 10 kHz to 200 MHz and 4 kHz to 1 MHz at 77 dB uA",
+     desc:"Bulk injection on AC power input lead and on one lead individually. Common mode test on input leads for a total of "+c114.pwrTests+" tests for power leads. "+c114.sigTests+" test(s) on signal leads for a total of "+c114.totalTests+" tests. Tested to MIL-STD-461F Figure CS114-1, Curve 2 from 10 kHz to 200 MHz and from 4 kHz to 1 MHz at 77 dB uA.",
+     note:null},
+    {key:"CS116", label:"Conducted Susceptibility, Damped Sinusoidal Transients, Cables and Power Leads, 10 kHz to 100 MHz",
+     desc:"Bulk injection on AC power input lead and on each lead individually for a total of "+c116.pwrTests+" tests for power leads. "+c116.sigTests+" test(s) on signal leads for a total of "+c116.totalTests+" tests. Tested to MIL-STD-461F Figure CS116-2 at discrete frequencies: 10 kHz, 100 kHz, 1 MHz, 10 MHz, 30 MHz and 100 MHz.",
+     note:null},
+    {key:"RE101", label:"Radiated Emissions, Magnetic Field, 30 Hz to 100 kHz",
+     desc: getEmiTestText("RE101","F",activeEmi.locs) ||
+           "Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RE101-2 (Navy) or RE101-1 (Army) from 30 Hz to 100 kHz.",
+     note:null},
+    {key:"RE102", label:"Radiated Emissions, Electric Field, 10 kHz to 18 GHz",
+     desc: getEmiTestText("RE102","F",activeEmi.locs) ||
+           "Tested to MIL-STD-461F Figure RE102-1 for Metallic Ships below deck applications.",
+     positions:[
+       {range:"10 kHz - 30 MHz",   pos:pos(1)},
+       {range:"30 MHz - 200 MHz",  pos:pos(1)},
+       {range:"200 MHz - 1 GHz",   pos:pos(re102p.sub1GHz)},
+       {range:"1 GHz - 4 GHz",     pos:pos(re102p.b1_4)},
+       {range:"4 GHz - 15 GHz",    pos:pos(re102p.b4_15)},
+       {range:"15 GHz - 18 GHz",   pos:pos(re102p.b15_18)},
+     ],
+     note:"Tested at width and cables only. Testing required to 10x the highest operating frequency or 1 GHz (whichever is greater), or if not known, to 18 GHz."},
+    {key:"RS101", label:"Radiated Susceptibility, Magnetic Field, 30 Hz to 100 kHz",
+     desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RS101-1 (Navy) or RS101-2 (Army) from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" LxW + "+rs101p.LH+" LxH + "+rs101p.WH+" WxH).",
+     note:"Applicability depends on application."},
+    {key:"RS103", label:"Radiated Susceptibility, Electric Field, 2 MHz to 18 GHz",
+     desc: getEmiTestText("RS103","F",activeEmi.locs) ||
+           "Tested to MIL-STD-461F Table VII for Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m.",
+     positions:[
+       {range:"2 MHz - 30 MHz",    pos:pos(rs103p.b2_30)},
+       {range:"30 MHz - 200 MHz",  pos:pos(rs103p.b30_200)},
+       {range:"200 MHz - 1 GHz",   pos:pos(rs103p.b200_1G)},
+       {range:"1 GHz - 4 GHz",     pos:pos(rs103p.b1_4)},
+       {range:"4 GHz - 15 GHz",    pos:pos(rs103p.b4_15)},
+       {range:"15 GHz - 18 GHz",   pos:pos(rs103p.b15_18)},
+     ],
+     note:null},
+  ];
+}
+
 // ── Summary calculation helper ────────────────────────────────────────────────
 // Compute a section's total setup = stdSetup + global drilling + global fab + addlCosts
 function sectionSetup(s, globalSetup){
@@ -10512,21 +10594,70 @@ const STANDARD_TERMS = [
   const exportPDF = async () => { loadJsPDF(()=>buildPDF(false)); };
   const exportBudgetPDF = async () => { loadJsPDF(()=>buildPDF(true)); };
 
-  // Advanced tools visibility toggle. Persisted in localStorage so each user
-  // can independently choose to see the secondary tool launchers. Defaults to
-  // hidden so the export panel stays uncluttered.
-  const [showAdvancedTools, setShowAdvancedTools] = useState(
-    () => localStorage.getItem("nuforce_show_advanced_tools") === "true"
-  );
-  useEffect(()=>{
-    localStorage.setItem("nuforce_show_advanced_tools", String(showAdvancedTools));
-  },[showAdvancedTools]);
-
   // Classic Spec Builder launcher — opens the standalone HTML tool in a new
   // tab with the current quote number prefilled via URL query string.
   const openClassicSpecBuilder = () => {
     const q = encodeURIComponent(qi?.opp || "");
     const url = q ? `/classic-spec-builder.html?quote=${q}` : `/classic-spec-builder.html`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  // Spec Builder from Quote — builds a payload of pre-filled sections (one per
+  // active test module: EMI 461F, etc.) and writes to localStorage. The HTML
+  // tool reads the payload on init when launched with ?mode=from-quote.
+  // Phase 2 scope: EMI 461F only. 461G/PQ/DCM in later phases.
+  const buildSpecBuilderPayload = () => {
+    const sections = [];
+
+    // EMI 461F: collect from any active EMI section that has Rev F selected (or
+    // no rev selected, defaulting to F — matches PDF builder behavior).
+    const activeEmisF = emis.filter(s => s.on && (s.revs?.['Rev F'] || !s.revs?.['Rev G']));
+    if (activeEmisF.length > 0) {
+      // State derivation: first active section drives the calc parameters
+      // (matches the existing PDF builder's behavior for shift counts etc.)
+      const activeEmi = activeEmisF[0];
+      const allDefs = getEmi461fTestDefinitions(activeEmi, ti, setup);
+      // Selected keys: union across all active EMI sections
+      const selectedKeys = new Set();
+      activeEmisF.forEach(s => {
+        Object.entries(s.tests || {}).forEach(([k,v]) => { if (v) selectedKeys.add(k); });
+      });
+      const selected = allDefs.filter(r => selectedKeys.has(r.key));
+      if (selected.length > 0) {
+        // Convert to HTML row format: [test name, description, comments]
+        // RE102/RS103 have a positions[] array — inline it into the description
+        // so the row reads cleanly in the table.
+        const rows = selected.map(r => {
+          let desc = r.desc;
+          if (r.positions && r.positions.length > 0) {
+            const pl = r.positions.map(p => "  " + p.range + ": " + p.pos).join("\n");
+            desc = desc + "\n" + pl;
+          }
+          return [r.label, desc, r.note || ""];
+        });
+        sections.push({ type: "EMI", rows });
+      }
+    }
+
+    // TODO Phase 3: EMI 461G
+    // TODO Phase 4: PQ 300B + PQ 300P1
+    // TODO Phase 5: DC Mag
+
+    return { quote: qi?.opp || "", sections };
+  };
+
+  const openSpecBuilderFromQuote = () => {
+    const payload = buildSpecBuilderPayload();
+    try {
+      localStorage.setItem("nuforce_spec_builder_payload", JSON.stringify(payload));
+    } catch (e) {
+      console.warn("[SPEC-BUILDER] localStorage write failed:", e?.message || e);
+      // Continue anyway — the HTML will just show empty if no payload
+    }
+    const q = encodeURIComponent(qi?.opp || "");
+    const url = q
+      ? `/classic-spec-builder.html?quote=${q}&mode=from-quote`
+      : `/classic-spec-builder.html?mode=from-quote`;
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
@@ -10952,83 +11083,10 @@ const STANDARD_TERMS = [
 
     // Compute all positions and test counts from the same math as shift calculations
     const activeEmi = emiOverride ? {...emiOverride, on:true} : (emis.find(s=>s.on)||(emis[0]||{}));
-    const dispL = activeEmi.dimL||ti.dimL||'0';
-    const dispW = activeEmi.dimW||ti.dimW||'0';
-    const dispH = activeEmi.dimH||ti.dimH||'0';
-    const emiCalcData = calcEmiShifts({
-      dimL:dispL, dimW:dispW, dimH:dispH,
-      cables:activeEmi.cables||'0',
-      setupCables:setup?.cables||'0',
-      phases:activeEmi.phases||ti.phase||'3',
-      revs:{'Rev F':true},
-    });
-    const c114 = emiCalcData.CS114;
-    const c116 = emiCalcData.CS116;
-    const re102p = emiCalcData.RE102.pos;
-    const rs101p = emiCalcData.RS101.pos;
-    const rs103p = emiCalcData.RS103.pos;
-    const pwrCables = sf(activeEmi.phases||ti.phase||'3',3)===1?2:4; // 1ph=2, 3ph=4
-    const pos=(n)=>n+' position'+(n!==1?'s':'');
-    // EUT power type drives wording in CE101/CE102/CS101/CS106 descriptions.
-    // Falls back to AC for blank/unset values (consistent with existing power
-    // type warnings in getTestFlags).
-    const isDCquote = (ti?.pwrType||'AC')==='DC';
-    const acdc = isDCquote ? 'DC' : 'AC';   // used inline in desc strings below
 
-    // Full 461F test definitions — only show tests selected by user
-    const EMI_461F = [
-      {key:"CE101", label:"Conducted Emissions, Power Leads, 30 Hz to 10 kHz",
-       desc:"Tested on each AC power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE101-2 from 30 Hz to 10 kHz with a relaxation of the limit determined during testing.",
-       note:null},
-      {key:"CE102", label:"Conducted Emissions, Power Leads, 10 kHz to 10 MHz",
-       desc: "Tested on each "+acdc+" power input lead for a total of two (2) tests. Tested to MIL-STD-461F Figure CE102-1 from 10 kHz to 10 MHz with 6 dB relaxation.",
-       note:null},
-      {key:"CS101", label:"Conducted Susceptibility, Power Leads, 30 Hz to 150 kHz",
-       desc: "Tested on each "+acdc+" high side for a total of one (1) test. Tested to MIL-STD-461F Figure CS101-1 (Curve 1 or 2) and Figure CS101-2.",
-       note:null},
-      {key:"CS106", label:"Conducted Susceptibility, Transients, Power Leads",
-       desc: isDCquote
-             ? "Tested on the DC high side for a total of one (1) test. Tested to MIL-STD-461F Figure CS106-1. Testing performed with a test generator compliant with CS06. Tested in charged mode of operation only."
-             : "Tested on each AC high side for a total of two (2) tests. Tested to MIL-STD-461F Figure CS106-1. Testing performed with a test generator compliant with CS06. Tested in charged mode of operation only.",
-       note:"The overshoot on this generator is slightly higher than specified in CS106 but test results are generally accepted as this is considered worst case."},
-      {key:"CS114", label:"Conducted Susceptibility, Bulk Cable Injection, 10 kHz to 200 MHz and 4 kHz to 1 MHz at 77 dB uA",
-       desc:"Bulk injection on AC power input lead and on one lead individually. Common mode test on input leads for a total of "+c114.pwrTests+" tests for power leads. "+c114.sigTests+" test(s) on signal leads for a total of "+c114.totalTests+" tests. Tested to MIL-STD-461F Figure CS114-1, Curve 2 from 10 kHz to 200 MHz and from 4 kHz to 1 MHz at 77 dB uA.",
-       note:null},
-      {key:"CS116", label:"Conducted Susceptibility, Damped Sinusoidal Transients, Cables and Power Leads, 10 kHz to 100 MHz",
-       desc:"Bulk injection on AC power input lead and on each lead individually for a total of "+c116.pwrTests+" tests for power leads. "+c116.sigTests+" test(s) on signal leads for a total of "+c116.totalTests+" tests. Tested to MIL-STD-461F Figure CS116-2 at discrete frequencies: 10 kHz, 100 kHz, 1 MHz, 10 MHz, 30 MHz and 100 MHz.",
-       note:null},
-      {key:"RE101", label:"Radiated Emissions, Magnetic Field, 30 Hz to 100 kHz",
-       desc: getEmiTestText("RE101","F",activeEmi.locs) ||
-             "Applicable to all enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RE101-2 (Navy) or RE101-1 (Army) from 30 Hz to 100 kHz.",
-       note:null},
-      {key:"RE102", label:"Radiated Emissions, Electric Field, 10 kHz to 18 GHz",
-       desc: getEmiTestText("RE102","F",activeEmi.locs) ||
-             "Tested to MIL-STD-461F Figure RE102-1 for Metallic Ships below deck applications.",
-       positions:[
-         {range:"10 kHz - 30 MHz",   pos:pos(1)},
-         {range:"30 MHz - 200 MHz",  pos:pos(1)},
-         {range:"200 MHz - 1 GHz",   pos:pos(re102p.sub1GHz)},
-         {range:"1 GHz - 4 GHz",     pos:pos(re102p.b1_4)},
-         {range:"4 GHz - 15 GHz",    pos:pos(re102p.b4_15)},
-         {range:"15 GHz - 18 GHz",   pos:pos(re102p.b15_18)},
-       ],
-       note:"Tested at width and cables only. Testing required to 10x the highest operating frequency or 1 GHz (whichever is greater), or if not known, to 18 GHz."},
-      {key:"RS101", label:"Radiated Susceptibility, Magnetic Field, 30 Hz to 100 kHz",
-       desc:"Applicable to all equipment enclosures including electrical cable interfaces. Tested to MIL-STD-461F Figure RS101-1 (Navy) or RS101-2 (Army) from 30 Hz to 100 kHz at approximately "+rs101p.total+" positions ("+rs101p.LW+" LxW + "+rs101p.LH+" LxH + "+rs101p.WH+" WxH).",
-       note:"Applicability depends on application."},
-      {key:"RS103", label:"Radiated Susceptibility, Electric Field, 2 MHz to 18 GHz",
-       desc: getEmiTestText("RS103","F",activeEmi.locs) ||
-             "Tested to MIL-STD-461F Table VII for Ships metallic below deck from 2 MHz to 18 GHz at 10 V/m.",
-       positions:[
-         {range:"2 MHz - 30 MHz",    pos:pos(rs103p.b2_30)},
-         {range:"30 MHz - 200 MHz",  pos:pos(rs103p.b30_200)},
-         {range:"200 MHz - 1 GHz",   pos:pos(rs103p.b200_1G)},
-         {range:"1 GHz - 4 GHz",     pos:pos(rs103p.b1_4)},
-         {range:"4 GHz - 15 GHz",    pos:pos(rs103p.b4_15)},
-         {range:"15 GHz - 18 GHz",   pos:pos(rs103p.b15_18)},
-       ],
-       note:null},
-    ];
+    // Full 461F test definitions — extracted to a shared helper so the Spec
+    // Builder ("from quote" payload) can reuse exactly the same descriptions.
+    const EMI_461F = getEmi461fTestDefinitions(activeEmi, ti, setup);
 
     // Only show tests selected by user
     const selectedKeys=new Set();
@@ -13767,21 +13825,19 @@ const STANDARD_TERMS = [
                     </button>
                   )}
 
-                  {/* Classic Test Spec Builder — hidden by default, persists per browser */}
-                  {showAdvancedTools && (
+                  {/* Spec Builder launchers — two compact buttons side by side */}
+                  <div style={{marginTop:10,display:"flex",gap:6}}>
                     <button onClick={openClassicSpecBuilder}
-                      title="Open the standalone Classic Test Spec Builder in a new tab"
-                      style={{width:"100%",marginTop:6,background:"#1F6F6B",border:"none",borderRadius:8,
-                        padding:"9px 0",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:1}}>
-                      CLASSIC TEST SPEC BUILDER ↗
+                      title="Open a blank Test Spec Builder in a new tab"
+                      style={{flex:1,background:"#fff",border:"1px solid #d0d7de",borderRadius:6,
+                        padding:"6px 0",color:"#1a2332",fontWeight:600,fontSize:10,cursor:"pointer",letterSpacing:.5}}>
+                      Classic Spec Builder ↗
                     </button>
-                  )}
-                  <div style={{marginTop:10,textAlign:"right"}}>
-                    <button onClick={()=>setShowAdvancedTools(v=>!v)}
-                      title="Toggle visibility of the Classic Test Spec Builder launcher"
-                      style={{background:"none",border:"none",color:"#6b7a8d",fontSize:12,
-                        cursor:"pointer",textDecoration:"underline",padding:0,fontWeight:600}}>
-                      {showAdvancedTools ? "Hide Classic Test Spec Builder" : "Show Classic Test Spec Builder"}
+                    <button onClick={openSpecBuilderFromQuote}
+                      title="Open Test Spec Builder pre-filled from this quote's selected tests"
+                      style={{flex:1,background:"#2f855a",border:"none",borderRadius:6,
+                        padding:"6px 0",color:"#fff",fontWeight:600,fontSize:10,cursor:"pointer",letterSpacing:.5}}>
+                      Spec Builder from Quote ↗
                     </button>
                   </div>
                   </div>{/* end pointerEvents:auto buttons wrapper */}
