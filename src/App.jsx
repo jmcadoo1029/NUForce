@@ -7520,7 +7520,7 @@ function SpecSuggestion({text}){
 }
 
 // ── Pricing Calculator ────────────────────────────────────────────────────────
-function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300b, onExportPq300p1}){
+function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300b, onExportPq300p1, calcStatesRef}){
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("vib");
 
@@ -7587,6 +7587,14 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
   const [dcmCalc,setDcmCalc]=useState({
     spec:"",rate:String(DCM_SR),setupShifts:"1.5",testShifts:"1.0",pia:1,
   });
+
+  // Mirror the three calculator states up to the parent via a ref. The App's
+  // export-panel buttons (like "Spec Builder from Quote") live outside this
+  // component but need read access to whatever's currently configured. Using a
+  // ref avoids prop drilling or lifting state, and avoids extra re-renders.
+  if (calcStatesRef) {
+    calcStatesRef.current = { emiCalc, pqCalc, dcmCalc };
+  }
   const [specText,setSpecText]=useState("");
   const [copyMsg,setCopyMsg]=useState("");
 
@@ -9565,6 +9573,11 @@ export default function App({onLogout,currentUser}){
   // over. Recalculated whenever the textarea's value changes.
   const tiSpecsRef = useRef(null);
   const tiNotesRef = useRef(null);
+  // Ref kept in sync by PricingCalculator on every render — lets the App's
+  // export buttons (which live outside PricingCalculator) read the calc
+  // tab's current state. Read-only from App's side; PricingCalculator owns
+  // the writes via the calcStatesRef prop passed below.
+  const pricingCalcStateRef = useRef({ emiCalc: null, pqCalc: null, dcmCalc: null });
   const AUTOSIZE_MAX_PX = 280; // ~15 lines at lineHeight 1.6 * fontSize 11 + padding
   const fitTextarea = (el) => {
     if (!el) return;
@@ -10609,39 +10622,38 @@ const STANDARD_TERMS = [
   const buildSpecBuilderPayload = () => {
     const sections = [];
 
-    // EMI 461F: collect from any active EMI section that has Rev F selected (or
-    // no rev selected, defaulting to F — matches PDF builder behavior).
-    const activeEmisF = emis.filter(s => s.on && (s.revs?.['Rev F'] || !s.revs?.['Rev G']));
-    if (activeEmisF.length > 0) {
-      // State derivation: first active section drives the calc parameters
-      // (matches the existing PDF builder's behavior for shift counts etc.)
-      const activeEmi = activeEmisF[0];
-      const allDefs = getEmi461fTestDefinitions(activeEmi, ti, setup);
-      // Selected keys: union across all active EMI sections
+    // Pull current EMI calc state from the PricingCalculator (where the user
+    // actually enters their EMI selections). emis[] (Advanced Mode) is parallel
+    // and unused — checking it first finds nothing.
+    const emiCalc = pricingCalcStateRef.current?.emiCalc;
+    if (emiCalc) {
+      // Treat as 461F unless Rev G is explicitly the only one selected.
+      const isF = (emiCalc.revs?.['Rev F']) || !(emiCalc.revs?.['Rev G']);
       const selectedKeys = new Set();
-      activeEmisF.forEach(s => {
-        Object.entries(s.tests || {}).forEach(([k,v]) => { if (v) selectedKeys.add(k); });
-      });
-      const selected = allDefs.filter(r => selectedKeys.has(r.key));
-      if (selected.length > 0) {
-        // Convert to HTML row format: [test name, description, comments]
-        // RE102/RS103 have a positions[] array — inline it into the description
-        // so the row reads cleanly in the table.
-        const rows = selected.map(r => {
-          let desc = r.desc;
-          if (r.positions && r.positions.length > 0) {
-            const pl = r.positions.map(p => "  " + p.range + ": " + p.pos).join("\n");
-            desc = desc + "\n" + pl;
-          }
-          return [r.label, desc, r.note || ""];
-        });
-        sections.push({ type: "EMI", rows });
+      Object.entries(emiCalc.tests || {}).forEach(([k,v]) => { if (v) selectedKeys.add(k); });
+      if (isF && selectedKeys.size > 0) {
+        const allDefs = getEmi461fTestDefinitions(emiCalc, ti, setup);
+        const selected = allDefs.filter(r => selectedKeys.has(r.key));
+        if (selected.length > 0) {
+          // Convert to HTML row format: [test name, description, comments]
+          // RE102/RS103 have a positions[] array — inline it into the description
+          // so the row reads cleanly in the table.
+          const rows = selected.map(r => {
+            let desc = r.desc;
+            if (r.positions && r.positions.length > 0) {
+              const pl = r.positions.map(p => "  " + p.range + ": " + p.pos).join("\n");
+              desc = desc + "\n" + pl;
+            }
+            return [r.label, desc, r.note || ""];
+          });
+          sections.push({ type: "EMI", rows });
+        }
       }
     }
 
-    // TODO Phase 3: EMI 461G
-    // TODO Phase 4: PQ 300B + PQ 300P1
-    // TODO Phase 5: DC Mag
+    // TODO Phase 3: EMI 461G (also from emiCalc, when revs['Rev G'] is set)
+    // TODO Phase 4: PQ 300B + PQ 300P1 (from pricingCalcStateRef.current.pqCalc)
+    // TODO Phase 5: DC Mag (from pricingCalcStateRef.current.dcmCalc)
 
     return { quote: qi?.opp || "", sections };
   };
@@ -13850,7 +13862,8 @@ const STANDARD_TERMS = [
               onExportEmiF={exportCalcEmi461fPDF}
               onExportEmiG={exportCalcEmi461gPDF}
               onExportPq300b={exportCalcPq300bPDF_calc}
-              onExportPq300p1={exportCalcPq300Part1PDF_calc}/>
+              onExportPq300p1={exportCalcPq300Part1PDF_calc}
+              calcStatesRef={pricingCalcStateRef}/>
             <InstrumentationCalculator/>
 
             {/* ── Row 5+: Test sections ── */}
