@@ -10635,10 +10635,7 @@ const STANDARD_TERMS = [
         const allDefs = getEmi461fTestDefinitions(emiCalc, ti, setup);
         const selected = allDefs.filter(r => selectedKeys.has(r.key));
         if (selected.length > 0) {
-          // Convert to HTML row format: [TEST (key), DESCRIPTION (label), COMMENTS]
-          // COMMENTS combines the test desc + the optional note in italics
-          // (rendered via <i>...</i> markers; both preview HTML and the docx
-          // builder recognize these and render real italics).
+          // Convert to HTML row format: [TEST (key), DESCRIPTION (label), COMMENTS (desc)]
           // RE102/RS103 have a positions[] array — inline it into the desc
           // so the row reads cleanly in the comments cell.
           const rows = selected.map(r => {
@@ -10647,11 +10644,7 @@ const STANDARD_TERMS = [
               const pl = r.positions.map(p => "  " + p.range + ": " + p.pos).join("\n");
               desc = desc + "\n" + pl;
             }
-            // Append the note in italics at the end of comments, if present
-            const comments = r.note
-              ? desc + "\n<i>" + r.note + "</i>"
-              : desc;
-            return [r.key, r.label, comments];
+            return [r.key, r.label, desc];
           });
           sections.push({ type: "EMI", rows });
         }
