@@ -1190,10 +1190,21 @@ function EmiForm({s,set,ti,setup}){
   // Compute shifts from unit details dimensions
   const shifts=useMemo(()=>calcEmiShifts({dimL:dispL,dimW:dispW,dimH:dispH,cables:dispCables||"0",setupCables:setup?.cables||"0",phases:dispPhases||"3",revs:s.revs}),[dispL,dispW,dispH,dispCables,setup?.cables,dispPhases,s.revs]);
 
-  const allSelected=TESTS.every(t=>s.tests?.[t]||false);
+  // "All selected" considers only non-greyed tests — greyed tests are never
+  // selectable, so they shouldn't prevent the button from saying "Deselect All"
+  // when every selectable test is on.
+  const allSelected=TESTS.filter(t=>!getTestFlags(t).greyed).every(t=>s.tests?.[t]||false);
   const toggleAll=()=>{
     const v=!allSelected;
-    const tests={};TESTS.forEach(t=>tests[t]=v);
+    const tests={};
+    // When selecting all, skip tests that are currently greyed-out
+    // (unavailable for this EUT configuration — e.g. CS109 which NU Labs
+    // can't perform, or frequency-disqualified tests). When deselecting
+    // all, just clear everything.
+    TESTS.forEach(t=>{
+      if (v && getTestFlags(t).greyed) return; // skip greyed when bulk-selecting
+      tests[t]=v;
+    });
     set({...s,tests});
   };
 

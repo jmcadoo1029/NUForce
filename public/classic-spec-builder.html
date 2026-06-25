@@ -385,11 +385,20 @@ function makeRow(sec,si,row,ri){
 
   row.forEach((val,ci)=>{
     const td=document.createElement("td"); td.className="cell";
-    const ta=document.createElement("textarea"); ta.rows=1; ta.value=val;
+    const ta=document.createElement("textarea");
+    // Initial rows = newline count in the content (1 minimum). Gives the browser
+    // a correct starting size before autosize kicks in — important for cells
+    // pre-populated from the launcher payload (e.g. RE102 with frequency bands).
+    ta.rows = Math.max(1, String(val||"").split(/\r?\n/).length);
+    ta.value=val;
     ta.setAttribute("aria-label","Row "+(ri+1)+" "+(sec.columns[ci]||("column "+(ci+1))));
     ta.addEventListener("input",e=>{ sec.rows[ri][ci]=e.target.value; autosize(ta); updatePreview(); refreshStatus(); });
     td.appendChild(ta); tr.appendChild(td);
+    // Run autosize twice: once on next animation frame, then again after a
+    // tick to catch any case where the first run got 0 scrollHeight due to
+    // layout not yet being settled.
     requestAnimationFrame(()=>autosize(ta));
+    setTimeout(()=>autosize(ta), 50);
   });
 
   drag.addEventListener("dragstart",e=>{ tr.classList.add("dragging"); e.dataTransfer.effectAllowed="move"; e.dataTransfer.setData("text/plain",si+":"+ri); });
