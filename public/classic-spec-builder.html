@@ -413,6 +413,12 @@ $("quote").addEventListener("input",e=>{ state.quote=e.target.value; updatePrevi
 
 /* ---------------- preview / print HTML ---------------- */
 function escapeHtml(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+// Cell text may contain <i>...</i> markers for italics. escapeHtml turns those
+// into &lt;i&gt;, so we post-process to convert the escaped markers back into
+// real <i> tags. Keeps every other angle bracket safely escaped.
+function renderCellHtml(s){
+  return escapeHtml(s).replace(/&lt;i&gt;/g,"<i>").replace(/&lt;\/i&gt;/g,"</i>");
+}
 function buildDocHTML(){
   let h='<div class="docpage">';
   h+='<div class="doc-brandrow"><img class="doc-logo" src="data:image/png;base64,'+LOGO_B64+'" alt=""/><span class="doc-wordmark"><span class="wm-big">NU L</span><span class="wm-small">aboratories</span></span></div>';
@@ -421,7 +427,7 @@ function buildDocHTML(){
     h+='<p class="doc-intro">'+escapeHtml(sec.intro||"")+'</p>';
     const rows=sec.rows.filter(r=>r.some(c=>(c||"").trim()!==""));
     h+='<table class="doctable"><thead><tr>'+sec.columns.map(c=>'<th>'+escapeHtml(c||" ")+'</th>').join("")+'</tr></thead><tbody>';
-    rows.forEach(r=>{ h+='<tr>'+sec.columns.map((_,i)=>'<td>'+escapeHtml(r[i]||"").replace(/\n/g,"<br>")+'</td>').join("")+'</tr>'; });
+    rows.forEach(r=>{ h+='<tr>'+sec.columns.map((_,i)=>'<td>'+renderCellHtml(r[i]||"").replace(/\n/g,"<br>")+'</td>').join("")+'</tr>'; });
     h+='</tbody></table>';
     if(!rows.length) h+='<div class="doc-empty">No test rows yet.</div>';
   });
@@ -482,9 +488,41 @@ $("resetBtn").addEventListener("click",()=>{
 /* ---------------- generation core ---------------- */
 function escapeXml(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
 function cellRuns(text,bold){
-  const rpr=bold?'<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>':'<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>';
-  const lines=String(text==null?"":text).split(/\r?\n/);let runs="";
-  lines.forEach((line,i)=>{const brk=i>0?"<w:br/>":"";runs+=`<w:r>${rpr}${brk}<w:t xml:space="preserve">${escapeXml(line)}</w:t></w:r>`;});
+  // Build the rPr for normal vs italic runs. Italic adds <w:i/>; bold stays
+  // whatever the caller asked for.
+  const baseFont = '<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="20"/><w:szCs w:val="20"/>';
+  const boldTag = bold ? '<w:b/>' : '';
+  const rprPlain = `<w:rPr>${baseFont}${boldTag}</w:rPr>`;
+  const rprItalic = `<w:rPr>${baseFont}${boldTag}<w:i/></w:rPr>`;
+  // Split the input on <i>...</i> markers and emit a run for each segment.
+  // Plain text gets rprPlain; text between the markers gets rprItalic.
+  // Newlines within any segment become <w:br/>.
+  const lines = String(text==null?"":text).split(/\r?\n/);
+  let runs = "";
+  lines.forEach((line, lineIdx) => {
+    const lineBreak = lineIdx > 0 ? '<w:br/>' : '';
+    let prefix = lineBreak; // attach only to the first run of this line
+    // Tokenize: alternating plain / italic chunks
+    const re = /<i>([\s\S]*?)<\/i>/g;
+    let lastIdx = 0, m;
+    while ((m = re.exec(line)) !== null) {
+      if (m.index > lastIdx) {
+        const plain = line.slice(lastIdx, m.index);
+        runs += `<w:r>${rprPlain}${prefix}<w:t xml:space="preserve">${escapeXml(plain)}</w:t></w:r>`;
+        prefix = '';
+      }
+      runs += `<w:r>${rprItalic}${prefix}<w:t xml:space="preserve">${escapeXml(m[1])}</w:t></w:r>`;
+      prefix = '';
+      lastIdx = re.lastIndex;
+    }
+    if (lastIdx < line.length) {
+      const tail = line.slice(lastIdx);
+      runs += `<w:r>${rprPlain}${prefix}<w:t xml:space="preserve">${escapeXml(tail)}</w:t></w:r>`;
+    } else if (lastIdx === 0 && line.length === 0) {
+      // Empty line — still emit the break
+      if (prefix) runs += `<w:r>${rprPlain}${prefix}<w:t xml:space="preserve"></w:t></w:r>`;
+    }
+  });
   return runs;
 }
 function cellXml(text,w,bold,fill){
