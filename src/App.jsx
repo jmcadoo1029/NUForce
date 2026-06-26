@@ -1310,9 +1310,47 @@ function EmiForm({s,set,ti,setup}){
           <span style={{fontSize:11,fontWeight:600,color:keyColor,minWidth:50}}>{t}</span>
           <span style={{fontSize:10,color:labelColor,flex:1,marginLeft:2}}>{TEST_LABELS[t]||""}</span>
           {greyed&&<span style={{fontSize:9,color:"#6b7a8d",background:"#e8ecf0",borderRadius:4,padding:"1px 5px",flexShrink:0}}>N/A</span>}
-          {sh&&!greyed&&<span style={{fontSize:10,color:C.muted,flexShrink:0,marginLeft:4}}>
-            {sh.rounded} shift{sh.rounded!==1?"s":""}
-          </span>}
+          {sh&&!greyed&&(()=>{
+            // Override-aware shift display. The computed value lives in sh.rounded;
+            // the user can override per-test via s.shiftOverrides[t]. Empty input
+            // means "use computed." Override persists per quote.
+            const ov = s.shiftOverrides?.[t];
+            const hasOv = ov !== undefined && ov !== null && ov !== "";
+            const displayVal = hasOv ? String(ov) : "";
+            return (
+              <div style={{display:"flex",alignItems:"center",gap:3,flexShrink:0,marginLeft:4}}>
+                <input type="number" step="0.25" min="0"
+                  value={displayVal}
+                  placeholder={String(sh.rounded)}
+                  onChange={e=>{
+                    const v = e.target.value;
+                    const next = {...(s.shiftOverrides||{})};
+                    if (v === "" || isNaN(parseFloat(v))) delete next[t];
+                    else next[t] = parseFloat(v);
+                    set({...s, shiftOverrides: next});
+                  }}
+                  title={hasOv ? `Manual override (computed: ${sh.rounded})` : "Click to override the suggested shift count"}
+                  style={{
+                    width:42,fontSize:10,padding:"1px 4px",textAlign:"center",
+                    border:"1px solid "+(hasOv?"#b7791f":"#d0d7de"),
+                    borderRadius:4,
+                    background:hasOv?"#fffbeb":"#fff",
+                    color:hasOv?"#92400e":C.muted,
+                    fontWeight:hasOv?600:400,
+                  }}/>
+                <span style={{fontSize:10,color:C.muted}}>sh{(hasOv?ov:sh.rounded)!==1?"s":""}</span>
+                {hasOv&&(
+                  <button onClick={()=>{
+                    const next = {...(s.shiftOverrides||{})};
+                    delete next[t];
+                    set({...s, shiftOverrides: next});
+                  }}
+                  title="Clear override (use computed)"
+                  style={{background:"none",border:"none",color:"#b7791f",fontSize:11,cursor:"pointer",padding:"0 2px",lineHeight:1}}>✕</button>
+                )}
+              </div>
+            );
+          })()}
           {t==="RS103"&&on&&(
             <div style={{display:"flex",alignItems:"center",gap:4,marginLeft:4}}>
               <span style={{fontSize:10,color:C.warn,flexShrink:0}}>Amp $</span>
@@ -1445,8 +1483,12 @@ function PqForm({s,set,ti}){
   ];
   const rate=sf(s.rate,PQ_SR);
   const is3ph=sf(s.phases||autoPhase||3,3)>=3;
-  // Use phase-aware shifts
-  const getShifts=r=>is3ph&&r.sh3p!=null?r.sh3p:r.sh;
+  // Use phase-aware shifts; effective value honors s.shiftOverrides[key] when set
+  const getShifts=r=>{
+    const ov = s.shiftOverrides?.[r.key];
+    if (ov !== undefined && ov !== null && ov !== "" && !isNaN(parseFloat(ov))) return parseFloat(ov);
+    return is3ph&&r.sh3p!=null?r.sh3p:r.sh;
+  };
   const p1Shifts=PQ_P1.reduce((a,r)=>a+(s.rows?.[r.key]?getShifts(r):0),0);
   const b3Shifts=PQ_300B.reduce((a,r)=>a+(s.rows?.[r.key]?getShifts(r):0),0);
   const totalShifts=p1Shifts+b3Shifts;
@@ -1491,9 +1533,49 @@ function PqForm({s,set,ti}){
                   style={{accentColor:"#166534",width:12,height:12}}/>
                 <span style={{fontSize:10,fontWeight:600,color:checked?"#166534":C.accent}}>{r.key.replace("B","")}</span>
                 <span style={{fontSize:10,color:checked?"#15803d":C.text}}>{r.label}</span>
-                <span style={{fontSize:10,color:C.muted,textAlign:"right",fontFamily:"monospace"}}>
-                  {sh}{sh!==r.sh&&" *"}
-                </span>
+                {(()=>{
+                  // Override-aware shift display, same pattern as EMI.
+                  // sh is the computed value (already phase-aware).
+                  // Override per-test in s.shiftOverrides[r.key].
+                  const ov = s.shiftOverrides?.[r.key];
+                  const hasOv = ov !== undefined && ov !== null && ov !== "";
+                  const displayVal = hasOv ? String(ov) : "";
+                  const phaseAdj = sh!==r.sh;
+                  return (
+                    <div style={{display:"flex",alignItems:"center",gap:2,justifyContent:"flex-end"}}>
+                      <input type="number" step="0.25" min="0"
+                        value={displayVal}
+                        placeholder={String(sh)}
+                        onChange={e=>{
+                          const v = e.target.value;
+                          const next = {...(s.shiftOverrides||{})};
+                          if (v === "" || isNaN(parseFloat(v))) delete next[r.key];
+                          else next[r.key] = parseFloat(v);
+                          set({...s, shiftOverrides: next});
+                        }}
+                        title={hasOv ? `Manual override (computed: ${sh})` : (phaseAdj ? "Phase-adjusted shift count — click to override" : "Click to override")}
+                        style={{
+                          width:38,fontSize:10,padding:"1px 3px",textAlign:"center",
+                          border:"1px solid "+(hasOv?"#b7791f":"#d0d7de"),
+                          borderRadius:4,
+                          background:hasOv?"#fffbeb":"#fff",
+                          color:hasOv?"#92400e":C.muted,
+                          fontFamily:"monospace",
+                          fontWeight:hasOv?600:400,
+                        }}/>
+                      {!hasOv&&phaseAdj&&<span style={{fontSize:10,color:C.muted,fontFamily:"monospace"}}>*</span>}
+                      {hasOv&&(
+                        <button onClick={()=>{
+                          const next = {...(s.shiftOverrides||{})};
+                          delete next[r.key];
+                          set({...s, shiftOverrides: next});
+                        }}
+                        title="Clear override"
+                        style={{background:"none",border:"none",color:"#b7791f",fontSize:11,cursor:"pointer",padding:"0 1px",lineHeight:1}}>✕</button>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
               {showCwNote&&(
                 <div style={{padding:"3px 8px 5px 38px",background:checked?"#f0fdf4":i%2===0?C.card:C.panel,
@@ -7805,7 +7887,15 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
 
   const emiRate=sf(emiCalc.rate,EMI_SR);
   const emiSelTests=Object.entries(emiCalc.tests||{}).filter(([,v])=>v).map(([k])=>k);
-  const emiTestShifts=emiSelTests.reduce((a,t)=>a+(emiShifts[t]?.rounded||0),0);
+  // Per-test shifts: use shiftOverrides if the user has manually edited a
+  // test's shift count, otherwise use the computed value from emiShifts.
+  const emiTestShifts=emiSelTests.reduce((a,t)=>{
+    const ov = emiCalc.shiftOverrides?.[t];
+    if (ov !== undefined && ov !== null && ov !== "" && !isNaN(parseFloat(ov))) {
+      return a + parseFloat(ov);
+    }
+    return a + (emiShifts[t]?.rounded || 0);
+  }, 0);
   const rs103Cost=emiSelTests.includes("RS103")?sf(emiCalc.rs103amp,5000):0;
   // CE101/CE102 Power Source Rental — 440V AC, charged once, attributed to CE101 if both selected
   const has440AC=sf(ti?.volt,0)>=440&&(ti?.pwrType||"AC")==="AC";
@@ -7864,7 +7954,13 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
     {key:"B5.3.10.2",label:"Active ground detection test",sh:0.5,sh3p:null},
   ];
   const pqIs3ph=sf(pqCalc.phases||ti?.phase||3,3)>=3;
-  const getShifts=r=>pqIs3ph&&r.sh3p!=null?r.sh3p:r.sh;
+  // Effective shift count for a PQ row: prefer pqCalc.shiftOverrides[r.key]
+  // if set, otherwise use phase-aware computed value.
+  const getShifts=r=>{
+    const ov = pqCalc.shiftOverrides?.[r.key];
+    if (ov !== undefined && ov !== null && ov !== "" && !isNaN(parseFloat(ov))) return parseFloat(ov);
+    return pqIs3ph&&r.sh3p!=null?r.sh3p:r.sh;
+  };
   const pqRate=sf(pqCalc.rate,PQ_SR);
   const p1Shifts=PQ_P1.reduce((a,r)=>a+(pqCalc.rows?.[r.key]?getShifts(r):0),0);
   const b3Shifts=PQ_300B.reduce((a,r)=>a+(pqCalc.rows?.[r.key]?getShifts(r):0),0);
@@ -7875,7 +7971,12 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
 
   // DCM computed
   const dcmRate=sf(dcmCalc.rate,DCM_SR);
-  const dcmTotal=r25((sf(dcmCalc.setupShifts,1.5)+sf(dcmCalc.testShifts,1.0))*dcmRate*sf(dcmCalc.pia,1));
+  // DC Mag has no per-test selection like EMI/PQ, but the user does configure
+  // setup/test shifts. Break the total into Setup vs Testing components so
+  // the summary display matches EMI/PQ style.
+  const dcmSetupCost=r25(sf(dcmCalc.setupShifts,1.5)*dcmRate*sf(dcmCalc.pia,1));
+  const dcmTestCost=r25(sf(dcmCalc.testShifts,1.0)*dcmRate*sf(dcmCalc.pia,1));
+  const dcmTotal=r25(dcmSetupCost+dcmTestCost);
 
   const EMI_NOTES="EMI Notes:\n* This quote assumes that the susceptibility criteria can be determined in less than 3 seconds during real-time operation of the EUT, and that if additional monitoring personnel are needed, they would be provided by the customer. Customer to supply cables and all peripheral and monitoring equipment, and one mode of operation (operating or standby). Susceptibility determination provided by the customer. Pricing is based on customer-supplied information, the assumptions listed here, and acceptance of an approved test procedure.\n* Pricing and feasibility may be reevaluated upon completion and review of the NU Laboratories Test Configuration Form.\n* This quote assumes that the number of cables and outside diameter of the cables under test are within NU Laboratories capabilities/limitations.\n* Pricing assumes the standard list of tests from MIL-STD-461G, and that all testing is performed at NU Labs. Any tests requiring subcontracting will incur additional charges.";
 
@@ -8426,10 +8527,8 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
               <CalcRow2 label="Setup Shifts"><CalcInp value={dcmCalc.setupShifts} onChange={v=>setDcmCalc(s=>({...s,setupShifts:v}))}/></CalcRow2>
               <CalcRow2 label="Testing Shifts"><CalcInp value={dcmCalc.testShifts} onChange={v=>setDcmCalc(s=>({...s,testShifts:v}))}/></CalcRow2>
               <CalcRow2 label="PIA"><CalcInp value={String(dcmCalc.pia)} onChange={v=>setDcmCalc(s=>({...s,pia:parseFloat(v)||1}))} width={50}/></CalcRow2>
-              <div style={{marginTop:10,padding:"10px 12px",background:"#1a2332",borderRadius:8}}>
-                <div style={{fontSize:9,color:"rgba(255,255,255,0.5)",letterSpacing:1,marginBottom:2}}>SUGGESTED TOTAL</div>
-                <div style={{fontSize:16,fontWeight:700,color:"#fff",fontFamily:"monospace"}}>{money(dcmTotal)}</div>
-              </div>
+              <CalcResult setupAmt={dcmSetupCost} testAmt={dcmTestCost}/>
+              <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>Total: {money(dcmTotal)}</div>
 
 
             </div>
