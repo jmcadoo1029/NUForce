@@ -7779,7 +7779,7 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
   });
   // DCM state
   const [dcmCalc,setDcmCalc]=useState({
-    spec:"",rate:String(DCM_SR),setupShifts:"1.5",testShifts:"1.0",pia:1,
+    spec:"",rate:String(DCM_SR),setupShifts:"1.5",testShifts:"1.0",pia:1,include:false,
   });
 
   // Mirror the three calculator states up to the parent via a ref. The App's
@@ -8406,6 +8406,20 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
           {/* DC Magnetics Tab */}
           {tab==="dcm"&&(
             <div>
+              {/* "Include in spec output" — signals to Spec Builder from Quote
+                  that this quote covers DC Mag. Unchecked by default so DC Mag
+                  doesn't leak into specs for quotes that don't use it. */}
+              <div style={{marginBottom:8,padding:"6px 10px",background:"#f0f4f7",borderRadius:6,
+                display:"flex",alignItems:"center",gap:8}}>
+                <input type="checkbox" id="dcmIncludeCb"
+                  checked={!!dcmCalc.include}
+                  onChange={e=>setDcmCalc(s=>({...s,include:e.target.checked}))}
+                  style={{cursor:"pointer"}}/>
+                <label htmlFor="dcmIncludeCb"
+                  style={{fontSize:11,fontWeight:600,color:"#1a2332",cursor:"pointer"}}>
+                  Include DC Magnetics in spec output
+                </label>
+              </div>
               <CalcRow2 label="Spec"><input value={dcmCalc.spec} onChange={e=>setDcmCalc(s=>({...s,spec:e.target.value}))}
                 style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #d0d7de",width:200}}/></CalcRow2>
               <CalcRow2 label="Shift Rate ($)"><CalcInp value={dcmCalc.rate} onChange={v=>setDcmCalc(s=>({...s,rate:v}))}/></CalcRow2>
@@ -10894,7 +10908,24 @@ const STANDARD_TERMS = [
       }
     }
 
-    // TODO Phase 5: DC Mag (from pricingCalcStateRef.current.dcmCalc)
+    // Phase 5: DC Magnetics. Unlike EMI/PQ, DC Mag has no per-test selection
+    // mechanism — the standard is one fixed test set (DOD-STD-1399 Section 070,
+    // 1,600 A/m, three orthogonal positions). Including it in the spec output
+    // is gated by an explicit "Include DC Magnetics" checkbox in the calc UI
+    // (dcmCalc.include) so it doesn't leak into quotes that aren't DC Mag jobs.
+    const dcmCalc = pricingCalcStateRef.current?.dcmCalc;
+    if (dcmCalc && dcmCalc.include) {
+      sections.push({
+        type: "DC Magnetics",
+        rows: [
+          [
+            "DC Magnetics",
+            "DOD-STD-1399 Section 070",
+            "Field Strength: 1,600 A/m. Positions: Three (3) orthogonal positions.",
+          ],
+        ],
+      });
+    }
 
     return { quote: qi?.opp || "", sections };
   };
