@@ -10872,13 +10872,20 @@ const STANDARD_TERMS = [
         // comments column so the engineer sees the requirement along with
         // its table/figure reference. Notes are dropped (per the same
         // policy as EMI — they were removed earlier as user-decided).
+        //
+        // The leading "B" on 300B keys (e.g. "B5.3.1") is stripped for the
+        // Spec Builder display only — the PDF builder and calc UI continue
+        // to use the prefixed keys so 300B/300P1 stay distinguishable in
+        // pqCalc.rows. Stripping it in the user-facing output matches how
+        // MIL-STD-1399 paragraph numbers are normally cited.
         const pqRowsFromDefs = (defs) => defs
           .filter(r => pqSelectedKeys.has(r.key))
           .map(r => {
             const parts = [];
             if (r.req) parts.push(r.req);
             if (r.ref) parts.push("Tables / Figures: " + r.ref);
-            return [r.key, r.label, parts.join("\n")];
+            const displayKey = r.key.startsWith("B") ? r.key.slice(1) : r.key;
+            return [displayKey, r.label, parts.join("\n")];
           });
         const b3Rows = pqRowsFromDefs(getPq300bTestDefinitions());
         if (b3Rows.length > 0) sections.push({ type: "Power Quality", rows: b3Rows });
