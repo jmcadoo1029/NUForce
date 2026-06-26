@@ -890,14 +890,14 @@ function calcEmiShifts(s){
   // CS114 — rev-aware setup/cal, 90 min/test, F/G power test counts
   // F: 1Ph=2, 3Ph=3 power tests; setup/cal = 9 hr (6 cal + 2 setup + 1 add'l 4kHz-1MHz)
   // G: 1Ph=3, 3Ph=4 power tests; setup/cal = 15 hr (6 cal + 2 setup + 1 add'l + 6 verification)
-  // Throughput-based: lab caps CS114 at 2 tests/day (signal + power combined).
-  // The per-test procedure is ~70 min, but realistic daily throughput is 2/day
-  // once cable swaps, data collection, and changeover are factored in.
+  // Throughput-based: lab caps CS114 at 3 tests/day (signal + power combined).
+  // Updated from 2/day after observing pricing trended high — actual lab
+  // throughput is closer to 3/day with current setup workflow.
   const cs114PwrTests=phases===1?(useG?3:2):(useG?4:3);
   const cs114SetupHrs=useG?15:9;
   const cs114Setup=cs114SetupHrs/8;
   const cs114TotalTests=cables+cs114PwrTests;
-  const cs114TestsPerDay=2;
+  const cs114TestsPerDay=3;
   const cs114TestShifts=cs114TotalTests>0?Math.ceil(cs114TotalTests/cs114TestsPerDay):0;
   const cs114=cs114Setup+cs114TestShifts;
   res.CS114={raw:cs114,rounded:ru(cs114),
@@ -1645,7 +1645,7 @@ function PqForm({s,set,ti}){
 
 function DcmForm({s,set}){
   const rate=sf(s.rate,DCM_SR);
-  const total=(sf(s.setupShifts,1.5)+sf(s.testShifts,1.0))*rate;
+  const total=(sf(s.setupShifts,1.5)+sf(s.testShifts,2.0))*rate;
   return <div>
     <Row label="Spec"><Inp value={s.spec||""} onChange={v=>set({...s,spec:v})} width={200}/></Row>
     <Row label="Shift Rate ($)"><Inp value={s.rate} onChange={v=>set({...s,rate:v})} width={80}/></Row>
@@ -3644,7 +3644,7 @@ function calcSummary(vibs,shocks,noises,envs,hfvs,shos,emis,pqs,dcms,abs,sbs,ins
     const pre=idx>0?" #"+(idx+1)+(s.identifier?" ("+s.identifier+")":""):"";
     const r=sf(s.rate,DCM_SR),pm=s.pia||1;
     add("DCM"+pre+" – Setup",sf(s.setupShifts,1.5)*r*pm,null,"51");
-    add("DCM"+pre+" – Testing",sf(s.testShifts,1.0)*r*pm,null,"51");
+    add("DCM"+pre+" – Testing",sf(s.testShifts,2.0)*r*pm,null,"51");
     (s.customRows||[]).forEach(r=>{if(sf(r.price)>0)add(r.label||"Custom",r.price,null,r.code||pcode(r.label||""));});
   });
 
@@ -7861,7 +7861,7 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
   });
   // DCM state
   const [dcmCalc,setDcmCalc]=useState({
-    spec:"",rate:String(DCM_SR),setupShifts:"1.5",testShifts:"1.0",pia:1,include:false,
+    spec:"",rate:String(DCM_SR),setupShifts:"1.5",testShifts:"2.0",pia:1,include:false,
   });
 
   // Mirror the three calculator states up to the parent via a ref. The App's
@@ -7975,7 +7975,7 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
   // setup/test shifts. Break the total into Setup vs Testing components so
   // the summary display matches EMI/PQ style.
   const dcmSetupCost=r25(sf(dcmCalc.setupShifts,1.5)*dcmRate*sf(dcmCalc.pia,1));
-  const dcmTestCost=r25(sf(dcmCalc.testShifts,1.0)*dcmRate*sf(dcmCalc.pia,1));
+  const dcmTestCost=r25(sf(dcmCalc.testShifts,2.0)*dcmRate*sf(dcmCalc.pia,1));
   const dcmTotal=r25(dcmSetupCost+dcmTestCost);
 
   const EMI_NOTES="EMI Notes:\n* This quote assumes that the susceptibility criteria can be determined in less than 3 seconds during real-time operation of the EUT, and that if additional monitoring personnel are needed, they would be provided by the customer. Customer to supply cables and all peripheral and monitoring equipment, and one mode of operation (operating or standby). Susceptibility determination provided by the customer. Pricing is based on customer-supplied information, the assumptions listed here, and acceptance of an approved test procedure.\n* Pricing and feasibility may be reevaluated upon completion and review of the NU Laboratories Test Configuration Form.\n* This quote assumes that the number of cables and outside diameter of the cables under test are within NU Laboratories capabilities/limitations.\n* Pricing assumes the standard list of tests from MIL-STD-461G, and that all testing is performed at NU Labs. Any tests requiring subcontracting will incur additional charges.";
