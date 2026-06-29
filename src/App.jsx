@@ -11098,6 +11098,102 @@ const STANDARD_TERMS = [
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
+  // Build the Spec Builder payload from the CRR workup data. Mirrors
+  // buildSpecBuilderPayload but reads from crrWorkup.data.specRows instead
+  // of from the PricingCalculator's calc state. Maps CRR's 4-col EMI/DCM
+  // and 5-col PQ row structures into the HTML's 3-col [test, label, comments]
+  // format.
+  const buildSpecBuilderPayloadFromCrr = () => {
+    const sections = [];
+    if (!crrWorkup || crrWorkup === false || !crrWorkup.data) return { quote: qi?.opp || "", sections };
+    const data = crrWorkup.data;
+    const enabled = data.enabledSpecs || {};
+    const allRows = data.specRows || {};
+
+    // Helper: filter out completely-empty rows (all cells blank), since the
+    // tech may have left placeholders.
+    const dropEmpty = rows => (rows || []).filter(r =>
+      Array.isArray(r) && r.some(cell => String(cell || "").trim() !== "")
+    );
+
+    // EMI 461F: CRR cols are [Test, Description, Time, Comments] → drop Time
+    if (enabled.emi461f) {
+      const rows = dropEmpty(allRows.emi461f).map(r => [
+        String(r[0] || ""),
+        String(r[1] || ""),
+        String(r[3] || ""),
+      ]);
+      if (rows.length > 0) sections.push({ type: "EMI", rows });
+    }
+    // EMI 461G: same mapping
+    if (enabled.emi461g) {
+      const rows = dropEmpty(allRows.emi461g).map(r => [
+        String(r[0] || ""),
+        String(r[1] || ""),
+        String(r[3] || ""),
+      ]);
+      if (rows.length > 0) sections.push({ type: "EMI", rows });
+    }
+    // PQ 300B: CRR cols are [Requirement, Time, 1399 Paragraph, Test Requirement, Tables/Figures]
+    // Map to [test=paragraph, label=requirement, comments=testReq + tables]
+    const mapPq = arr => dropEmpty(arr).map(r => {
+      const paragraph = String(r[2] || "");
+      const requirement = String(r[0] || "");
+      const testReq = String(r[3] || "");
+      const tables = String(r[4] || "");
+      const parts = [];
+      if (testReq) parts.push(testReq);
+      if (tables) parts.push("Tables / Figures: " + tables);
+      return [paragraph, requirement, parts.join("\n")];
+    });
+    if (enabled.pq300b) {
+      const rows = mapPq(allRows.pq300b);
+      if (rows.length > 0) sections.push({ type: "Power Quality", rows });
+    }
+    if (enabled.pq300p1) {
+      const rows = mapPq(allRows.pq300p1);
+      if (rows.length > 0) sections.push({ type: "Power Quality", rows });
+    }
+    // DC Mag: same 4-col mapping as EMI
+    if (enabled.dcmag) {
+      const rows = dropEmpty(allRows.dcmag).map(r => [
+        String(r[0] || ""),
+        String(r[1] || ""),
+        String(r[3] || ""),
+      ]);
+      if (rows.length > 0) sections.push({ type: "DC Magnetics", rows });
+    }
+
+    return { quote: qi?.opp || "", sections };
+  };
+
+  const openSpecBuilderFromCrr = () => {
+    if (!crrWorkup || crrWorkup === false) {
+      alert("No CRR workup found for quote " + (qi?.opp || "(unset)") +
+            ". Create one in Workspace first.");
+      return;
+    }
+    const payload = buildSpecBuilderPayloadFromCrr();
+    if (payload.sections.length === 0) {
+      if (!confirm("The CRR workup exists but has no enabled spec tables with content. Open the Spec Builder anyway with a blank section?")) {
+        return;
+      }
+    }
+    try {
+      localStorage.setItem("nuforce_spec_builder_payload", JSON.stringify(payload));
+    } catch (e) {
+      console.warn("[SPEC-BUILDER] localStorage write failed:", e?.message || e);
+    }
+    const q = encodeURIComponent(qi?.opp || "");
+    const url = q
+      ? `/classic-spec-builder.html?quote=${q}&mode=from-quote`
+      : `/classic-spec-builder.html?mode=from-quote`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  // Popup menu state for the unified "Spec Builder ↗" button
+  const [specBuilderMenuOpen, setSpecBuilderMenuOpen] = useState(false);
+
   const exportDcMagPDF = async () => {
     if(window.jspdf){await buildDcMagPDF();return;}
     const script = document.createElement("script");
@@ -14100,20 +14196,71 @@ const STANDARD_TERMS = [
                     </button>
                   )}
 
-                  {/* Spec Builder launchers — two compact buttons side by side */}
-                  <div style={{marginTop:10,display:"flex",gap:6}}>
-                    <button onClick={openClassicSpecBuilder}
-                      title="Open a blank Test Spec Builder in a new tab"
-                      style={{flex:1,background:"#fff",border:"1px solid #d0d7de",borderRadius:6,
-                        padding:"6px 0",color:"#1a2332",fontWeight:600,fontSize:10,cursor:"pointer",letterSpacing:.5}}>
-                      Classic Spec Builder ↗
-                    </button>
-                    <button onClick={openSpecBuilderFromQuote}
-                      title="Open Test Spec Builder pre-filled from this quote's selected tests"
-                      style={{flex:1,background:"#2f855a",border:"none",borderRadius:6,
+                  {/* Spec Builder — unified launcher with popup menu */}
+                  <div style={{marginTop:10,position:"relative"}}>
+                    <button onClick={()=>setSpecBuilderMenuOpen(v=>!v)}
+                      title="Open the Test Spec Builder — choose source"
+                      style={{width:"100%",background:"#2f855a",border:"none",borderRadius:6,
                         padding:"6px 0",color:"#fff",fontWeight:600,fontSize:10,cursor:"pointer",letterSpacing:.5}}>
-                      Spec Builder from Quote ↗
+                      Spec Builder ↗
                     </button>
+                    {specBuilderMenuOpen && (
+                      <>
+                        {/* Backdrop to dismiss menu on outside click */}
+                        <div onClick={()=>setSpecBuilderMenuOpen(false)}
+                          style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:50}}/>
+                        <div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:4,
+                          background:"#fff",border:"1px solid #d0d7de",borderRadius:6,
+                          boxShadow:"0 4px 14px rgba(0,0,0,0.12)",zIndex:51,overflow:"hidden"}}>
+                          <button onClick={()=>{setSpecBuilderMenuOpen(false);openClassicSpecBuilder();}}
+                            title="Open a blank Test Spec Builder in a new tab"
+                            style={{width:"100%",background:"#fff",border:"none",borderBottom:"1px solid #e5e9ef",
+                              padding:"8px 10px",color:"#1a2332",fontWeight:500,fontSize:11,cursor:"pointer",
+                              textAlign:"left",letterSpacing:.2}}
+                            onMouseEnter={e=>e.currentTarget.style.background="#f5f7fa"}
+                            onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                            Classic Spec Builder
+                            <div style={{fontSize:9,color:"#6b7a8d",marginTop:1}}>Blank form</div>
+                          </button>
+                          <button onClick={()=>{setSpecBuilderMenuOpen(false);openSpecBuilderFromQuote();}}
+                            title="Pre-fill from this quote's selected tests in the pricing calculator"
+                            style={{width:"100%",background:"#fff",border:"none",borderBottom:"1px solid #e5e9ef",
+                              padding:"8px 10px",color:"#1a2332",fontWeight:500,fontSize:11,cursor:"pointer",
+                              textAlign:"left",letterSpacing:.2}}
+                            onMouseEnter={e=>e.currentTarget.style.background="#f5f7fa"}
+                            onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                            Spec Builder from NUForce
+                            <div style={{fontSize:9,color:"#6b7a8d",marginTop:1}}>Pre-filled from pricing calculator</div>
+                          </button>
+                          <button onClick={()=>{setSpecBuilderMenuOpen(false);openSpecBuilderFromCrr();}}
+                            title={crrWorkup ? "Pre-fill from the CRR workup for this quote"
+                                             : "No CRR workup found for this quote yet"}
+                            disabled={!crrWorkup || crrWorkup === false}
+                            style={{width:"100%",background:"#fff",border:"none",
+                              padding:"8px 10px",
+                              color: (crrWorkup && crrWorkup !== false) ? "#1a2332" : "#9aa5b1",
+                              fontWeight:500,fontSize:11,
+                              cursor:(crrWorkup && crrWorkup !== false) ? "pointer" : "not-allowed",
+                              textAlign:"left",letterSpacing:.2,
+                              display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}
+                            onMouseEnter={e=>{if(crrWorkup && crrWorkup!==false) e.currentTarget.style.background="#f5f7fa";}}
+                            onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                            <div>
+                              Spec Builder from CRR
+                              <div style={{fontSize:9,color:"#6b7a8d",marginTop:1}}>
+                                {(crrWorkup && crrWorkup !== false)
+                                  ? "Pre-filled from CRR workup"
+                                  : "No CRR workup found for this quote"}
+                              </div>
+                            </div>
+                            {(crrWorkup && crrWorkup !== false) && (
+                              <span style={{display:"inline-block",width:7,height:7,borderRadius:"50%",
+                                background:"#22c55e",flexShrink:0}}/>
+                            )}
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                   </div>{/* end pointerEvents:auto buttons wrapper */}
                 </>
