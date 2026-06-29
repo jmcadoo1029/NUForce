@@ -7795,10 +7795,190 @@ function SpecSuggestion({text}){
   );
 }
 
+// ── EMI CRR View ──────────────────────────────────────────────────────────────
+// Read-mostly second view inside the EMI calc tab. Reads test rows from the
+// CRR workup (crrWorkup.data.specRows.emi461f / emi461g) and converts each
+// row's free-text Time cell into a shift count (ceil hours/8). Each test's
+// shift count is editable via emiCalc.crrShiftOverrides — independent of
+// computed-mode's shiftOverrides, so the two views never overwrite each other.
+function EmiCrrView({crrWorkup, emiCalc, setEmiCalc, emiRate, ti}){
+  // Handle the empty / not-fetched cases up front
+  if (crrWorkup === null) {
+    return <div style={{fontSize:11,color:"#6b7a8d",fontStyle:"italic",padding:"12px 0"}}>
+      Loading CRR workup…
+    </div>;
+  }
+  if (crrWorkup === false || !crrWorkup.data) {
+    return <div style={{fontSize:11,color:"#6b7a8d",padding:"16px 12px",
+      background:"#f5f7fa",border:"1px dashed #d0d7de",borderRadius:6,textAlign:"center"}}>
+      (no CRR workup found for this quote)
+    </div>;
+  }
+
+  const enabled = crrWorkup.data.enabledSpecs || {};
+  const allRows = crrWorkup.data.specRows || {};
+
+  // Collect tests from both revs. Don't dedupe — if the tech has CS101 in
+  // both emi461f and emi461g, that's intentional (testing under both revs).
+  // Override keys are namespaced by rev to keep them independent.
+  // collected: [{rev, key, label, time, comments, shifts, override}]
+  const PARSE_HOURS = (timeStr) => {
+    const s = String(timeStr || "").trim();
+    if (!s) return null;
+    const m = s.match(/^\s*(\d+(?:\.\d+)?)\s*$/);
+    return m ? parseFloat(m[1]) : null;
+  };
+
+  const collectFromRev = (specKey, revLabel) => {
+    if (!enabled[specKey]) return [];
+    const rows = allRows[specKey] || [];
+    return rows.map((row, idx) => {
+      const testKey = String(row[0] || "").trim();
+      // Skip rows that don't have a test key at all
+      if (!testKey) return null;
+      const label = String(row[1] || "");
+      const timeRaw = String(row[2] || "");
+      const comments = String(row[3] || "");
+      const hours = PARSE_HOURS(timeRaw);
+      const computedShifts = hours !== null ? Math.ceil(hours / 8) : null;
+      const ovKey = revLabel + ":" + testKey + ":" + idx; // include idx for dupes within a rev
+      const ov = emiCalc.crrShiftOverrides?.[ovKey];
+      const hasOv = ov !== undefined && ov !== null && ov !== "" && !isNaN(parseFloat(ov));
+      const effectiveShifts = hasOv ? parseFloat(ov) : computedShifts;
+      return {
+        rev: revLabel, testKey, label, timeRaw, comments,
+        computedShifts, effectiveShifts, hasOv, ovKey,
+        skipped: computedShifts === null && !hasOv,
+      };
+    }).filter(Boolean);
+  };
+
+  const tests = [...collectFromRev("emi461f", "F"), ...collectFromRev("emi461g", "G")];
+  const counted = tests.filter(t => !t.skipped);
+  const skipped = tests.filter(t => t.skipped);
+  const totalTestShifts = counted.reduce((a, t) => a + (t.effectiveShifts || 0), 0);
+
+  // Rental budgets — same conditions as Computed mode
+  const has440AC = sf(ti?.volt, 0) >= 440 && (ti?.pwrType || "AC") === "AC";
+  const hasRS103 = counted.some(t => t.testKey === "RS103");
+  const hasCe101or102 = counted.some(t => t.testKey === "CE101" || t.testKey === "CE102");
+  const rs103Cost = hasRS103 ? sf(emiCalc.rs103amp, 5000) : 0;
+  const ce101PwrCost = (has440AC && hasCe101or102) ? sf(emiCalc.ce101pwrSrc, 6500) : 0;
+
+  // Use NUForce's setup/teardown shifts from emiCalc; CRR doesn't provide these
+  const setupShifts = sf(emiCalc.setupShifts, 3);
+  const tdShifts = sf(emiCalc.tdShifts, 1);
+  const pia = sf(emiCalc.pia, 1);
+  const setupCost = r25(setupShifts * emiRate * pia);
+  const testCost = r25((totalTestShifts * emiRate + rs103Cost + ce101PwrCost) * pia);
+  const tdCost = r25(tdShifts * emiRate);
+
+  // Update an override for a test
+  const setOverride = (ovKey, value) => {
+    const next = {...(emiCalc.crrShiftOverrides || {})};
+    if (value === "" || isNaN(parseFloat(value))) delete next[ovKey];
+    else next[ovKey] = parseFloat(value);
+    setEmiCalc(s => ({...s, crrShiftOverrides: next}));
+  };
+
+  if (tests.length === 0) {
+    return <div style={{fontSize:11,color:"#6b7a8d",padding:"16px 12px",
+      background:"#f5f7fa",border:"1px dashed #d0d7de",borderRadius:6,textAlign:"center"}}>
+      CRR workup exists but no EMI tests are enabled or populated.
+    </div>;
+  }
+
+  return (
+    <div>
+      <div style={{fontSize:10,color:"#1a5276",background:"#eaf2ff",borderRadius:6,
+        padding:"5px 10px",marginBottom:8}}>
+        Shift counts derived from CRR Time column (ceiling of hours ÷ 8). Edit any shift to override.
+      </div>
+
+      {/* Test rows */}
+      <div style={{border:"1px solid #e0e4ea",borderRadius:6,overflow:"hidden",marginBottom:8}}>
+        <div style={{display:"grid",gridTemplateColumns:"24px 80px 1fr 90px 110px",
+          background:"#f5f7fa",padding:"5px 8px",fontSize:9,color:"#6b7a8d",fontWeight:700,gap:6,
+          textTransform:"uppercase",letterSpacing:.3}}>
+          <div>Rev</div>
+          <div>Test</div>
+          <div>Description</div>
+          <div style={{textAlign:"center"}}>Hours</div>
+          <div style={{textAlign:"right"}}>Shifts</div>
+        </div>
+        {counted.map((t, i) => (
+          <div key={t.ovKey} style={{display:"grid",gridTemplateColumns:"24px 80px 1fr 90px 110px",
+            padding:"5px 8px",gap:6,alignItems:"center",
+            background:i%2===0?"#fff":"#fafbfc",
+            borderTop:"1px solid #f0f2f5",fontSize:10}}>
+            <div style={{fontWeight:700,color:t.rev==="F"?"#1a2332":"#4a1942"}}>{t.rev}</div>
+            <div style={{fontWeight:600,color:"#1a2332"}}>{t.testKey}</div>
+            <div style={{color:"#6b7a8d"}}>{t.label}</div>
+            <div style={{textAlign:"center",color:"#6b7a8d",fontFamily:"monospace"}}>{t.timeRaw}</div>
+            <div style={{display:"flex",alignItems:"center",gap:3,justifyContent:"flex-end"}}>
+              <input type="number" step="0.25" min="0"
+                value={t.hasOv ? String(emiCalc.crrShiftOverrides[t.ovKey]) : ""}
+                placeholder={String(t.computedShifts)}
+                onChange={e=>setOverride(t.ovKey, e.target.value)}
+                title={t.hasOv ? `Override (computed: ${t.computedShifts})` : "Override the CRR-derived shift count"}
+                style={{
+                  width:48,fontSize:10,padding:"1px 4px",textAlign:"center",
+                  border:"1px solid "+(t.hasOv?"#b7791f":"#d0d7de"),
+                  borderRadius:4,
+                  background:t.hasOv?"#fffbeb":"#fff",
+                  color:t.hasOv?"#92400e":"#6b7a8d",
+                  fontFamily:"monospace",
+                  fontWeight:t.hasOv?600:400,
+                }}/>
+              <span style={{fontSize:10,color:"#6b7a8d"}}>sh</span>
+              {t.hasOv && (
+                <button onClick={()=>setOverride(t.ovKey, "")}
+                  title="Clear override"
+                  style={{background:"none",border:"none",color:"#b7791f",fontSize:11,cursor:"pointer",padding:"0 1px",lineHeight:1}}>✕</button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Skipped tests (non-numeric time) */}
+      {skipped.length > 0 && (
+        <div style={{padding:"6px 10px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,marginBottom:8}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#92400e",marginBottom:3}}>
+            {skipped.length} test{skipped.length!==1?"s":""} skipped (non-numeric time):
+          </div>
+          {skipped.map(t => (
+            <div key={t.ovKey} style={{fontSize:10,color:"#78350f",marginLeft:4}}>
+              • <strong>{t.rev}</strong> {t.testKey} — time: <code style={{background:"#fef3c7",padding:"0 4px",borderRadius:3}}>{t.timeRaw || "(empty)"}</code>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Rental budgets */}
+      {(rs103Cost > 0 || ce101PwrCost > 0) && (
+        <div style={{padding:"6px 10px",background:"#f0f4f7",borderRadius:6,marginBottom:8,fontSize:10,color:"#1a2332"}}>
+          <div style={{fontWeight:700,marginBottom:2,color:"#1a5276"}}>Rental budgets (included in Testing total)</div>
+          {rs103Cost > 0 && <div>• RS103 amplifier: {money(rs103Cost)}</div>}
+          {ce101PwrCost > 0 && <div>• CE101 power source (440V AC): {money(ce101PwrCost)}</div>}
+        </div>
+      )}
+
+      <CalcResult setupAmt={setupCost} testAmt={testCost}/>
+      <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>
+        Teardown: {money(tdCost)} &nbsp;·&nbsp; Total: {money(setupCost+testCost+tdCost)}
+        &nbsp;·&nbsp; <span style={{fontStyle:"italic"}}>{counted.length} test{counted.length!==1?"s":""} × {emiRate}/sh × PIA {pia}</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Pricing Calculator ────────────────────────────────────────────────────────
 function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300b, onExportPq300p1, calcStatesRef, crrWorkup}){
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("vib");
+  // CRR view toggle per calc tab. "computed" = NUForce calc (existing), "crr" = read from crrWorkup
+  const [emiViewMode, setEmiViewMode] = useState("computed");
 
   // Shared inputs
   const techRate = sf(setup?.techRate,175);
@@ -8445,15 +8625,55 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
           )}
           {tab==="emi"&&(
             <div>
-              {(ti?.dimL||ti?.dimW||ti?.wt||ti?.phase)&&(
-                <div style={{fontSize:10,color:"#1a5276",background:"#eaf2ff",borderRadius:6,
-                  padding:"5px 10px",marginBottom:8}}>
-                  Dimensions, weight and power are pre-filled from the Test Item Description above.
+              {/* View toggle: Computed (NUForce calc) vs CRR Workup (from Supabase) */}
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{fontSize:10,color:"#6b7a8d",fontWeight:600,letterSpacing:.4,textTransform:"uppercase"}}>View:</span>
+                <div style={{display:"inline-flex",border:"1px solid #d0d7de",borderRadius:6,overflow:"hidden"}}>
+                  <button onClick={()=>setEmiViewMode("computed")}
+                    style={{fontSize:10,fontWeight:emiViewMode==="computed"?700:400,padding:"4px 10px",
+                      border:"none",
+                      background:emiViewMode==="computed"?"#1a2332":"#fff",
+                      color:emiViewMode==="computed"?"#fff":"#6b7a8d",cursor:"pointer"}}>
+                    Computed
+                  </button>
+                  <button onClick={()=>setEmiViewMode("crr")}
+                    style={{fontSize:10,fontWeight:emiViewMode==="crr"?700:400,padding:"4px 10px",
+                      border:"none",borderLeft:"1px solid #d0d7de",
+                      background:emiViewMode==="crr"?"#1a2332":"#fff",
+                      color:emiViewMode==="crr"?"#fff":"#6b7a8d",cursor:"pointer",
+                      display:"inline-flex",alignItems:"center",gap:5}}>
+                    CRR Workup
+                    {crrWorkup && crrWorkup !== false && (
+                      <span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",
+                        background:emiViewMode==="crr"?"#22c55e":"#22c55e",flexShrink:0}}/>
+                    )}
+                  </button>
                 </div>
+              </div>
+
+              {emiViewMode === "computed" && (
+                <>
+                  {(ti?.dimL||ti?.dimW||ti?.wt||ti?.phase)&&(
+                    <div style={{fontSize:10,color:"#1a5276",background:"#eaf2ff",borderRadius:6,
+                      padding:"5px 10px",marginBottom:8}}>
+                      Dimensions, weight and power are pre-filled from the Test Item Description above.
+                    </div>
+                  )}
+                  <EmiForm s={emiCalc} set={setEmiCalc} ti={ti} setup={setup}/>
+                  <CalcResult setupAmt={suggSetup.cost} testAmt={emiTestCost}/>
+                  <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>Teardown: {money(emiTdCost)} &nbsp;·&nbsp; Total: {money(suggSetup.cost+emiTestCost+emiTdCost)}</div>
+                </>
               )}
-              <EmiForm s={emiCalc} set={setEmiCalc} ti={ti} setup={setup}/>
-              <CalcResult setupAmt={suggSetup.cost} testAmt={emiTestCost}/>
-              <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>Teardown: {money(emiTdCost)} &nbsp;·&nbsp; Total: {money(suggSetup.cost+emiTestCost+emiTdCost)}</div>
+
+              {emiViewMode === "crr" && (
+                <EmiCrrView
+                  crrWorkup={crrWorkup}
+                  emiCalc={emiCalc}
+                  setEmiCalc={setEmiCalc}
+                  emiRate={emiRate}
+                  ti={ti}/>
+              )}
+
               <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
                 <button onClick={()=>copyToClipboard(EMI_NOTES)}
                   style={{fontSize:11,padding:"5px 12px",borderRadius:6,border:"1px solid #1a5276",background:"#eaf2ff",color:"#1a5276",cursor:"pointer",fontWeight:600}}>
