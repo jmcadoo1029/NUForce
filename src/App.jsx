@@ -7973,12 +7973,314 @@ function EmiCrrView({crrWorkup, emiCalc, setEmiCalc, emiRate, ti}){
   );
 }
 
+// ── PQ CRR View ──────────────────────────────────────────────────────────────
+// Read-mostly second view inside the PQ calc tab. Mirrors EmiCrrView but
+// pulls from crrWorkup.data.specRows.pq300b / pq300p1. PQ CRR rows are
+// 5-col: [Requirement, Time (hr), 1399 Paragraph, Test Requirement, Tables/Figures].
+function PqCrrView({crrWorkup, pqCalc, setPqCalc, pqRate, ti}){
+  if (crrWorkup === null) {
+    return <div style={{fontSize:11,color:"#6b7a8d",fontStyle:"italic",padding:"12px 0"}}>
+      Loading CRR workup…
+    </div>;
+  }
+  if (crrWorkup === false || !crrWorkup.data) {
+    return <div style={{fontSize:11,color:"#6b7a8d",padding:"16px 12px",
+      background:"#f5f7fa",border:"1px dashed #d0d7de",borderRadius:6,textAlign:"center"}}>
+      (no CRR workup found for this quote)
+    </div>;
+  }
+
+  const enabled = crrWorkup.data.enabledSpecs || {};
+  const allRows = crrWorkup.data.specRows || {};
+
+  const PARSE_HOURS = (timeStr) => {
+    const s = String(timeStr || "").trim();
+    if (!s) return null;
+    const m = s.match(/^\s*(\d+(?:\.\d+)?)\s*$/);
+    return m ? parseFloat(m[1]) : null;
+  };
+
+  // PQ rows: [Requirement, Time, 1399 Paragraph, Test Requirement, Tables/Figures]
+  // Time is at index 1, 1399 Paragraph (the actual test identifier) at index 2.
+  const collectFromSpec = (specKey, standardLabel) => {
+    if (!enabled[specKey]) return [];
+    const rows = allRows[specKey] || [];
+    return rows.map((row, idx) => {
+      const requirement = String(row[0] || "").trim();
+      const timeRaw = String(row[1] || "");
+      const paragraph = String(row[2] || "").trim();
+      // Need at least a requirement or paragraph to count as a real row
+      if (!requirement && !paragraph) return null;
+      const hours = PARSE_HOURS(timeRaw);
+      const computedShifts = hours !== null ? Math.ceil(hours / 8) : null;
+      const ovKey = standardLabel + ":" + (paragraph || requirement) + ":" + idx;
+      const ov = pqCalc.crrShiftOverrides?.[ovKey];
+      const hasOv = ov !== undefined && ov !== null && ov !== "" && !isNaN(parseFloat(ov));
+      const effectiveShifts = hasOv ? parseFloat(ov) : computedShifts;
+      return {
+        standard: standardLabel, paragraph, requirement, timeRaw,
+        computedShifts, effectiveShifts, hasOv, ovKey,
+        skipped: computedShifts === null && !hasOv,
+      };
+    }).filter(Boolean);
+  };
+
+  const tests = [...collectFromSpec("pq300b", "300B"), ...collectFromSpec("pq300p1", "300P1")];
+  const counted = tests.filter(t => !t.skipped);
+  const skipped = tests.filter(t => t.skipped);
+  const totalTestShifts = counted.reduce((a, t) => a + (t.effectiveShifts || 0), 0);
+
+  // Use NUForce's setup/teardown shifts from pqCalc; CRR doesn't provide these
+  const setupShifts = sf(pqCalc.setupShifts, 1.5);
+  const tdShifts = sf(pqCalc.tdShifts, 1.0);
+  const pia = sf(pqCalc.pia, 1);
+  const setupCost = r25(setupShifts * pqRate * pia);
+  const testCost = r25(totalTestShifts * pqRate * pia);
+  const tdCost = r25(tdShifts * pqRate);
+
+  const setOverride = (ovKey, value) => {
+    const next = {...(pqCalc.crrShiftOverrides || {})};
+    if (value === "" || isNaN(parseFloat(value))) delete next[ovKey];
+    else next[ovKey] = parseFloat(value);
+    setPqCalc(s => ({...s, crrShiftOverrides: next}));
+  };
+
+  if (tests.length === 0) {
+    return <div style={{fontSize:11,color:"#6b7a8d",padding:"16px 12px",
+      background:"#f5f7fa",border:"1px dashed #d0d7de",borderRadius:6,textAlign:"center"}}>
+      CRR workup exists but no PQ tests are enabled or populated.
+    </div>;
+  }
+
+  return (
+    <div>
+      <div style={{fontSize:10,color:"#1a5276",background:"#eaf2ff",borderRadius:6,
+        padding:"5px 10px",marginBottom:8}}>
+        Shift counts derived from CRR Time column (ceiling of hours ÷ 8). Edit any shift to override.
+      </div>
+
+      <div style={{border:"1px solid #e0e4ea",borderRadius:6,overflow:"hidden",marginBottom:8}}>
+        <div style={{display:"grid",gridTemplateColumns:"40px 70px 1fr 90px 110px",
+          background:"#f5f7fa",padding:"5px 8px",fontSize:9,color:"#6b7a8d",fontWeight:700,gap:6,
+          textTransform:"uppercase",letterSpacing:.3}}>
+          <div>Std</div>
+          <div>Para</div>
+          <div>Requirement</div>
+          <div style={{textAlign:"center"}}>Hours</div>
+          <div style={{textAlign:"right"}}>Shifts</div>
+        </div>
+        {counted.map((t, i) => (
+          <div key={t.ovKey} style={{display:"grid",gridTemplateColumns:"40px 70px 1fr 90px 110px",
+            padding:"5px 8px",gap:6,alignItems:"center",
+            background:i%2===0?"#fff":"#fafbfc",
+            borderTop:"1px solid #f0f2f5",fontSize:10}}>
+            <div style={{fontWeight:700,color:t.standard==="300B"?"#1a2332":"#4a1942",fontSize:9}}>{t.standard}</div>
+            <div style={{fontWeight:600,color:"#1a2332",fontFamily:"monospace"}}>{t.paragraph}</div>
+            <div style={{color:"#6b7a8d"}}>{t.requirement}</div>
+            <div style={{textAlign:"center",color:"#6b7a8d",fontFamily:"monospace"}}>{t.timeRaw}</div>
+            <div style={{display:"flex",alignItems:"center",gap:3,justifyContent:"flex-end"}}>
+              <input type="number" step="0.25" min="0"
+                value={t.hasOv ? String(pqCalc.crrShiftOverrides[t.ovKey]) : ""}
+                placeholder={String(t.computedShifts)}
+                onChange={e=>setOverride(t.ovKey, e.target.value)}
+                title={t.hasOv ? `Override (computed: ${t.computedShifts})` : "Override the CRR-derived shift count"}
+                style={{
+                  width:48,fontSize:10,padding:"1px 4px",textAlign:"center",
+                  border:"1px solid "+(t.hasOv?"#b7791f":"#d0d7de"),
+                  borderRadius:4,
+                  background:t.hasOv?"#fffbeb":"#fff",
+                  color:t.hasOv?"#92400e":"#6b7a8d",
+                  fontFamily:"monospace",
+                  fontWeight:t.hasOv?600:400,
+                }}/>
+              <span style={{fontSize:10,color:"#6b7a8d"}}>sh</span>
+              {t.hasOv && (
+                <button onClick={()=>setOverride(t.ovKey, "")}
+                  title="Clear override"
+                  style={{background:"none",border:"none",color:"#b7791f",fontSize:11,cursor:"pointer",padding:"0 1px",lineHeight:1}}>✕</button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {skipped.length > 0 && (
+        <div style={{padding:"6px 10px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,marginBottom:8}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#92400e",marginBottom:3}}>
+            {skipped.length} test{skipped.length!==1?"s":""} skipped (non-numeric time):
+          </div>
+          {skipped.map(t => (
+            <div key={t.ovKey} style={{fontSize:10,color:"#78350f",marginLeft:4}}>
+              • <strong>{t.standard}</strong> {t.paragraph} — time: <code style={{background:"#fef3c7",padding:"0 4px",borderRadius:3}}>{t.timeRaw || "(empty)"}</code>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <CalcResult setupAmt={setupCost} testAmt={testCost}/>
+      <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>
+        Teardown: {money(tdCost)} &nbsp;·&nbsp; Total: {money(setupCost+testCost+tdCost)}
+        &nbsp;·&nbsp; <span style={{fontStyle:"italic"}}>{counted.length} test{counted.length!==1?"s":""} × {pqRate}/sh × PIA {pia}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── DC Mag CRR View ──────────────────────────────────────────────────────────
+// DC Mag is simpler than EMI/PQ — typically one row, no per-test selection.
+// CRR rows are 4-col [Test, Description, Time, Comments]. We sum any numeric
+// Time cells and display the result, same override pattern as EMI/PQ.
+function DcmCrrView({crrWorkup, dcmCalc, setDcmCalc, dcmRate}){
+  if (crrWorkup === null) {
+    return <div style={{fontSize:11,color:"#6b7a8d",fontStyle:"italic",padding:"12px 0"}}>
+      Loading CRR workup…
+    </div>;
+  }
+  if (crrWorkup === false || !crrWorkup.data) {
+    return <div style={{fontSize:11,color:"#6b7a8d",padding:"16px 12px",
+      background:"#f5f7fa",border:"1px dashed #d0d7de",borderRadius:6,textAlign:"center"}}>
+      (no CRR workup found for this quote)
+    </div>;
+  }
+
+  const enabled = crrWorkup.data.enabledSpecs || {};
+  const allRows = crrWorkup.data.specRows || {};
+
+  if (!enabled.dcmag) {
+    return <div style={{fontSize:11,color:"#6b7a8d",padding:"16px 12px",
+      background:"#f5f7fa",border:"1px dashed #d0d7de",borderRadius:6,textAlign:"center"}}>
+      DC Magnetics is not enabled in the CRR workup for this quote.
+    </div>;
+  }
+
+  const PARSE_HOURS = (timeStr) => {
+    const s = String(timeStr || "").trim();
+    if (!s) return null;
+    const m = s.match(/^\s*(\d+(?:\.\d+)?)\s*$/);
+    return m ? parseFloat(m[1]) : null;
+  };
+
+  const rows = (allRows.dcmag || []).map((row, idx) => {
+    const testKey = String(row[0] || "").trim();
+    const label = String(row[1] || "");
+    const timeRaw = String(row[2] || "");
+    if (!testKey && !label) return null;
+    const hours = PARSE_HOURS(timeRaw);
+    const computedShifts = hours !== null ? Math.ceil(hours / 8) : null;
+    const ovKey = "DCM:" + (testKey || "row" + idx) + ":" + idx;
+    const ov = dcmCalc.crrShiftOverrides?.[ovKey];
+    const hasOv = ov !== undefined && ov !== null && ov !== "" && !isNaN(parseFloat(ov));
+    const effectiveShifts = hasOv ? parseFloat(ov) : computedShifts;
+    return {
+      testKey: testKey || "(no test name)", label, timeRaw,
+      computedShifts, effectiveShifts, hasOv, ovKey,
+      skipped: computedShifts === null && !hasOv,
+    };
+  }).filter(Boolean);
+
+  const counted = rows.filter(t => !t.skipped);
+  const skipped = rows.filter(t => t.skipped);
+  const totalTestShifts = counted.reduce((a, t) => a + (t.effectiveShifts || 0), 0);
+
+  const setupShifts = sf(dcmCalc.setupShifts, 1.5);
+  const pia = sf(dcmCalc.pia, 1);
+  const setupCost = r25(setupShifts * dcmRate * pia);
+  const testCost = r25(totalTestShifts * dcmRate * pia);
+
+  const setOverride = (ovKey, value) => {
+    const next = {...(dcmCalc.crrShiftOverrides || {})};
+    if (value === "" || isNaN(parseFloat(value))) delete next[ovKey];
+    else next[ovKey] = parseFloat(value);
+    setDcmCalc(s => ({...s, crrShiftOverrides: next}));
+  };
+
+  if (rows.length === 0) {
+    return <div style={{fontSize:11,color:"#6b7a8d",padding:"16px 12px",
+      background:"#f5f7fa",border:"1px dashed #d0d7de",borderRadius:6,textAlign:"center"}}>
+      DC Magnetics is enabled in CRR but no rows are populated.
+    </div>;
+  }
+
+  return (
+    <div>
+      <div style={{fontSize:10,color:"#1a5276",background:"#eaf2ff",borderRadius:6,
+        padding:"5px 10px",marginBottom:8}}>
+        Shift counts derived from CRR Time column (ceiling of hours ÷ 8). Edit any shift to override.
+      </div>
+
+      <div style={{border:"1px solid #e0e4ea",borderRadius:6,overflow:"hidden",marginBottom:8}}>
+        <div style={{display:"grid",gridTemplateColumns:"100px 1fr 90px 110px",
+          background:"#f5f7fa",padding:"5px 8px",fontSize:9,color:"#6b7a8d",fontWeight:700,gap:6,
+          textTransform:"uppercase",letterSpacing:.3}}>
+          <div>Test</div>
+          <div>Description</div>
+          <div style={{textAlign:"center"}}>Hours</div>
+          <div style={{textAlign:"right"}}>Shifts</div>
+        </div>
+        {counted.map((t, i) => (
+          <div key={t.ovKey} style={{display:"grid",gridTemplateColumns:"100px 1fr 90px 110px",
+            padding:"5px 8px",gap:6,alignItems:"center",
+            background:i%2===0?"#fff":"#fafbfc",
+            borderTop:"1px solid #f0f2f5",fontSize:10}}>
+            <div style={{fontWeight:600,color:"#1a2332"}}>{t.testKey}</div>
+            <div style={{color:"#6b7a8d"}}>{t.label}</div>
+            <div style={{textAlign:"center",color:"#6b7a8d",fontFamily:"monospace"}}>{t.timeRaw}</div>
+            <div style={{display:"flex",alignItems:"center",gap:3,justifyContent:"flex-end"}}>
+              <input type="number" step="0.25" min="0"
+                value={t.hasOv ? String(dcmCalc.crrShiftOverrides[t.ovKey]) : ""}
+                placeholder={String(t.computedShifts)}
+                onChange={e=>setOverride(t.ovKey, e.target.value)}
+                title={t.hasOv ? `Override (computed: ${t.computedShifts})` : "Override the CRR-derived shift count"}
+                style={{
+                  width:48,fontSize:10,padding:"1px 4px",textAlign:"center",
+                  border:"1px solid "+(t.hasOv?"#b7791f":"#d0d7de"),
+                  borderRadius:4,
+                  background:t.hasOv?"#fffbeb":"#fff",
+                  color:t.hasOv?"#92400e":"#6b7a8d",
+                  fontFamily:"monospace",
+                  fontWeight:t.hasOv?600:400,
+                }}/>
+              <span style={{fontSize:10,color:"#6b7a8d"}}>sh</span>
+              {t.hasOv && (
+                <button onClick={()=>setOverride(t.ovKey, "")}
+                  title="Clear override"
+                  style={{background:"none",border:"none",color:"#b7791f",fontSize:11,cursor:"pointer",padding:"0 1px",lineHeight:1}}>✕</button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {skipped.length > 0 && (
+        <div style={{padding:"6px 10px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,marginBottom:8}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#92400e",marginBottom:3}}>
+            {skipped.length} row{skipped.length!==1?"s":""} skipped (non-numeric time):
+          </div>
+          {skipped.map(t => (
+            <div key={t.ovKey} style={{fontSize:10,color:"#78350f",marginLeft:4}}>
+              • <strong>{t.testKey}</strong> — time: <code style={{background:"#fef3c7",padding:"0 4px",borderRadius:3}}>{t.timeRaw || "(empty)"}</code>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <CalcResult setupAmt={setupCost} testAmt={testCost}/>
+      <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>
+        Total: {money(setupCost+testCost)}
+        &nbsp;·&nbsp; <span style={{fontStyle:"italic"}}>{counted.length} row{counted.length!==1?"s":""} × {dcmRate}/sh × PIA {pia}</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Pricing Calculator ────────────────────────────────────────────────────────
 function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300b, onExportPq300p1, calcStatesRef, crrWorkup}){
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("vib");
   // CRR view toggle per calc tab. "computed" = NUForce calc (existing), "crr" = read from crrWorkup
   const [emiViewMode, setEmiViewMode] = useState("computed");
+  const [pqViewMode, setPqViewMode] = useState("computed");
+  const [dcmViewMode, setDcmViewMode] = useState("computed");
 
   // Shared inputs
   const techRate = sf(setup?.techRate,175);
@@ -8705,21 +9007,61 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
           {/* PQ Tab — full PqForm */}
           {tab==="pq"&&(
             <div>
-              {(ti?.phase||ti?.amps)&&(
-                <div style={{fontSize:10,color:"#1a5276",background:"#eaf2ff",borderRadius:6,
-                  padding:"5px 10px",marginBottom:8}}>
-                  Phase and amperage are pre-filled from the Test Item Description above.
+              {/* View toggle: Computed (NUForce calc) vs CRR Workup */}
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{fontSize:10,color:"#6b7a8d",fontWeight:600,letterSpacing:.4,textTransform:"uppercase"}}>View:</span>
+                <div style={{display:"inline-flex",border:"1px solid #d0d7de",borderRadius:6,overflow:"hidden"}}>
+                  <button onClick={()=>setPqViewMode("computed")}
+                    style={{fontSize:10,fontWeight:pqViewMode==="computed"?700:400,padding:"4px 10px",
+                      border:"none",
+                      background:pqViewMode==="computed"?"#1a2332":"#fff",
+                      color:pqViewMode==="computed"?"#fff":"#6b7a8d",cursor:"pointer"}}>
+                    Computed
+                  </button>
+                  <button onClick={()=>setPqViewMode("crr")}
+                    style={{fontSize:10,fontWeight:pqViewMode==="crr"?700:400,padding:"4px 10px",
+                      border:"none",borderLeft:"1px solid #d0d7de",
+                      background:pqViewMode==="crr"?"#1a2332":"#fff",
+                      color:pqViewMode==="crr"?"#fff":"#6b7a8d",cursor:"pointer",
+                      display:"inline-flex",alignItems:"center",gap:5}}>
+                    CRR Workup
+                    {crrWorkup && crrWorkup !== false && (
+                      <span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",
+                        background:"#22c55e",flexShrink:0}}/>
+                    )}
+                  </button>
                 </div>
+              </div>
+
+              {pqViewMode === "computed" && (
+                <>
+                  {(ti?.phase||ti?.amps)&&(
+                    <div style={{fontSize:10,color:"#1a5276",background:"#eaf2ff",borderRadius:6,
+                      padding:"5px 10px",marginBottom:8}}>
+                      Phase and amperage are pre-filled from the Test Item Description above.
+                    </div>
+                  )}
+                  <PqForm s={pqCalc} set={setPqCalc} ti={ti}/>
+                  <CalcResult setupAmt={pqSetupCost} testAmt={pqTestCost}/>
+                  {sf(ti?.volt,0)>=440&&(ti?.pwrType||"AC")==="AC"&&(
+                    <div style={{marginTop:6,padding:"6px 10px",background:"#fffbeb",border:"1px solid #b7791f",
+                      borderRadius:6,fontSize:11,color:"#7b4f12",fontWeight:600}}>
+                      ⚠ 440 VAC — power source rental required (not included in suggested price above).
+                    </div>
+                  )}
+                  <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>Teardown: {money(pqTdCost)} &nbsp;·&nbsp; Total: {money(pqSetupCost+pqTestCost+pqTdCost)}</div>
+                </>
               )}
-              <PqForm s={pqCalc} set={setPqCalc} ti={ti}/>
-              <CalcResult setupAmt={pqSetupCost} testAmt={pqTestCost}/>
-              {sf(ti?.volt,0)>=440&&(ti?.pwrType||"AC")==="AC"&&(
-                <div style={{marginTop:6,padding:"6px 10px",background:"#fffbeb",border:"1px solid #b7791f",
-                  borderRadius:6,fontSize:11,color:"#7b4f12",fontWeight:600}}>
-                  ⚠ 440 VAC — power source rental required (not included in suggested price above).
-                </div>
+
+              {pqViewMode === "crr" && (
+                <PqCrrView
+                  crrWorkup={crrWorkup}
+                  pqCalc={pqCalc}
+                  setPqCalc={setPqCalc}
+                  pqRate={pqRate}
+                  ti={ti}/>
               )}
-              <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>Teardown: {money(pqTdCost)} &nbsp;·&nbsp; Total: {money(pqSetupCost+pqTestCost+pqTdCost)}</div>
+
               <div style={{marginTop:8,display:"flex",gap:8,flexWrap:"wrap"}}>
                 {pqCalc.rows&&Object.entries(pqCalc.rows).some(([k,v])=>v&&k.startsWith("B"))&&onExportPq300b&&(
                   <button onClick={()=>onExportPq300b(pqCalc)}
@@ -8740,30 +9082,66 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
           {/* DC Magnetics Tab */}
           {tab==="dcm"&&(
             <div>
-              {/* "Include in spec output" — signals to Spec Builder from Quote
-                  that this quote covers DC Mag. Unchecked by default so DC Mag
-                  doesn't leak into specs for quotes that don't use it. */}
-              <div style={{marginBottom:8,padding:"6px 10px",background:"#f0f4f7",borderRadius:6,
-                display:"flex",alignItems:"center",gap:8}}>
-                <input type="checkbox" id="dcmIncludeCb"
-                  checked={!!dcmCalc.include}
-                  onChange={e=>setDcmCalc(s=>({...s,include:e.target.checked}))}
-                  style={{cursor:"pointer"}}/>
-                <label htmlFor="dcmIncludeCb"
-                  style={{fontSize:11,fontWeight:600,color:"#1a2332",cursor:"pointer"}}>
-                  Include DC Magnetics in spec output
-                </label>
+              {/* View toggle: Computed (NUForce calc) vs CRR Workup */}
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{fontSize:10,color:"#6b7a8d",fontWeight:600,letterSpacing:.4,textTransform:"uppercase"}}>View:</span>
+                <div style={{display:"inline-flex",border:"1px solid #d0d7de",borderRadius:6,overflow:"hidden"}}>
+                  <button onClick={()=>setDcmViewMode("computed")}
+                    style={{fontSize:10,fontWeight:dcmViewMode==="computed"?700:400,padding:"4px 10px",
+                      border:"none",
+                      background:dcmViewMode==="computed"?"#1a2332":"#fff",
+                      color:dcmViewMode==="computed"?"#fff":"#6b7a8d",cursor:"pointer"}}>
+                    Computed
+                  </button>
+                  <button onClick={()=>setDcmViewMode("crr")}
+                    style={{fontSize:10,fontWeight:dcmViewMode==="crr"?700:400,padding:"4px 10px",
+                      border:"none",borderLeft:"1px solid #d0d7de",
+                      background:dcmViewMode==="crr"?"#1a2332":"#fff",
+                      color:dcmViewMode==="crr"?"#fff":"#6b7a8d",cursor:"pointer",
+                      display:"inline-flex",alignItems:"center",gap:5}}>
+                    CRR Workup
+                    {crrWorkup && crrWorkup !== false && (
+                      <span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",
+                        background:"#22c55e",flexShrink:0}}/>
+                    )}
+                  </button>
+                </div>
               </div>
-              <CalcRow2 label="Spec"><input value={dcmCalc.spec} onChange={e=>setDcmCalc(s=>({...s,spec:e.target.value}))}
-                style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #d0d7de",width:200}}/></CalcRow2>
-              <CalcRow2 label="Shift Rate ($)"><CalcInp value={dcmCalc.rate} onChange={v=>setDcmCalc(s=>({...s,rate:v}))}/></CalcRow2>
-              <CalcRow2 label="Setup Shifts"><CalcInp value={dcmCalc.setupShifts} onChange={v=>setDcmCalc(s=>({...s,setupShifts:v}))}/></CalcRow2>
-              <CalcRow2 label="Testing Shifts"><CalcInp value={dcmCalc.testShifts} onChange={v=>setDcmCalc(s=>({...s,testShifts:v}))}/></CalcRow2>
-              <CalcRow2 label="PIA"><CalcInp value={String(dcmCalc.pia)} onChange={v=>setDcmCalc(s=>({...s,pia:parseFloat(v)||1}))} width={50}/></CalcRow2>
-              <CalcResult setupAmt={dcmSetupCost} testAmt={dcmTestCost}/>
-              <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>Total: {money(dcmTotal)}</div>
 
+              {dcmViewMode === "computed" && (
+                <>
+                  {/* "Include in spec output" — signals to Spec Builder from Quote
+                      that this quote covers DC Mag. Unchecked by default so DC Mag
+                      doesn't leak into specs for quotes that don't use it. */}
+                  <div style={{marginBottom:8,padding:"6px 10px",background:"#f0f4f7",borderRadius:6,
+                    display:"flex",alignItems:"center",gap:8}}>
+                    <input type="checkbox" id="dcmIncludeCb"
+                      checked={!!dcmCalc.include}
+                      onChange={e=>setDcmCalc(s=>({...s,include:e.target.checked}))}
+                      style={{cursor:"pointer"}}/>
+                    <label htmlFor="dcmIncludeCb"
+                      style={{fontSize:11,fontWeight:600,color:"#1a2332",cursor:"pointer"}}>
+                      Include DC Magnetics in spec output
+                    </label>
+                  </div>
+                  <CalcRow2 label="Spec"><input value={dcmCalc.spec} onChange={e=>setDcmCalc(s=>({...s,spec:e.target.value}))}
+                    style={{fontSize:11,padding:"3px 6px",borderRadius:5,border:"1px solid #d0d7de",width:200}}/></CalcRow2>
+                  <CalcRow2 label="Shift Rate ($)"><CalcInp value={dcmCalc.rate} onChange={v=>setDcmCalc(s=>({...s,rate:v}))}/></CalcRow2>
+                  <CalcRow2 label="Setup Shifts"><CalcInp value={dcmCalc.setupShifts} onChange={v=>setDcmCalc(s=>({...s,setupShifts:v}))}/></CalcRow2>
+                  <CalcRow2 label="Testing Shifts"><CalcInp value={dcmCalc.testShifts} onChange={v=>setDcmCalc(s=>({...s,testShifts:v}))}/></CalcRow2>
+                  <CalcRow2 label="PIA"><CalcInp value={String(dcmCalc.pia)} onChange={v=>setDcmCalc(s=>({...s,pia:parseFloat(v)||1}))} width={50}/></CalcRow2>
+                  <CalcResult setupAmt={dcmSetupCost} testAmt={dcmTestCost}/>
+                  <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>Total: {money(dcmTotal)}</div>
+                </>
+              )}
 
+              {dcmViewMode === "crr" && (
+                <DcmCrrView
+                  crrWorkup={crrWorkup}
+                  dcmCalc={dcmCalc}
+                  setDcmCalc={setDcmCalc}
+                  dcmRate={dcmRate}/>
+              )}
             </div>
           )}
 
@@ -11330,15 +11708,19 @@ const STANDARD_TERMS = [
     const enabled = data.enabledSpecs || {};
     const allRows = data.specRows || {};
 
-    // Helper: filter out completely-empty rows (all cells blank), since the
-    // tech may have left placeholders.
-    const dropEmpty = rows => (rows || []).filter(r =>
-      Array.isArray(r) && r.some(cell => String(cell || "").trim() !== "")
+    // Spec inclusion rule (matches calc CRR view): only include rows where
+    // the Time cell contains a clean numeric value. Tests with blank or
+    // non-numeric time ("TBD", "1 day", "depends on customer") are excluded
+    // since the tech hasn't committed a duration to them yet.
+    // Time column: index 2 for EMI/DC Mag (4-col), index 1 for PQ (5-col).
+    const isNumeric = s => /^\s*\d+(?:\.\d+)?\s*$/.test(String(s || ""));
+    const filterByTime = (rows, timeIdx) => (rows || []).filter(r =>
+      Array.isArray(r) && isNumeric(r[timeIdx])
     );
 
     // EMI 461F: CRR cols are [Test, Description, Time, Comments] → drop Time
     if (enabled.emi461f) {
-      const rows = dropEmpty(allRows.emi461f).map(r => [
+      const rows = filterByTime(allRows.emi461f, 2).map(r => [
         String(r[0] || ""),
         String(r[1] || ""),
         String(r[3] || ""),
@@ -11347,7 +11729,7 @@ const STANDARD_TERMS = [
     }
     // EMI 461G: same mapping
     if (enabled.emi461g) {
-      const rows = dropEmpty(allRows.emi461g).map(r => [
+      const rows = filterByTime(allRows.emi461g, 2).map(r => [
         String(r[0] || ""),
         String(r[1] || ""),
         String(r[3] || ""),
@@ -11356,7 +11738,7 @@ const STANDARD_TERMS = [
     }
     // PQ 300B: CRR cols are [Requirement, Time, 1399 Paragraph, Test Requirement, Tables/Figures]
     // Map to [test=paragraph, label=requirement, comments=testReq + tables]
-    const mapPq = arr => dropEmpty(arr).map(r => {
+    const mapPq = arr => filterByTime(arr, 1).map(r => {
       const paragraph = String(r[2] || "");
       const requirement = String(r[0] || "");
       const testReq = String(r[3] || "");
@@ -11376,7 +11758,7 @@ const STANDARD_TERMS = [
     }
     // DC Mag: same 4-col mapping as EMI
     if (enabled.dcmag) {
-      const rows = dropEmpty(allRows.dcmag).map(r => [
+      const rows = filterByTime(allRows.dcmag, 2).map(r => [
         String(r[0] || ""),
         String(r[1] || ""),
         String(r[3] || ""),
