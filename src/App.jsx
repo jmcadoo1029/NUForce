@@ -7796,7 +7796,7 @@ function SpecSuggestion({text}){
 }
 
 // ── Pricing Calculator ────────────────────────────────────────────────────────
-function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300b, onExportPq300p1, calcStatesRef}){
+function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300b, onExportPq300p1, calcStatesRef, crrWorkup}){
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("vib");
 
@@ -8012,16 +8012,29 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
       {open&&(
         <div style={{padding:"12px 14px",background:"#fff"}}>
           {/* Tabs */}
-          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:12}}>
-            {TABS.map(t=>(
-              <button key={t.key} onClick={()=>setTab(t.key)}
-                style={{fontSize:10,fontWeight:tab===t.key?700:400,padding:"4px 10px",borderRadius:20,
-                  border:"1px solid "+(tab===t.key?"#1a2332":"#d0d7de"),
-                  background:tab===t.key?"#1a2332":"#fff",
-                  color:tab===t.key?"#fff":"#6b7a8d",cursor:"pointer"}}>
-                {t.label}
-              </button>
-            ))}
+          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
+            {TABS.map(t=>{
+              // Green dot indicator: shown on emi/pq/dcm tabs when a CRR workup
+              // exists for this quote. The CRR view toggle inside the tab is
+              // where the user actually sees the data; the dot is just a hint
+              // that there's something to look at.
+              const showCrrDot = !!crrWorkup && (t.key === "emi" || t.key === "pq" || t.key === "dcm");
+              return (
+                <button key={t.key} onClick={()=>setTab(t.key)}
+                  style={{fontSize:10,fontWeight:tab===t.key?700:400,padding:"4px 10px",borderRadius:20,
+                    border:"1px solid "+(tab===t.key?"#1a2332":"#d0d7de"),
+                    background:tab===t.key?"#1a2332":"#fff",
+                    color:tab===t.key?"#fff":"#6b7a8d",cursor:"pointer",
+                    position:"relative",display:"inline-flex",alignItems:"center",gap:6}}>
+                  {t.label}
+                  {showCrrDot && (
+                    <span title="CRR workup available for this quote"
+                      style={{display:"inline-block",width:7,height:7,borderRadius:"50%",
+                        background:"#22c55e",flexShrink:0}}/>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {/* Vibration */}
@@ -9885,6 +9898,47 @@ export default function App({onLogout,currentUser}){
   // tab's current state. Read-only from App's side; PricingCalculator owns
   // the writes via the calcStatesRef prop passed below.
   const pricingCalcStateRef = useRef({ emiCalc: null, pqCalc: null, dcmCalc: null });
+
+  // ── CRR workup data (read-only from NUForce) ─────────────────────────────────
+  // When a quote is loaded, we fetch the matching row from public.crr_workups
+  // (keyed by quote_number) and cache it here. Used by:
+  //   • The "CRR" view toggle inside each calc tab (EMI / PQ / DC Mag)
+  //   • The "Spec Builder from CRR" launcher option
+  //   • The green-dot indicator next to the calc tabs
+  // crrWorkup = null  → not yet fetched / no quote loaded
+  // crrWorkup = false → fetched but no row exists in Supabase for this quote
+  // crrWorkup = {...} → the parsed row
+  const [crrWorkup, setCrrWorkup] = useState(null);
+
+  // Fetch CRR workup whenever the quote number changes.
+  // Cached in state — never automatically refetched mid-session (per Phase 6
+  // design decision). A future "Refresh CRR" button could clear+refetch.
+  useEffect(() => {
+    const quoteNum = (qi?.opp || "").trim();
+    if (!quoteNum) {
+      setCrrWorkup(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const url = "crr_workups?quote_number=eq." + encodeURIComponent(quoteNum) +
+                    "&select=*&limit=1";
+        const rows = await restFetch("GET", url);
+        if (cancelled) return;
+        if (Array.isArray(rows) && rows.length > 0) {
+          setCrrWorkup(rows[0]);
+        } else {
+          setCrrWorkup(false); // explicitly: no row exists
+        }
+      } catch (e) {
+        if (cancelled) return;
+        console.warn("[CRR] fetch failed:", e?.message || e);
+        setCrrWorkup(false); // treat fetch errors as "no CRR" so UI still works
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [qi?.opp]);
   const AUTOSIZE_MAX_PX = 280; // ~15 lines at lineHeight 1.6 * fontSize 11 + padding
   const fitTextarea = (el) => {
     if (!el) return;
@@ -14072,7 +14126,8 @@ const STANDARD_TERMS = [
               onExportEmiG={exportCalcEmi461gPDF}
               onExportPq300b={exportCalcPq300bPDF_calc}
               onExportPq300p1={exportCalcPq300Part1PDF_calc}
-              calcStatesRef={pricingCalcStateRef}/>
+              calcStatesRef={pricingCalcStateRef}
+              crrWorkup={crrWorkup}/>
             <InstrumentationCalculator/>
 
             {/* ── Row 5+: Test sections ── */}
