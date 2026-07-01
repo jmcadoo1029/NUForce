@@ -8281,6 +8281,40 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
   const [emiViewMode, setEmiViewMode] = useState("computed");
   const [pqViewMode, setPqViewMode] = useState("computed");
   const [dcmViewMode, setDcmViewMode] = useState("computed");
+  // Customer Questions modal — opens a textarea with editable pre-populated
+  // EMI questions the user can send to a customer to gather info before
+  // finalizing a quote. Editable so the user can trim/tailor per customer.
+  const [customerQModalOpen, setCustomerQModalOpen] = useState(false);
+  const EMI_CUSTOMER_QUESTIONS_DEFAULT =
+`Revision of MIL-STD-461, Rev F or Rev G?
+
+Classification of testing per table in standard (Army, Navy, Air Force; aircraft (external, safety critical, internal, flight line), ship (metallic or non-metallic), submarine (internal or external), ground, space).
+
+Location of the unit if on a ship (above deck & exposed below deck, below deck, hangar deck)  e.g., Navy, ships, metallic, below deck.
+
+Dimensions of EUT(s) (drawings if possible) including dimensions where cables enter/exit.
+
+Weight of EUT(s)
+
+Input power requirements (AC or DC voltage, # phases and nominal current, inrush current, if 3 phase is it delta or wye)
+
+Number, size (OD), shielded or unshielded, length (in application) and location of cables on EUT (helpful to know what is on each cable and how shields are terminated)
+
+Special interface requirements (test box, monitoring equipment needed to ensure functionality and/or susceptibility measurement, peripherals, pumps, compressed air, etc.)
+
+General operation description, a block diagram with all peripherals shown would be very helpful.
+
+How many modes of operation must be tested?
+
+Does this unit have an operating frequency of 100 kHz or less (or 150 kHz or less for Rev G CS101) AND an operating sensitivity of 1 uV or better (such as 0.5 uV)? If yes, specify the operating frequency.
+
+Are there any UPS/batteries involved or battery backup? If yes, what is the time to discharge from 100% to 20% at the fastest achievable rate, and the time to charge from 20-80% in the operating mode that will be used?
+
+What is the highest operating frequency of any oscillators (461 Rev F only)
+
+Any procurement specification extended frequency range requirements or optional tests.`;
+  const [customerQText, setCustomerQText] = useState(EMI_CUSTOMER_QUESTIONS_DEFAULT);
+  const [customerQCopiedMsg, setCustomerQCopiedMsg] = useState("");
 
   // Shared inputs
   const techRate = sf(setup?.techRate,175);
@@ -8981,6 +9015,11 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
                   style={{fontSize:11,padding:"5px 12px",borderRadius:6,border:"1px solid #1a5276",background:"#eaf2ff",color:"#1a5276",cursor:"pointer",fontWeight:600}}>
                   Copy EMI Notes
                 </button>
+                <button onClick={()=>{setCustomerQCopiedMsg("");setCustomerQModalOpen(true);}}
+                  title="Open a pre-written list of questions to send to the customer for EMI info gathering"
+                  style={{fontSize:11,padding:"5px 12px",borderRadius:6,border:"1px solid #4a1942",background:"#fdf0f7",color:"#4a1942",cursor:"pointer",fontWeight:600}}>
+                  Customer Questions
+                </button>
                 {(emiCalc.revs||{})["Rev F"]&&onExportEmiF&&(
                   <button onClick={()=>onExportEmiF(emiCalc)}
                     style={{fontSize:11,padding:"5px 12px",borderRadius:6,border:"none",background:"#1a2332",color:"#fff",cursor:"pointer",fontWeight:600}}>
@@ -9147,6 +9186,71 @@ function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300
 
           <div style={{marginTop:10,fontSize:9,color:"#c0c8d0",fontStyle:"italic"}}>
             These are suggested prices only and do not affect the quote.
+          </div>
+        </div>
+      )}
+
+      {/* Customer Questions modal — editable list of EMI info-gathering
+          questions to send to a customer. Renders as a floating overlay so
+          it's independent of which calc tab is active. */}
+      {customerQModalOpen && (
+        <div onClick={()=>setCustomerQModalOpen(false)}
+          style={{position:"fixed",top:0,left:0,right:0,bottom:0,
+            background:"rgba(0,0,0,0.5)",zIndex:1000,
+            display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{background:"#fff",borderRadius:10,maxWidth:820,width:"100%",
+              maxHeight:"90vh",display:"flex",flexDirection:"column",
+              boxShadow:"0 10px 40px rgba(0,0,0,0.3)"}}>
+            {/* Header */}
+            <div style={{padding:"14px 18px",borderBottom:"1px solid #e0e4ea",
+              display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:700,color:"#1a2332"}}>Customer Questions — EMI</div>
+                <div style={{fontSize:11,color:"#6b7a8d",marginTop:2}}>
+                  Edit as needed for this customer, then copy to your email
+                </div>
+              </div>
+              <button onClick={()=>setCustomerQModalOpen(false)}
+                style={{background:"none",border:"none",fontSize:20,color:"#6b7a8d",cursor:"pointer",padding:"0 6px",lineHeight:1}}>×</button>
+            </div>
+            {/* Body */}
+            <div style={{padding:"14px 18px",flex:1,overflow:"auto"}}>
+              <textarea value={customerQText}
+                onChange={e=>{setCustomerQText(e.target.value);setCustomerQCopiedMsg("");}}
+                style={{width:"100%",minHeight:"55vh",fontSize:12,fontFamily:"system-ui,sans-serif",
+                  padding:12,borderRadius:6,border:"1px solid #d0d7de",
+                  resize:"vertical",boxSizing:"border-box",lineHeight:1.5,color:"#1a2332"}}/>
+            </div>
+            {/* Footer */}
+            <div style={{padding:"12px 18px",borderTop:"1px solid #e0e4ea",
+              display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+              <button onClick={()=>{
+                if(confirm("Reset to the default questions? Any edits you've made will be lost."))
+                  {setCustomerQText(EMI_CUSTOMER_QUESTIONS_DEFAULT);setCustomerQCopiedMsg("");}
+              }}
+                style={{fontSize:11,padding:"6px 14px",borderRadius:6,
+                  border:"1px solid #d0d7de",background:"#fff",color:"#6b7a8d",cursor:"pointer",fontWeight:500}}>
+                Reset to default
+              </button>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                {customerQCopiedMsg && <span style={{fontSize:11,color:"#166534",fontWeight:600}}>{customerQCopiedMsg}</span>}
+                <button onClick={()=>{
+                  navigator.clipboard.writeText(customerQText)
+                    .then(()=>setCustomerQCopiedMsg("Copied to clipboard"))
+                    .catch(()=>setCustomerQCopiedMsg("Copy failed — select and Ctrl+C"));
+                }}
+                  style={{fontSize:11,padding:"6px 16px",borderRadius:6,
+                    border:"none",background:"#1a2332",color:"#fff",cursor:"pointer",fontWeight:600}}>
+                  Copy to clipboard
+                </button>
+                <button onClick={()=>setCustomerQModalOpen(false)}
+                  style={{fontSize:11,padding:"6px 14px",borderRadius:6,
+                    border:"1px solid #d0d7de",background:"#fff",color:"#1a2332",cursor:"pointer",fontWeight:500}}>
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
