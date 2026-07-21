@@ -11053,6 +11053,53 @@ export default function App({onLogout,currentUser}){
   // side; we just assemble and call. All-or-nothing transactions, error codes
   // come back prefixed (JOB_EXISTS, CLIENT_NOT_FOUND, PROJECT_NOT_FOUND, BAD_INPUT).
 
+  // Maps a workspace RPC failure to plain language. The RPCs raise the prefixed
+  // codes noted above and PostgREST wraps them in a JSON error body, so we
+  // substring-match the code rather than parse. Unrecognized errors keep their raw
+  // text — discarding it would leave support with nothing to go on.
+  const describeWorkspaceError = (err, { accountName, actionLabel = "create the project" } = {}) => {
+    const raw = (err?.message || String(err || "")).trim();
+    const has = (code) => raw.toUpperCase().includes(code);
+
+    // Client-side abort. The fetch died, but the server transaction may have
+    // committed anyway — never imply a plain retry is safe.
+    if (err?.name === "AbortError" || /timed out/i.test(raw)) {
+      return { msg: "Lost contact with Workspace before it confirmed the project. It may or may not "
+                  + "have been created — check Workspace for this Job # before trying again.",
+               type: "error", duration: 9000 };
+    }
+    if (err?.isNoSession) {
+      return { msg: `Your session expired. Sign in again, then ${actionLabel}.`,
+               type: "error", duration: 7000 };
+    }
+    if (has("CLIENT_NOT_FOUND")) {
+      const shown = accountName ? `"${accountName}"` : "— none is filled in on this quote —";
+      return { msg: `The account name on this quote ${shown} doesn't match any client in Workspace. `
+                  + `Check it's spelled exactly as it appears in the client database, then try again.`,
+               type: "error", duration: 10000 };
+    }
+    if (has("JOB_EXISTS")) {
+      return { msg: "That Job # is already used by a project in Workspace. Use “Add to Existing” "
+                  + "to attach this quote to it, or enter a different Job #.",
+               type: "error", duration: 8000 };
+    }
+    if (has("PROJECT_NOT_FOUND")) {
+      return { msg: "Workspace couldn't find that project — it may have been renamed or deleted. "
+                  + "Check the Job # in Workspace.", type: "error", duration: 8000 };
+    }
+    if (has("BAD_INPUT")) {
+      return { msg: "Workspace rejected this quote's details as incomplete. Check the account name, "
+                  + "contact and line items are filled in, then try again.",
+               type: "error", duration: 8000 };
+    }
+    if (/no project_id/i.test(raw)) {
+      return { msg: "Workspace returned an unexpected response, so the project may have been created "
+                  + "without being linked here. Check Workspace for this Job # before retrying.",
+               type: "error", duration: 9000 };
+    }
+    return { msg: `Couldn't ${actionLabel} in Workspace. ${raw}`, type: "error", duration: 9000 };
+  };
+
   const handleCreateProject = async () => {
     const jobNum = (wonInfo?.jobNum || "").trim();
     if (!jobNum) { showToast("Enter a Job # before creating a project","error",3500); return; }
@@ -11141,12 +11188,7 @@ export default function App({onLogout,currentUser}){
       console.warn('[EXPENSE-DIAG] payload.expenses:', JSON.stringify(payload.expenses));
       // ── end diagnostic
       // 3. Call the RPC
-      let result;
-      try {
-        result = await rpcCall('create_project_from_nuforce', { payload });
-      } catch (e) {
-        throw e;
-      }
+      const result = await rpcCall('create_project_from_nuforce', { payload });
       if (!result?.project_id) throw new Error("Project creation returned no project_id");
       // 4. Persist the linkage to NUForce's quote row. Best-effort — if it
       // fails, the RPC already succeeded server-side. Log and continue.
@@ -11186,7 +11228,11 @@ export default function App({onLogout,currentUser}){
         });
       } catch(e) { console.warn("[NOTIFY] quote_closed_won (create project) failed:", e?.message||e); }
     } catch (err) {
-      showToast(`Create Project failed: ${err.message || err}`,"error",6000);
+      console.error("[WS-CREATE] create project failed:", err);
+      const { msg, type, duration } = describeWorkspaceError(err, {
+        accountName: (qi.account || "").trim(),
+      });
+      showToast(msg, type, duration);
     } finally {
       setWorkspaceBusy(false);
     }
@@ -11315,7 +11361,12 @@ export default function App({onLogout,currentUser}){
         });
       } catch(e) { console.warn("[NOTIFY] quote_closed_won (add to existing) failed:", e?.message||e); }
     } catch (err) {
-      showToast(`Add to Existing failed: ${err.message || err}`,"error",6000);
+      console.error("[WS-APPEND] add to existing failed:", err);
+      const { msg, type, duration } = describeWorkspaceError(err, {
+        accountName: (qi.account || "").trim(),
+        actionLabel: "add to the existing project",
+      });
+      showToast(msg, type, duration);
     } finally {
       setWorkspaceBusy(false);
     }
