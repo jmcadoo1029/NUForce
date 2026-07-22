@@ -1783,91 +1783,6 @@ function InstForm({s,set}){
   </div>;
 }
 
-function OtForm({s,set}){
-  const PCODE_OPTS=[
-    {code:"11",label:"Noise Susceptibility"},
-    {code:"12",label:"Airborne / Structureborne"},
-    {code:"32",label:"High Speed Video"},
-    {code:"33",label:"Instrumentation"},
-    {code:"41",label:"CoC / Test Report"},
-    {code:"42",label:"Test Procedure"},
-    {code:"43",label:"EMI Report"},
-    {code:"43",label:"DC Mag Report"},
-    {code:"43",label:"PQ Report"},
-    {code:"44",label:"EMI Procedure"},
-    {code:"44",label:"DC Mag Procedure"},
-    {code:"44",label:"PQ Procedure"},
-    {code:"51",label:"EMI Testing"},
-    {code:"51",label:"Power Quality"},
-    {code:"51",label:"DC Magnetics"},
-    {code:"52",label:"HFV / Shock Other"},
-    {code:"53",label:"Temp & Humidity"},
-    {code:"54",label:"ESS"},
-    {code:"55",label:"Salt Fog"},
-    {code:"56",label:"Altitude / Decomp"},
-    {code:"57",label:"Acceleration"},
-    {code:"58",label:"Drip / Sub / Spray"},
-    {code:"59",label:"Insulation Resistance & Dielectric Strength"},
-    {code:"91",label:"Medium Weight Shock"},
-    {code:"92",label:"Lightweight Shock"},
-    {code:"93",label:"Inclination"},
-    {code:"94",label:"Vibration"},
-    {code:"95",label:"Hydrostatic"},
-    {code:"96",label:"Tear Down"},
-    {code:"98",label:"Subcontract"},
-  ];
-  // Weekday: $300 min call + $262.50/tech/hr | Weekend: $825 min call + $350/tech/hr
-  const calcOT=(r)=>{
-    const techs=sf(r.techs,1), hrs=sf(r.hours,0);
-    const isWknd=r.type==="Weekend";
-    const min=isWknd?825:300;
-    const rate=isWknd?350:262.5;
-    return min+techs*hrs*rate;
-  };
-  const add=()=>set({...s,rows:[...s.rows,{label:"",type:"Weekday",techs:"1",hours:"0",pcode:"94"}]});
-  const rem=i=>set({...s,rows:s.rows.filter((_,j)=>j!==i)});
-  const upd=(i,k,v)=>set({...s,rows:s.rows.map((r,j)=>j===i?{...r,[k]:v}:r)});
-  return <div>
-    {s.rows.map((r,i)=>{
-      const total=calcOT(r);
-      const techs=sf(r.techs,1), hrs=sf(r.hours,0);
-      const isWknd=r.type==="Weekend";
-      const min=isWknd?825:300;
-      const rate=isWknd?350:262.5;
-      const pcodeLabel=PCODE_OPTS.find(p=>p.code===r.pcode);
-      return(
-      <div key={i} style={{background:C.panel,border:"1px solid "+C.border,borderRadius:7,padding:"8px 10px",marginBottom:6}}>
-        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",marginBottom:5}}>
-          <Inp value={r.label} onChange={v=>upd(i,"label",v)} width={140} placeholder="Description"/>
-          <Sel value={r.type} onChange={v=>upd(i,"type",v)} options={["Weekday","Weekend"]} width={95}/>
-          <span style={{fontSize:11,color:C.muted}}>Techs:</span>
-          <Inp value={r.techs} onChange={v=>upd(i,"techs",v)} width={40}/>
-          <span style={{fontSize:11,color:C.muted}}>Hrs:</span>
-          <Inp value={r.hours} onChange={v=>upd(i,"hours",v)} width={40}/>
-          <button onClick={()=>rem(i)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:14,padding:"0 4px"}}>✕</button>
-        </div>
-        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4}}>
-          <span style={{fontSize:9,color:C.dim}}>Product Code:</span>
-          <select value={r.pcode||"94"} onChange={e=>upd(i,"pcode",e.target.value)}
-            style={{...sel,fontSize:10,padding:"2px 6px"}}>
-            {PCODE_OPTS.map(p=><option key={p.code} value={p.code}>{p.code} – {p.label}</option>)}
-          </select>
-        </div>
-        <div style={{fontSize:10,color:C.accent,background:"#eef4fb",borderRadius:5,padding:"3px 8px"}}>
-          <span style={{fontWeight:600}}>{money(total)}</span>
-          <span style={{color:C.dim}}>{" = $"+min.toLocaleString()+" min call + "+techs+"x"+hrs+"hrsx$"+rate+"/hr"+(isWknd?" (weekend)":"")}</span>
-        </div>
-      </div>
-      );
-    })}
-    <button onClick={add}
-      style={{background:"none",border:"1px dashed "+C.border,borderRadius:7,
-        color:C.muted,padding:"7px 14px",cursor:"pointer",fontSize:12,width:"100%"}}>
-      + Add Overtime Row
-    </button>
-  </div>;
-}
-
 function CustomForm({s,set}){
   const PCODE_OPTS=[
     {code:"11",label:"Noise"},{code:"12",label:"AB/SB Noise"},
@@ -8335,6 +8250,34 @@ Any procurement specification extended frequency range requirements or optional 
   const [ab,    setAb]    = useState({std:"1000",testing:"2850",pia:"1",spec:""});
   const [sb,    setSb]    = useState({std:"850",testing:"2650",pia:"1",spec:""});
 
+  // Instrumentation tab — folded in from the former standalone Instrumentation Calculator.
+  const [instr,setInstr]=useState({
+    shock:false, shockCh:"1",
+    cmShock:false, cmShockCh:"1",
+    vib:false, vibCh:"1",
+    cmVib:false, cmVibCh:"1",
+    hsv:false,
+  });
+  const INSTR_ITEMS=[
+    {key:"shock",  chKey:"shockCh",  label:"Shock Instrumentation",     price:525},
+    {key:"cmShock",chKey:"cmShockCh",label:"Contact Monitoring (Shock)", price:350},
+    {key:"vib",    chKey:"vibCh",    label:"Vib Additional Channels",    price:325},
+    {key:"cmVib",  chKey:"cmVibCh",  label:"Contact Monitoring (Vibe)",  price:750},
+  ];
+  const instrTotal =
+    INSTR_ITEMS.reduce((a,i)=>a+(instr[i.key]?i.price*sf(instr[i.chKey],1):0),0)+
+    (instr.hsv?1950:0);
+
+  // Overtime tab — suggest-only. Reuses the weekday/weekend formula that the
+  // old OVERTIME quote section used, but does NOT add a line item to the quote.
+  const [otRows,setOtRows]=useState([{type:"Weekday",techs:"1",hours:"0"}]);
+  const calcOtRow=(r)=>{
+    const isWknd=r.type==="Weekend";
+    const min=isWknd?825:300, rate=isWknd?350:262.5;
+    return min+sf(r.techs,1)*sf(r.hours,0)*rate;
+  };
+  const otTotal=otRows.reduce((a,r)=>a+calcOtRow(r),0);
+
   const TH_PRICES={"0 to 1 Day":1000,"3 Days":1350,"5 Days":1875,"7 Days":2275,"10 Days":2950};
   const NOISE_CHAMBERS={"Speakerbox":1000,"64 Reverb Chamber":1500,"300 Reverb Chamber":2000,"Prog Wave Tube":2750};
 
@@ -8363,6 +8306,8 @@ Any procurement specification extended frequency range requirements or optional 
     {key:"emi",  label:"EMI"},
     {key:"pq",   label:"Power Quality"},
     {key:"dcm",  label:"DC Magnetics"},
+    {key:"instr",label:"Instrumentation"},
+    {key:"ot",   label:"Overtime"},
   ];
 
   // EMI state
@@ -9184,6 +9129,101 @@ Any procurement specification extended frequency range requirements or optional 
             </div>
           )}
 
+          {/* Instrumentation */}
+          {tab==="instr"&&(
+            <div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {INSTR_ITEMS.map(item=>(
+                  <div key={item.key} style={{display:"flex",alignItems:"center",gap:8,
+                    padding:"6px 10px",borderRadius:7,
+                    background:instr[item.key]?"#eaf2ff":"#f8f9fb",
+                    border:"1px solid "+(instr[item.key]?"#1a5276":"#e8ecf0")}}>
+                    <input type="checkbox" checked={instr[item.key]}
+                      onChange={e=>setInstr(prev=>({...prev,[item.key]:e.target.checked}))}
+                      style={{cursor:"pointer"}}/>
+                    <span style={{fontSize:11,color:"#1a2332",flex:1,fontWeight:instr[item.key]?600:400}}>
+                      {item.label}
+                    </span>
+                    <span style={{fontSize:10,color:"#9aa5b1"}}>${item.price}/ch</span>
+                    {instr[item.key]&&(
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <span style={{fontSize:10,color:"#6b7a8d"}}>Channels:</span>
+                        <input type="number" min="1" value={instr[item.chKey]}
+                          onChange={e=>setInstr(prev=>({...prev,[item.chKey]:e.target.value}))}
+                          style={{width:45,fontSize:11,padding:"2px 4px",borderRadius:5,
+                            border:"1px solid #1a5276",textAlign:"center"}}/>
+                        <span style={{fontSize:11,fontWeight:600,color:"#1a5276",minWidth:55,textAlign:"right"}}>
+                          {money(item.price*sf(instr[item.chKey],1))}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {/* HSV */}
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:7,
+                  background:instr.hsv?"#eaf2ff":"#f8f9fb",
+                  border:"1px solid "+(instr.hsv?"#1a5276":"#e8ecf0")}}>
+                  <input type="checkbox" checked={instr.hsv}
+                    onChange={e=>setInstr(prev=>({...prev,hsv:e.target.checked}))}
+                    style={{cursor:"pointer"}}/>
+                  <span style={{fontSize:11,color:"#1a2332",flex:1,fontWeight:instr.hsv?600:400}}>
+                    High Speed Video
+                  </span>
+                  <span style={{fontSize:10,color:"#9aa5b1"}}>flat rate</span>
+                  {instr.hsv&&<span style={{fontSize:11,fontWeight:600,color:"#1a5276",minWidth:55,textAlign:"right"}}>{money(1950)}</span>}
+                </div>
+              </div>
+              {instrTotal>0&&(
+                <div style={{marginTop:12,padding:"10px 12px",background:"#1a2332",borderRadius:8,
+                  display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:9,color:"rgba(255,255,255,0.5)",letterSpacing:1}}>SUGGESTED INSTRUMENTATION</span>
+                  <span style={{fontSize:16,fontWeight:700,color:"#5dade2",fontFamily:"monospace"}}>{money(instrTotal)}</span>
+                </div>
+              )}
+            </div>
+          )}
+          {/* Overtime */}
+          {tab==="ot"&&(
+            <div>
+              <div style={{fontSize:9,color:"#9aa5b1",marginBottom:8}}>
+                ↳ Weekday: $300 min call + $262.50/tech/hr · Weekend: $825 min call + $350/tech/hr
+              </div>
+              {otRows.map((r,i)=>{
+                const rowTotal=calcOtRow(r);
+                return(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",
+                    padding:"8px 10px",marginBottom:6,borderRadius:7,background:"#f8f9fb",border:"1px solid #e8ecf0"}}>
+                    <CalcSel value={r.type} width={100}
+                      onChange={v=>setOtRows(rows=>rows.map((x,j)=>j===i?{...x,type:v}:x))}
+                      options={["Weekday","Weekend"]}/>
+                    <span style={{fontSize:10,color:"#6b7a8d"}}>Techs</span>
+                    <CalcInp value={r.techs} width={45}
+                      onChange={v=>setOtRows(rows=>rows.map((x,j)=>j===i?{...x,techs:v}:x))}/>
+                    <span style={{fontSize:10,color:"#6b7a8d"}}>Hours</span>
+                    <CalcInp value={r.hours} width={45}
+                      onChange={v=>setOtRows(rows=>rows.map((x,j)=>j===i?{...x,hours:v}:x))}/>
+                    <span style={{fontSize:11,fontWeight:600,color:"#1a5276",marginLeft:"auto"}}>{money(rowTotal)}</span>
+                    {otRows.length>1&&(
+                      <button onClick={()=>setOtRows(rows=>rows.filter((_,j)=>j!==i))}
+                        style={{background:"none",border:"none",color:"#9aa5b1",cursor:"pointer",fontSize:14,padding:"0 4px"}}>✕</button>
+                    )}
+                  </div>
+                );
+              })}
+              <button onClick={()=>setOtRows(rows=>[...rows,{type:"Weekday",techs:"1",hours:"0"}])}
+                style={{background:"none",border:"1px dashed #d0d7de",borderRadius:7,
+                  color:"#6b7a8d",padding:"7px 14px",cursor:"pointer",fontSize:11,width:"100%",marginBottom:4}}>
+                + Add Overtime Row
+              </button>
+              {otTotal>0&&(
+                <div style={{marginTop:12,padding:"10px 12px",background:"#1a2332",borderRadius:8,
+                  display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:9,color:"rgba(255,255,255,0.5)",letterSpacing:1}}>SUGGESTED OVERTIME</span>
+                  <span style={{fontSize:16,fontWeight:700,color:"#5dade2",fontFamily:"monospace"}}>{money(otTotal)}</span>
+                </div>
+              )}
+            </div>
+          )}
           <div style={{marginTop:10,fontSize:9,color:"#c0c8d0",fontStyle:"italic"}}>
             These are suggested prices only and do not affect the quote.
           </div>
@@ -9258,106 +9298,6 @@ Any procurement specification extended frequency range requirements or optional 
   );
 }
 
-
-// ── Instrumentation Calculator ────────────────────────────────────────────────
-function InstrumentationCalculator(){
-  const [open, setOpen] = useState(false);
-  const [inst, setInst] = useState({
-    shock:false, shockCh:"1",
-    cmShock:false, cmShockCh:"1",
-    vib:false, vibCh:"1",
-    cmVib:false, cmVibCh:"1",
-    hsv:false,
-  });
-
-  const ITEMS=[
-    {key:"shock",  chKey:"shockCh",  label:"Shock Instrumentation",        price:525},
-    {key:"cmShock",chKey:"cmShockCh",label:"Contact Monitoring (Shock)",    price:350},
-    {key:"vib",    chKey:"vibCh",    label:"Vib Additional Channels",       price:325},
-    {key:"cmVib",  chKey:"cmVibCh",  label:"Contact Monitoring (Vibe)",     price:750},
-  ];
-
-  const total =
-    ITEMS.reduce((a,i)=>a+(inst[i.key]?i.price*sf(inst[i.chKey],1):0),0)+
-    (inst.hsv?1950:0);
-
-  return(
-    <div style={{marginTop:6,border:"1px solid #e0e4ea",borderRadius:10,overflow:"hidden",fontFamily:"Segoe UI,system-ui,sans-serif"}}>
-      <div style={{background:"#f8f9fb",padding:"8px 14px",display:"flex",alignItems:"center",
-        justifyContent:"space-between",cursor:"pointer",borderBottom:open?"1px solid #e0e4ea":"none"}}
-        onClick={()=>setOpen(v=>!v)}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:13}}>🔌</span>
-          <span style={{fontSize:12,fontWeight:700,color:"#1a2332",letterSpacing:.2}}>Instrumentation Calculator</span>
-          <span style={{fontSize:10,color:"#9aa5b1"}}>— reference tool, does not affect quote</span>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          {total>0&&<span style={{fontSize:12,fontWeight:700,color:"#1a5276"}}>{money(total)}</span>}
-          <span style={{fontSize:12,color:"#9aa5b1"}}>{open?"▲":"▼"}</span>
-        </div>
-      </div>
-
-      {open&&(
-        <div style={{padding:"12px 14px",background:"#fff"}}>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {ITEMS.map(item=>(
-              <div key={item.key} style={{display:"flex",alignItems:"center",gap:8,
-                padding:"6px 10px",borderRadius:7,
-                background:inst[item.key]?"#eaf2ff":"#f8f9fb",
-                border:"1px solid "+(inst[item.key]?"#1a5276":"#e8ecf0")}}>
-                <input type="checkbox" checked={inst[item.key]}
-                  onChange={e=>setInst(prev=>({...prev,[item.key]:e.target.checked}))}
-                  style={{cursor:"pointer"}}/>
-                <span style={{fontSize:11,color:"#1a2332",flex:1,fontWeight:inst[item.key]?600:400}}>
-                  {item.label}
-                </span>
-                <span style={{fontSize:10,color:"#9aa5b1"}}>${item.price}/ch</span>
-                {inst[item.key]&&(
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{fontSize:10,color:"#6b7a8d"}}>Channels:</span>
-                    <input type="number" min="1" value={inst[item.chKey]}
-                      onChange={e=>setInst(prev=>({...prev,[item.chKey]:e.target.value}))}
-                      style={{width:45,fontSize:11,padding:"2px 4px",borderRadius:5,
-                        border:"1px solid #1a5276",textAlign:"center"}}/>
-                    <span style={{fontSize:11,fontWeight:600,color:"#1a5276",minWidth:55,textAlign:"right"}}>
-                      {money(item.price*sf(inst[item.chKey],1))}
-                    </span>
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {/* HSV */}
-            <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:7,
-              background:inst.hsv?"#eaf2ff":"#f8f9fb",
-              border:"1px solid "+(inst.hsv?"#1a5276":"#e8ecf0")}}>
-              <input type="checkbox" checked={inst.hsv}
-                onChange={e=>setInst(prev=>({...prev,hsv:e.target.checked}))}
-                style={{cursor:"pointer"}}/>
-              <span style={{fontSize:11,color:"#1a2332",flex:1,fontWeight:inst.hsv?600:400}}>
-                High Speed Video
-              </span>
-              <span style={{fontSize:10,color:"#9aa5b1"}}>flat rate</span>
-              {inst.hsv&&<span style={{fontSize:11,fontWeight:600,color:"#1a5276",minWidth:55,textAlign:"right"}}>{money(1950)}</span>}
-            </div>
-          </div>
-
-          {total>0&&(
-            <div style={{marginTop:10,padding:"10px 12px",background:"#1a2332",borderRadius:8,
-              display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontSize:11,color:"rgba(255,255,255,0.6)",fontWeight:600}}>TOTAL INSTRUMENTATION</span>
-              <span style={{fontSize:16,fontWeight:700,color:"#fff",fontFamily:"monospace"}}>{money(total)}</span>
-            </div>
-          )}
-
-          <div style={{marginTop:8,fontSize:9,color:"#c0c8d0",fontStyle:"italic"}}>
-            Suggested total only — does not affect the quote.
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── V2 Product Picker ─────────────────────────────────────────────────────────
 function ProductPicker({onAdd, onClose, setup, ti, vibs, hfvs, summary}){
@@ -15032,14 +14972,10 @@ const STANDARD_TERMS = [
               onExportPq300p1={exportCalcPq300Part1PDF_calc}
               calcStatesRef={pricingCalcStateRef}
               crrWorkup={crrWorkup}/>
-            <InstrumentationCalculator/>
 
             {/* ── Row 5+: Test sections ── */}
             <div>
 
-            <Section title="OVERTIME" enabled={ot.on} onToggle={v=>setOt(v?{...ot,on:true}:{on:false,rows:[]})}>
-              <OtForm s={ot} set={setOt}/>
-            </Section>
 
 
 
