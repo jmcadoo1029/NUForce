@@ -10928,19 +10928,51 @@ export default function App({onLogout,currentUser}){
     const q={id:currentQuoteId||undefined,opp:qi.opp,customer:qi.account,rfq:qi.rfq,total:displayTotal,
       qi,ti,vibs,shocks,noises,envs,hfvs,shos,dcms,pqs,emis,abs,sbs,inst,ot,custom,budget,coc,sub,td,setup,globalPR,notes,splitProcReport,modalAnalysis,fixtureDrawing,inStockModal,wonInfo,approval,wonApproval,chatterEntries,summary,lineOrder,lineOverrides,pickerLines,unifiedOrder,workspace_project_id:workspaceProjectId,snapshot:savedSnapshot};
 
-    // Detect revision letter change on existing quotes — prompt user for save mode
+    // Detect opportunity-number and revision-letter changes on existing quotes.
     let saveOpts;
     if (currentQuoteId) {
-      // Look up the currently-saved rev letter for this row via the REST bypass
-      // (supabase-js wedges here too). restFetch has its own 15s timeout; if it
-      // fails we skip the rev-change check and proceed with the save.
+      // Look up the currently-saved opportunity + rev letter for this row via the
+      // REST bypass (supabase-js wedges here too). restFetch has its own 15s
+      // timeout; if it fails we skip these checks and proceed with the save.
       let existing = null;
       try {
-        const result = await restFetch("GET", `quotes?id=eq.${encodeURIComponent(currentQuoteId)}&select=revision`);
+        const result = await restFetch("GET", `quotes?id=eq.${encodeURIComponent(currentQuoteId)}&select=revision,opportunity`);
         existing = Array.isArray(result) && result.length ? result[0] : null;
       } catch (e) {
-        console.warn('[REV-CHECK] failed — skipping rev-change detection on this save', e?.message || e);
+        console.warn('[SAVE-CHECK] failed — skipping opp/rev-change detection on this save', e?.message || e);
       }
+
+      // ── Opportunity-number change guard ─────────────────────────────────────
+      // If the opportunity number differs from what's saved, confirm before
+      // saving. When the change looks like a revision (e.g. "26-123" → "26-123A")
+      // and the Quote Revision field doesn't reflect the new letter, remind the
+      // user to update it so the revision is tracked in history.
+      const oldOpp = (existing?.opportunity || "").toString().trim();
+      const newOpp = (qi.opp || "").toString().trim();
+      if (existing && oldOpp && oldOpp !== newOpp) {
+        const splitRev = s => {
+          const m = s.match(/^(.*?)([A-Za-z])$/);
+          return m ? { base: m[1], letter: m[2].toUpperCase() } : { base: s, letter: "" };
+        };
+        const oldP = splitRev(oldOpp);
+        const newP = splitRev(newOpp);
+        const looksLikeRev = !!newP.letter
+          && newP.base.toUpperCase() === oldP.base.toUpperCase()
+          && newP.letter !== oldP.letter;
+        const curRev = (qi.rev || "").toString().trim().toUpperCase();
+        let msg = `You're changing the opportunity number:\n\n    ${oldOpp}  →  ${newOpp}\n\nSave with the new number?`;
+        if (looksLikeRev && curRev !== newP.letter) {
+          msg += `\n\n⚠ This looks like Revision ${newP.letter}, but the Quote Revision `
+            + `field is ${curRev ? `"${curRev}"` : "blank"}.\n`
+            + `Add "${newP.letter}" to the Quote Revision field so the revision change `
+            + `is tracked in history.`;
+        }
+        if (!window.confirm(msg)) {
+          showToast("Save cancelled", "warn");
+          return;
+        }
+      }
+
       const oldRev = (existing?.revision || "").toString().trim();
       const newRev = (qi.rev || "").toString().trim();
       if (existing && oldRev !== newRev) {
