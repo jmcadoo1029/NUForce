@@ -7772,6 +7772,7 @@ function EmiCrrView({crrWorkup, emiCalc, setEmiCalc, emiRate, ti}){
   const counted = tests.filter(t => !t.skipped);
   const skipped = tests.filter(t => t.skipped);
   const totalTestShifts = counted.reduce((a, t) => a + (t.effectiveShifts || 0), 0);
+  const totalTestHours = counted.reduce((a, t) => a + (PARSE_HOURS(t.timeRaw) || 0), 0);
 
   // Rental budgets — same conditions as Computed mode
   const has440AC = sf(ti?.volt, 0) >= 440 && (ti?.pwrType || "AC") === "AC";
@@ -7854,6 +7855,15 @@ function EmiCrrView({crrWorkup, emiCalc, setEmiCalc, emiRate, ti}){
             </div>
           </div>
         ))}
+        <div style={{display:"grid",gridTemplateColumns:"24px 80px 1fr 90px 110px",
+          padding:"7px 8px",gap:6,alignItems:"center",background:"#eef2f7",
+          borderTop:"2px solid #cfd8e3",fontSize:10,fontWeight:700,color:"#1a2332"}}>
+          <div></div>
+          <div></div>
+          <div style={{textAlign:"right",color:"#6b7a8d",letterSpacing:.3}}>TOTAL</div>
+          <div style={{textAlign:"center",fontFamily:"monospace"}}>{Number(totalTestHours.toFixed(2))} hr</div>
+          <div style={{textAlign:"right",fontFamily:"monospace",paddingRight:24}}>{Number(totalTestShifts.toFixed(2))} sh</div>
+        </div>
       </div>
 
       {/* Skipped tests (non-numeric time) */}
@@ -7944,6 +7954,7 @@ function PqCrrView({crrWorkup, pqCalc, setPqCalc, pqRate, ti}){
   const counted = tests.filter(t => !t.skipped);
   const skipped = tests.filter(t => t.skipped);
   const totalTestShifts = counted.reduce((a, t) => a + (t.effectiveShifts || 0), 0);
+  const totalTestHours = counted.reduce((a, t) => a + (PARSE_HOURS(t.timeRaw) || 0), 0);
 
   // Use NUForce's setup/teardown shifts from pqCalc; CRR doesn't provide these
   const setupShifts = sf(pqCalc.setupShifts, 1.5);
@@ -8017,6 +8028,15 @@ function PqCrrView({crrWorkup, pqCalc, setPqCalc, pqRate, ti}){
             </div>
           </div>
         ))}
+        <div style={{display:"grid",gridTemplateColumns:"40px 70px 1fr 90px 110px",
+          padding:"7px 8px",gap:6,alignItems:"center",background:"#eef2f7",
+          borderTop:"2px solid #cfd8e3",fontSize:10,fontWeight:700,color:"#1a2332"}}>
+          <div></div>
+          <div></div>
+          <div style={{textAlign:"right",color:"#6b7a8d",letterSpacing:.3}}>TOTAL</div>
+          <div style={{textAlign:"center",fontFamily:"monospace"}}>{Number(totalTestHours.toFixed(2))} hr</div>
+          <div style={{textAlign:"right",fontFamily:"monospace",paddingRight:24}}>{Number(totalTestShifts.toFixed(2))} sh</div>
+        </div>
       </div>
 
       {skipped.length > 0 && (
@@ -8096,6 +8116,7 @@ function DcmCrrView({crrWorkup, dcmCalc, setDcmCalc, dcmRate}){
   const counted = rows.filter(t => !t.skipped);
   const skipped = rows.filter(t => t.skipped);
   const totalTestShifts = counted.reduce((a, t) => a + (t.effectiveShifts || 0), 0);
+  const totalTestHours = counted.reduce((a, t) => a + (PARSE_HOURS(t.timeRaw) || 0), 0);
 
   const setupShifts = sf(dcmCalc.setupShifts, 1.5);
   const pia = sf(dcmCalc.pia, 1);
@@ -8164,6 +8185,14 @@ function DcmCrrView({crrWorkup, dcmCalc, setDcmCalc, dcmRate}){
             </div>
           </div>
         ))}
+        <div style={{display:"grid",gridTemplateColumns:"100px 1fr 90px 110px",
+          padding:"7px 8px",gap:6,alignItems:"center",background:"#eef2f7",
+          borderTop:"2px solid #cfd8e3",fontSize:10,fontWeight:700,color:"#1a2332"}}>
+          <div></div>
+          <div style={{textAlign:"right",color:"#6b7a8d",letterSpacing:.3}}>TOTAL</div>
+          <div style={{textAlign:"center",fontFamily:"monospace"}}>{Number(totalTestHours.toFixed(2))} hr</div>
+          <div style={{textAlign:"right",fontFamily:"monospace",paddingRight:24}}>{Number(totalTestShifts.toFixed(2))} sh</div>
+        </div>
       </div>
 
       {skipped.length > 0 && (
