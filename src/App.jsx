@@ -10593,15 +10593,42 @@ export default function App({onLogout,currentUser}){
     let cancelled = false;
     (async () => {
       try {
-        const url = "crr_workups?quote_number=eq." + encodeURIComponent(quoteNum) +
-                    "&select=*&limit=1";
+        // Match on the BASE opportunity number (strip a single trailing revision
+        // letter), because Workspace may keep the CRR workup under the base number
+        // (e.g. "26-224") even after the quote is revised to "26-224A". An exact
+        // string match would then miss the workup entirely once the quote is revised.
+        const m = quoteNum.match(/^(.*?)([A-Za-z])?$/);
+        const base = (m ? m[1] : quoteNum).trim();
+        const baseU = base.toUpperCase();
+        const url = "crr_workups?quote_number=ilike." + encodeURIComponent(base + "*") +
+                    "&select=*";
         const rows = await restFetch("GET", url);
         if (cancelled) return;
-        if (Array.isArray(rows) && rows.length > 0) {
-          setCrrWorkup(rows[0]);
-        } else {
-          setCrrWorkup(false); // explicitly: no row exists
-        }
+        const list = Array.isArray(rows) ? rows : [];
+        // Keep only the base itself or base + a single trailing letter, so we don't
+        // accidentally match e.g. "26-2240" or "26-224-2" when the base is "26-224".
+        const revRank = (qn) => {
+          const s = String(qn || "").toUpperCase();
+          const suffix = s.length === baseU.length + 1 ? s.slice(-1) : "";
+          return /[A-Z]/.test(suffix) ? (suffix.charCodeAt(0) - 64) : 0; // base=0, A=1, B=2…
+        };
+        const variants = list.filter((r) => {
+          const qn = String(r.quote_number || "").toUpperCase();
+          if (qn === baseU) return true;
+          return qn.length === baseU.length + 1 && qn.startsWith(baseU) && /[A-Z]/.test(qn.slice(-1));
+        });
+        if (variants.length === 0) { setCrrWorkup(false); return; }
+        // Prefer an exact match to the current opportunity number; otherwise take the
+        // highest workup revision at or below the quote's revision, falling back to
+        // the highest available if every workup is newer than the quote.
+        const currentRank = revRank(quoteNum);
+        const exact = variants.find(
+          (r) => String(r.quote_number || "").toUpperCase() === quoteNum.toUpperCase()
+        );
+        const atOrBelow = variants.filter((r) => revRank(r.quote_number) <= currentRank);
+        const pool = atOrBelow.length ? atOrBelow : variants;
+        const chosen = exact || pool.slice().sort((a, b) => revRank(b.quote_number) - revRank(a.quote_number))[0];
+        setCrrWorkup(chosen || false);
       } catch (e) {
         if (cancelled) return;
         console.warn("[CRR] fetch failed:", e?.message || e);
