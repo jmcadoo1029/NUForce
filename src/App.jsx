@@ -15274,23 +15274,49 @@ const STANDARD_TERMS = [
                   // Specs/Notes
                   const fromSpecs=(fromQ.ti?.tiSpecs||"").trim(), toSpecs=(toQ.ti?.tiSpecs||"").trim();
                   const fromNotes=(fromQ.ti?.tiNotes||"").trim(), toNotes=(toQ.ti?.tiNotes||"").trim();
-                  // Line items (from snapshot if available, else from summary)
-                  const linesOf=q=>(q.snapshot?.lines||q.summary?.lines||[]).map(l=>({label:l.label||"",val:l.val||0,code:l.code||""}));
+                  // Line items — combine BOTH sources the quote total is built from:
+                  // the auto-calc lines (snapshot if frozen, else live summary) AND
+                  // pickerLines (the current standard for manually-added items). The
+                  // old diff only read summary/snapshot, so quotes whose items live in
+                  // pickerLines showed a total change with no line detail.
+                  const linesOf=q=>{
+                    const auto=(q.snapshot?.lines||q.summary?.lines||[])
+                      .map(l=>({label:l.label||"",val:sf(l.val,0),code:l.code||""}));
+                    const picker=(q.pickerLines||[])
+                      .map(l=>({label:l.label||"",val:sf(l.price,0),code:l.code||""}))
+                      .filter(l=>l.label||l.val);
+                    return [...auto,...picker];
+                  };
                   const fromLines=linesOf(fromQ), toLines=linesOf(toQ);
-                  // Map by label for diff
-                  const fromMap=new Map(); fromLines.forEach((l,i)=>fromMap.set(l.label+"|"+i,l));
-                  const toMap=new Map(); toLines.forEach((l,i)=>toMap.set(l.label+"|"+i,l));
-                  // Simpler diff: match by label only (collisions get later instances)
-                  const fromByLabel=new Map(); fromLines.forEach(l=>{if(!fromByLabel.has(l.label))fromByLabel.set(l.label,l);});
-                  const toByLabel=new Map(); toLines.forEach(l=>{if(!toByLabel.has(l.label))toByLabel.set(l.label,l);});
-                  const allLabels=new Set([...fromByLabel.keys(),...toByLabel.keys()]);
+                  // Index by label+code, keeping duplicates so nothing is silently
+                  // dropped (two lines with the same name are paired positionally).
+                  const indexLines=lines=>{
+                    const m=new Map();
+                    lines.forEach(l=>{
+                      const k=(l.label||"")+" "+(l.code||"");
+                      if(!m.has(k))m.set(k,[]);
+                      m.get(k).push(l);
+                    });
+                    return m;
+                  };
+                  const fromIdx=indexLines(fromLines), toIdx=indexLines(toLines);
+                  const allKeys=new Set([...fromIdx.keys(),...toIdx.keys()]);
                   const lineChanges=[];
-                  for(const lbl of allLabels){
-                    const f=fromByLabel.get(lbl), t=toByLabel.get(lbl);
-                    if(!f&&t)lineChanges.push({type:"added",label:lbl,toVal:t.val});
-                    else if(f&&!t)lineChanges.push({type:"removed",label:lbl,fromVal:f.val});
-                    else if(f&&t&&f.val!==t.val)lineChanges.push({type:"changed",label:lbl,fromVal:f.val,toVal:t.val});
+                  for(const k of allKeys){
+                    const fArr=fromIdx.get(k)||[], tArr=toIdx.get(k)||[];
+                    const n=Math.max(fArr.length,tArr.length);
+                    for(let i=0;i<n;i++){
+                      const f=fArr[i], t=tArr[i];
+                      const label=(t&&t.label)||(f&&f.label)||"";
+                      if(!f&&t)lineChanges.push({type:"added",label,toVal:t.val});
+                      else if(f&&!t)lineChanges.push({type:"removed",label,fromVal:f.val});
+                      else if(f&&t&&f.val!==t.val)lineChanges.push({type:"changed",label,fromVal:f.val,toVal:t.val});
+                    }
                   }
+                  lineChanges.sort((a,b)=>{
+                    const rank={removed:0,changed:1,added:2};
+                    return (rank[a.type]-rank[b.type])||a.label.localeCompare(b.label);
+                  });
                   const totalDiff=(toQ.total||0)-(fromQ.total||0);
                   const allClean=metaChanges.length===0&&fromSpecs===toSpecs&&fromNotes===toNotes&&lineChanges.length===0&&totalDiff===0;
                   // ── Render ──
