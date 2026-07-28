@@ -7755,7 +7755,7 @@ function EmiCrrView({crrWorkup, emiCalc, setEmiCalc, emiRate, ti}){
       const timeRaw = String(row[2] || "");
       const comments = String(row[3] || "");
       const hours = PARSE_HOURS(timeRaw);
-      const computedShifts = hours !== null ? Math.ceil(hours / 8) : null;
+      const computedShifts = hours !== null ? Math.round((hours / 8) * 100) / 100 : null;
       const ovKey = revLabel + ":" + testKey + ":" + idx; // include idx for dupes within a rev
       const ov = emiCalc.crrShiftOverrides?.[ovKey];
       const hasOv = ov !== undefined && ov !== null && ov !== "" && !isNaN(parseFloat(ov));
@@ -7773,6 +7773,9 @@ function EmiCrrView({crrWorkup, emiCalc, setEmiCalc, emiRate, ti}){
   const skipped = tests.filter(t => t.skipped);
   const totalTestShifts = counted.reduce((a, t) => a + (t.effectiveShifts || 0), 0);
   const totalTestHours = counted.reduce((a, t) => a + (PARSE_HOURS(t.timeRaw) || 0), 0);
+  // Suggested billable shifts: round the REAL shift total up to a whole shift once,
+  // instead of rounding each test row up individually (which over-counted shifts).
+  const suggestedShifts = Math.ceil(Math.round(totalTestShifts * 100) / 100);
 
   // Rental budgets — same conditions as Computed mode
   const has440AC = sf(ti?.volt, 0) >= 440 && (ti?.pwrType || "AC") === "AC";
@@ -7786,7 +7789,7 @@ function EmiCrrView({crrWorkup, emiCalc, setEmiCalc, emiRate, ti}){
   const tdShifts = sf(emiCalc.tdShifts, 1);
   const pia = sf(emiCalc.pia, 1);
   const setupCost = r25(setupShifts * emiRate * pia);
-  const testCost = r25((totalTestShifts * emiRate + rs103Cost + ce101PwrCost) * pia);
+  const testCost = r25((suggestedShifts * emiRate + rs103Cost + ce101PwrCost) * pia);
   const tdCost = r25(tdShifts * emiRate);
 
   // Update an override for a test
@@ -7864,6 +7867,11 @@ function EmiCrrView({crrWorkup, emiCalc, setEmiCalc, emiRate, ti}){
           <div style={{textAlign:"center",fontFamily:"monospace"}}>{Number(totalTestHours.toFixed(2))} hr</div>
           <div style={{textAlign:"right",fontFamily:"monospace",paddingRight:24}}>{Number(totalTestShifts.toFixed(2))} sh</div>
         </div>
+        <div style={{padding:"7px 10px",background:"#1a2332",display:"flex",
+          justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:9,fontWeight:700,letterSpacing:.5,color:"rgba(255,255,255,0.6)"}}>SUGGESTED (BILLABLE) SHIFTS — total rounded up</span>
+          <span style={{fontSize:12,fontWeight:700,fontFamily:"monospace",color:"#fff"}}>{suggestedShifts} sh</span>
+        </div>
       </div>
 
       {/* Skipped tests (non-numeric time) */}
@@ -7892,7 +7900,7 @@ function EmiCrrView({crrWorkup, emiCalc, setEmiCalc, emiRate, ti}){
       <CalcResult setupAmt={setupCost} testAmt={testCost}/>
       <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>
         Teardown: {money(tdCost)} &nbsp;·&nbsp; Total: {money(setupCost+testCost+tdCost)}
-        &nbsp;·&nbsp; <span style={{fontStyle:"italic"}}>{counted.length} test{counted.length!==1?"s":""} × {emiRate}/sh × PIA {pia}</span>
+        &nbsp;·&nbsp; <span style={{fontStyle:"italic"}}>{suggestedShifts} billable shift{suggestedShifts!==1?"s":""} × {emiRate}/sh × PIA {pia}</span>
       </div>
     </div>
   );
@@ -7937,7 +7945,7 @@ function PqCrrView({crrWorkup, pqCalc, setPqCalc, pqRate, ti}){
       // Need at least a requirement or paragraph to count as a real row
       if (!requirement && !paragraph) return null;
       const hours = PARSE_HOURS(timeRaw);
-      const computedShifts = hours !== null ? Math.ceil(hours / 8) : null;
+      const computedShifts = hours !== null ? Math.round((hours / 8) * 100) / 100 : null;
       const ovKey = standardLabel + ":" + (paragraph || requirement) + ":" + idx;
       const ov = pqCalc.crrShiftOverrides?.[ovKey];
       const hasOv = ov !== undefined && ov !== null && ov !== "" && !isNaN(parseFloat(ov));
@@ -7955,13 +7963,16 @@ function PqCrrView({crrWorkup, pqCalc, setPqCalc, pqRate, ti}){
   const skipped = tests.filter(t => t.skipped);
   const totalTestShifts = counted.reduce((a, t) => a + (t.effectiveShifts || 0), 0);
   const totalTestHours = counted.reduce((a, t) => a + (PARSE_HOURS(t.timeRaw) || 0), 0);
+  // Suggested billable shifts: round the REAL shift total up to a whole shift once,
+  // instead of rounding each test row up individually (which over-counted shifts).
+  const suggestedShifts = Math.ceil(Math.round(totalTestShifts * 100) / 100);
 
   // Use NUForce's setup/teardown shifts from pqCalc; CRR doesn't provide these
   const setupShifts = sf(pqCalc.setupShifts, 1.5);
   const tdShifts = sf(pqCalc.tdShifts, 1.0);
   const pia = sf(pqCalc.pia, 1);
   const setupCost = r25(setupShifts * pqRate * pia);
-  const testCost = r25(totalTestShifts * pqRate * pia);
+  const testCost = r25(suggestedShifts * pqRate * pia);
   const tdCost = r25(tdShifts * pqRate);
 
   const setOverride = (ovKey, value) => {
@@ -8037,6 +8048,11 @@ function PqCrrView({crrWorkup, pqCalc, setPqCalc, pqRate, ti}){
           <div style={{textAlign:"center",fontFamily:"monospace"}}>{Number(totalTestHours.toFixed(2))} hr</div>
           <div style={{textAlign:"right",fontFamily:"monospace",paddingRight:24}}>{Number(totalTestShifts.toFixed(2))} sh</div>
         </div>
+        <div style={{padding:"7px 10px",background:"#1a2332",display:"flex",
+          justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:9,fontWeight:700,letterSpacing:.5,color:"rgba(255,255,255,0.6)"}}>SUGGESTED (BILLABLE) SHIFTS — total rounded up</span>
+          <span style={{fontSize:12,fontWeight:700,fontFamily:"monospace",color:"#fff"}}>{suggestedShifts} sh</span>
+        </div>
       </div>
 
       {skipped.length > 0 && (
@@ -8055,7 +8071,7 @@ function PqCrrView({crrWorkup, pqCalc, setPqCalc, pqRate, ti}){
       <CalcResult setupAmt={setupCost} testAmt={testCost}/>
       <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>
         Teardown: {money(tdCost)} &nbsp;·&nbsp; Total: {money(setupCost+testCost+tdCost)}
-        &nbsp;·&nbsp; <span style={{fontStyle:"italic"}}>{counted.length} test{counted.length!==1?"s":""} × {pqRate}/sh × PIA {pia}</span>
+        &nbsp;·&nbsp; <span style={{fontStyle:"italic"}}>{suggestedShifts} billable shift{suggestedShifts!==1?"s":""} × {pqRate}/sh × PIA {pia}</span>
       </div>
     </div>
   );
@@ -8101,7 +8117,7 @@ function DcmCrrView({crrWorkup, dcmCalc, setDcmCalc, dcmRate}){
     const timeRaw = String(row[2] || "");
     if (!testKey && !label) return null;
     const hours = PARSE_HOURS(timeRaw);
-    const computedShifts = hours !== null ? Math.ceil(hours / 8) : null;
+    const computedShifts = hours !== null ? Math.round((hours / 8) * 100) / 100 : null;
     const ovKey = "DCM:" + (testKey || "row" + idx) + ":" + idx;
     const ov = dcmCalc.crrShiftOverrides?.[ovKey];
     const hasOv = ov !== undefined && ov !== null && ov !== "" && !isNaN(parseFloat(ov));
@@ -8117,11 +8133,14 @@ function DcmCrrView({crrWorkup, dcmCalc, setDcmCalc, dcmRate}){
   const skipped = rows.filter(t => t.skipped);
   const totalTestShifts = counted.reduce((a, t) => a + (t.effectiveShifts || 0), 0);
   const totalTestHours = counted.reduce((a, t) => a + (PARSE_HOURS(t.timeRaw) || 0), 0);
+  // Suggested billable shifts: round the REAL shift total up to a whole shift once,
+  // instead of rounding each test row up individually (which over-counted shifts).
+  const suggestedShifts = Math.ceil(Math.round(totalTestShifts * 100) / 100);
 
   const setupShifts = sf(dcmCalc.setupShifts, 1.5);
   const pia = sf(dcmCalc.pia, 1);
   const setupCost = r25(setupShifts * dcmRate * pia);
-  const testCost = r25(totalTestShifts * dcmRate * pia);
+  const testCost = r25(suggestedShifts * dcmRate * pia);
 
   const setOverride = (ovKey, value) => {
     const next = {...(dcmCalc.crrShiftOverrides || {})};
@@ -8193,6 +8212,11 @@ function DcmCrrView({crrWorkup, dcmCalc, setDcmCalc, dcmRate}){
           <div style={{textAlign:"center",fontFamily:"monospace"}}>{Number(totalTestHours.toFixed(2))} hr</div>
           <div style={{textAlign:"right",fontFamily:"monospace",paddingRight:24}}>{Number(totalTestShifts.toFixed(2))} sh</div>
         </div>
+        <div style={{padding:"7px 10px",background:"#1a2332",display:"flex",
+          justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:9,fontWeight:700,letterSpacing:.5,color:"rgba(255,255,255,0.6)"}}>SUGGESTED (BILLABLE) SHIFTS — total rounded up</span>
+          <span style={{fontSize:12,fontWeight:700,fontFamily:"monospace",color:"#fff"}}>{suggestedShifts} sh</span>
+        </div>
       </div>
 
       {skipped.length > 0 && (
@@ -8211,14 +8235,14 @@ function DcmCrrView({crrWorkup, dcmCalc, setDcmCalc, dcmRate}){
       <CalcResult setupAmt={setupCost} testAmt={testCost}/>
       <div style={{marginTop:6,fontSize:10,color:"#6b7a8d"}}>
         Total: {money(setupCost+testCost)}
-        &nbsp;·&nbsp; <span style={{fontStyle:"italic"}}>{counted.length} row{counted.length!==1?"s":""} × {dcmRate}/sh × PIA {pia}</span>
+        &nbsp;·&nbsp; <span style={{fontStyle:"italic"}}>{suggestedShifts} billable shift{suggestedShifts!==1?"s":""} × {dcmRate}/sh × PIA {pia}</span>
       </div>
     </div>
   );
 }
 
 // ── Pricing Calculator ────────────────────────────────────────────────────────
-function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300b, onExportPq300p1, calcStatesRef, crrWorkup}){
+function PricingCalculator({setup, ti, onExportEmiF, onExportEmiG, onExportPq300b, onExportPq300p1, calcStatesRef, crrWorkup, onRefreshCrr}){
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("vib");
   // CRR view toggle per calc tab. "computed" = NUForce calc (existing), "crr" = read from crrWorkup
@@ -8496,7 +8520,17 @@ Any procurement specification extended frequency range requirements or optional 
           <span style={{fontSize:12,fontWeight:700,color:"#1a2332",letterSpacing:.2}}>Pricing Calculator</span>
           <span style={{fontSize:10,color:"#9aa5b1"}}>— reference tool, does not affect quote</span>
         </div>
-        <span style={{fontSize:12,color:"#9aa5b1"}}>{open?"▲":"▼"}</span>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {onRefreshCrr&&(
+            <button onClick={(e)=>{e.stopPropagation();onRefreshCrr();}}
+              title="Re-check Workspace for this quote's CRR workup — use after editing the workup in Workspace"
+              style={{fontSize:10,fontWeight:600,color:"#1a5276",background:"#eaf2ff",
+                border:"1px solid #b6d4f0",borderRadius:6,padding:"3px 9px",cursor:"pointer"}}>
+              ↻ Refresh CRR
+            </button>
+          )}
+          <span style={{fontSize:12,color:"#9aa5b1"}}>{open?"▲":"▼"}</span>
+        </div>
       </div>
 
       {open&&(
@@ -10580,6 +10614,9 @@ export default function App({onLogout,currentUser}){
   // crrWorkup = false → fetched but no row exists in Supabase for this quote
   // crrWorkup = {...} → the parsed row
   const [crrWorkup, setCrrWorkup] = useState(null);
+  // Bumped by the "Refresh CRR" button to force a re-fetch without changing the
+  // opportunity number (e.g. after the workup is edited in Workspace mid-session).
+  const [crrRefreshTick, setCrrRefreshTick] = useState(0);
 
   // Fetch CRR workup whenever the quote number changes.
   // Cached in state — never automatically refetched mid-session (per Phase 6
@@ -10636,7 +10673,7 @@ export default function App({onLogout,currentUser}){
       }
     })();
     return () => { cancelled = true; };
-  }, [qi?.opp]);
+  }, [qi?.opp, crrRefreshTick]);
   const AUTOSIZE_MAX_PX = 280; // ~15 lines at lineHeight 1.6 * fontSize 11 + padding
   const fitTextarea = (el) => {
     if (!el) return;
@@ -15059,7 +15096,8 @@ const STANDARD_TERMS = [
               onExportPq300b={exportCalcPq300bPDF_calc}
               onExportPq300p1={exportCalcPq300Part1PDF_calc}
               calcStatesRef={pricingCalcStateRef}
-              crrWorkup={crrWorkup}/>
+              crrWorkup={crrWorkup}
+              onRefreshCrr={()=>{setCrrWorkup(null);setCrrRefreshTick(t=>t+1);}}/>
 
             {/* ── Row 5+: Test sections ── */}
             <div>
