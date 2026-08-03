@@ -5302,12 +5302,38 @@ function Dashboard({onEnterQuote, onLoadQuote, onNewQuoteForAccount, currentUser
     let ytdCreatedRaw = [], ytdWonRaw = [];
     try {
       [ytdCreatedRaw, ytdWonRaw] = await Promise.all([
-        restFetch("GET", `quotes?select=id,opportunity,total&created_at=gte.${encodeURIComponent(ytdStart)}&created_at=lt.${encodeURIComponent(ytdEnd)}&limit=2000`),
-        restFetch("GET", `quotes?select=id,opportunity,total,won_date,data->qi->>type&stage=eq.Closed%20Won&won_date=gte.${encodeURIComponent(ytdStart.slice(0,10))}&won_date=lt.${encodeURIComponent(ytdEnd.slice(0,10))}&limit=2000`),
+        restFetch("GET", `quotes?select=id,opportunity,total,revision,created_at&created_at=gte.${encodeURIComponent(ytdStart)}&created_at=lt.${encodeURIComponent(ytdEnd)}&limit=2000`),
+        restFetch("GET", `quotes?select=id,opportunity,total,won_date,revision,created_at,data->qi->>type&stage=eq.Closed%20Won&won_date=gte.${encodeURIComponent(ytdStart.slice(0,10))}&won_date=lt.${encodeURIComponent(ytdEnd.slice(0,10))}&limit=2000`),
       ]);
     } catch(e) { console.warn("[DASHBOARD] YTD queries failed:", e?.message||e); }
-    const ytdCreated     = ytdCreatedRaw || [];
-    const ytdWonAll      = (ytdWonRaw || []).map(q => ({...q, type: q.type||"New Business"}));
+    // Collapse revisions: a revised quote (e.g. 26-224 → 26-224A) is the SAME
+    // opportunity, so counting both rows double-counts the pipeline. Keep only the
+    // latest revision per opportunity for BOTH the created and won YTD numbers, so
+    // the count is distinct opportunities and the value is net (not stacked).
+    const ytdBaseOpp = (o) => {
+      const s = String(o || "").trim();
+      const m = s.match(/^(.*?)([A-Za-z])$/);
+      return (m ? m[1] : s).toUpperCase();
+    };
+    const ytdRevRank = (row) => {
+      const rev = String(row.revision || "").trim().toUpperCase();
+      if (/^[A-Z]$/.test(rev)) return rev.charCodeAt(0) - 64; // A=1, B=2…
+      const o = String(row.opportunity || "").trim().toUpperCase();
+      return /[A-Z]$/.test(o) ? (o.charCodeAt(o.length - 1) - 64) : 0; // base = 0
+    };
+    const ytdLatestPerOpp = (rows) => {
+      const best = new Map();
+      (rows || []).forEach((row) => {
+        const key = ytdBaseOpp(row.opportunity);
+        const cur = best.get(key);
+        if (!cur) { best.set(key, row); return; }
+        const d = ytdRevRank(row) - ytdRevRank(cur);
+        if (d > 0 || (d === 0 && String(row.created_at || "") > String(cur.created_at || ""))) best.set(key, row);
+      });
+      return [...best.values()];
+    };
+    const ytdCreated     = ytdLatestPerOpp(ytdCreatedRaw);
+    const ytdWonAll      = ytdLatestPerOpp(ytdWonRaw).map(q => ({...q, type: q.type||"New Business"}));
     const ytdWonNew      = ytdWonAll.filter(q => q.type === "New Business");
     const ytdWonExisting = ytdWonAll.filter(q => q.type === "Existing Business");
     const ytdQuoteTotal  = ytdCreated.reduce((a,q) => a + (q.total||0), 0);
