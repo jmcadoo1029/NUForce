@@ -74,6 +74,9 @@ const prettifyEmail = (email) => {
 };
 const r25 = n => Math.round(n/25)*25;
 const sf = (v,d=0) => { const n=parseFloat(v); return isNaN(n)?d:n; };
+// Workspace clients page — opened in a new tab (with the typed name) to create a
+// client when none exists in NUForce. NUForce stays read-only on clients.
+const WORKSPACE_CLIENTS_URL = "https://workspace.nulabs.com/#clients";
 const mwDisc=vs=>{if(vs<=4000)return 1000;if(vs<=5000)return 1250;if(vs<=7000)return 1500;if(vs<=9000)return 1750;return 2000;};
 const lwDisc=vs=>{if(vs<=2000)return 500;if(vs<=3000)return 750;return 1000;};
 // MW testing price based on unit weight (lbs)
@@ -2324,7 +2327,7 @@ async function deleteQuoteFromSupabase(id) {
 }
 
 // ── Client / Contact picker ───────────────────────────────────────────────────
-function ClientContactPicker({qi, setQi, resetKey}){
+function ClientContactPicker({qi, setQi, resetKey, onAccountEdited}){
   const [clientSearch, setClientSearch]     = useState(qi.account||"");
   const [clientResults, setClientResults]   = useState([]);
   const [clientOpen, setClientOpen]         = useState(false);
@@ -2390,7 +2393,7 @@ function ClientContactPicker({qi, setQi, resetKey}){
     setClientSearch(c.name);
     const billTo=c.address||"";
     const billToCity=[c.city,c.state,c.zip].filter(Boolean).join(", ");
-    setQi(q=>({...q, account:c.name, contact:"", email:"", billTo, billToCity}));
+    setQi(q=>({...q, account:c.name, contact:"", email:"", billTo, billToCity, clientId:c.id}));
     setClientOpen(false);
     setClientResults([]);
     setCustomContact(false);
@@ -2413,20 +2416,28 @@ function ClientContactPicker({qi, setQi, resetKey}){
   return(
     <div>
       <div style={{marginBottom:6,position:"relative"}} ref={clientRef}>
-        <div style={{fontSize:9,color:C.dim,marginBottom:2}}>Account</div>
+        <div style={{fontSize:9,color:C.dim,marginBottom:2,display:"flex",alignItems:"center",gap:6}}>
+          <span>Account</span>
+          {(selectedClient||qi.clientId)
+            ? <span style={{color:"#15803d",fontWeight:700}}>✓ linked</span>
+            : (clientSearch.trim()?<span style={{color:"#b7791f",fontWeight:700}}>not linked</span>:null)}
+        </div>
         <input
           value={clientSearch}
           onChange={e=>{
             setClientSearch(e.target.value);
-            setQi(q=>({...q,account:e.target.value}));
+            setQi(q=>({...q,account:e.target.value,clientId:null}));
             setSelectedClient(null);
             setContacts([]);
             setClientOpen(true);
+            onAccountEdited&&onAccountEdited();
           }}
           onFocus={()=>setClientOpen(true)}
           placeholder="Type to search clients..."
           style={{...inp,width:"100%"}}/>
-        {clientOpen&&clientResults.length>0&&(
+        {clientOpen&&!!clientSearch.trim()&&(()=>{
+          const exact=clientResults.some(c=>(c.name||"").trim().toLowerCase()===clientSearch.trim().toLowerCase());
+          return(
           <div style={ddStyle}>
             {clientResults.map(c=>(
               <div key={c.id}
@@ -2437,8 +2448,24 @@ function ClientContactPicker({qi, setQi, resetKey}){
                 {c.name}
               </div>
             ))}
+            {!exact&&(
+              <div
+                onMouseDown={()=>{window.open(WORKSPACE_CLIENTS_URL+"?name="+encodeURIComponent(clientSearch.trim()),"_blank","noopener");setClientOpen(false);}}
+                style={{...itemBase,display:"flex",alignItems:"center",gap:8,background:"#f5f9ff",color:C.accent,fontWeight:600}}
+                onMouseEnter={e=>e.currentTarget.style.background="#e9f2ff"}
+                onMouseLeave={e=>e.currentTarget.style.background="#f5f9ff"}>
+                <span>＋ Create "{clientSearch.trim()}" in Workspace ↗</span>
+                <span style={{marginLeft:"auto",fontSize:9,color:C.dim,fontWeight:400}}>opens new tab</span>
+              </div>
+            )}
+            {clientResults.length===0&&(
+              <div style={{padding:"6px 12px",fontSize:9,color:C.dim,fontStyle:"italic"}}>
+                No matching clients. Create it in Workspace, then re-search to link it.
+              </div>
+            )}
           </div>
-        )}
+          );
+        })()}
       </div>
 
       <div style={{marginBottom:6,position:"relative"}} ref={contactRef}>
@@ -9891,6 +9918,7 @@ export default function App({onLogout,currentUser}){
   },[]);
   const recentSaveRef=useRef(0); // timestamp of last local save — suppresses self-triggered realtime toast
   const isLoadingRef=useRef(false); // true during handleLoad — suppresses isDirty during load
+  const accountEditedRef=useRef(false); // true once the user types in the Account field this session; gates the require-account-link check on save
   const reloadOpenQuoteRef=useRef(null); // set after handleLoad is defined — used by realtime toast button
   const [toast,setToast]=useState(null); // {msg, type: 'success'|'error'|'info'}
   const toastTimer=useRef(null);
@@ -10466,6 +10494,7 @@ export default function App({onLogout,currentUser}){
     } else {
       const create=window.confirm("No quote found for \""+row.opportunity+"\"\n\nWould you like to create a new quote with this opportunity number?");
       if(create){
+        accountEditedRef.current=false;
         setQi({opp:row.opportunity,account:row.account||"",billTo:"",billToCity:"",contact:"",email:"",prepby:"",rev:"",revDate:"",date:new Date().toLocaleDateString("en-US"),rfq:"",stage:"Proposal/Price Quote",type:"New Business",relatedOpps:""});
         setTi({item:"",qty:"1",model:"",drawing:"",loads:null,dimL:"",dimW:"",dimH:"",wt:"",volt:"",pwrType:"AC",phase:"",hz:"",inrush:"",amps:"",mounting:"",pressureFlow:"",gsi:"Unknown",witness:"Unknown",docRestriction:"None",dpas:"",tiSpecs:"",tiNotes:""});
         setVibs([newVib()]);setShocks([newShock()]);setNoises([newNoise()]);setEnvs([newEnv()]);
@@ -10936,7 +10965,7 @@ export default function App({onLogout,currentUser}){
   };
 
   const handleNewQuote=async(skipConfirm=false)=>{
-    isLoadingRef.current=true; // suppress isDirty during reset
+    isLoadingRef.current=true; accountEditedRef.current=false; // suppress isDirty during reset
     if(!skipConfirm){
       const result=window.confirm("Save the current quote before starting a new one?\n\nClick OK to save, or Cancel to discard and continue.");
       if(result){
@@ -11028,6 +11057,27 @@ export default function App({onLogout,currentUser}){
     // Block save if Closed Won and wonDate hasn't been confirmed this session
     if(qi.stage==="Closed Won"&&wonDatePending){
       showToast("Confirm the Won Date first","warn",4000);
+      return;
+    }
+    // ── Require a linked client — no text-only accounts ──
+    // If the Account was typed/edited this session and never linked to a client
+    // via the dropdown, block the save. If the name matches an existing client,
+    // tell them to pick it; otherwise point them to "Create in Workspace".
+    if (accountEditedRef.current && (qi.account||"").trim() && !qi.clientId) {
+      const acct = qi.account.trim();
+      let match = null;
+      try {
+        const rows = await restFetch("GET",
+          `clients?select=id,name&name=ilike.${encodeURIComponent(acct)}&limit=1`);
+        match = Array.isArray(rows) && rows.length ? rows[0] : null;
+      } catch (e) {
+        console.warn('[ACCOUNT-LINK] client lookup failed', e?.message || e);
+      }
+      if (match) {
+        showToast(`"${match.name}" is a client in the database but isn't linked. Open the Account field and pick it from the dropdown to link it, then save again.`, "warn", 7000);
+      } else {
+        showToast(`"${acct}" isn't a linked client. Use "＋ Create in Workspace" in the Account dropdown to add it, then pick it from the list to link it.`, "warn", 7000);
+      }
       return;
     }
     recentSaveRef.current=Date.now();
@@ -11542,7 +11592,7 @@ export default function App({onLogout,currentUser}){
 
   // Load quote from search
   const handleLoad=q=>{
-    isLoadingRef.current=true; // suppress isDirty during load
+    isLoadingRef.current=true; accountEditedRef.current=false; // suppress isDirty during load
     // Pre-seed prevAutoSpecs/prevAutoNotes so the sync useEffect doesn't re-append
     // on load (the saved tiSpecs already contains the auto-generated text)
     const loadedAutoSpecs=buildSpecs(
@@ -14457,7 +14507,7 @@ const STANDARD_TERMS = [
                 <div style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:2,marginBottom:8}}>QUOTE INFORMATION</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 16px"}}>
                   <div>
-                    <ClientContactPicker qi={qi} setQi={setQi} resetKey={currentQuoteId}/>
+                    <ClientContactPicker qi={qi} setQi={setQi} resetKey={currentQuoteId} onAccountEdited={()=>{accountEditedRef.current=true;}}/>
                     {/* RFQ / PO */}
                     <div style={{marginBottom:6}}>
                       <div style={{fontSize:9,color:C.dim,marginBottom:2}}>RFQ / PO</div>
