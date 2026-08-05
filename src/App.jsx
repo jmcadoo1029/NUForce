@@ -11513,43 +11513,52 @@ export default function App({onLogout,currentUser}){
     }
   };
 
-  // Open the linked workspace project. If we already have the UUID (created or
-  // linked this session, or loaded from the quote), open directly. Otherwise look
-  // it up by Job # first, then open. Caches the UUID on success so later clicks
-  // are instant.
+  // Open the linked workspace project. When a Job # is present we treat Workspace
+  // as the source of truth and re-resolve the project by Job # on every click —
+  // this self-heals a stale cached UUID (e.g. the project was deleted/recreated),
+  // which is what caused "Open in Workspace" to land on a blank page. We only fall
+  // back to the cached UUID when there's no Job # to resolve from, or when the
+  // lookup itself is unreachable (offline).
   const handleOpenInWorkspace = async () => {
-    if (workspaceProjectId) {
-      window.open(`https://workspace.nulabs.com/#project/${workspaceProjectId}/info`, "_blank", "noopener,noreferrer");
-      return;
-    }
+    const openProject = (id) =>
+      window.open(`https://workspace.nulabs.com/#project/${id}/info`, "_blank", "noopener,noreferrer");
     const jobNum = (wonInfo?.jobNum || "").trim();
+
+    // No Job # to resolve from — fall back to the cached link if we have one.
     if (!jobNum) {
+      if (workspaceProjectId) { openProject(workspaceProjectId); return; }
       showToast("No Job # on this quote to open in workspace","error",3500);
       return;
     }
+
     setWorkspaceBusy(true);
     try {
       let lookup;
       try {
         lookup = await rpcCall('lookup_project_by_job_number', { job_number: jobNum });
       } catch (e) {
-        showToast(`Couldn't open workspace project: ${e?.message || e}`,"error",6000);
+        // Lookup unreachable — fall back to the cached link rather than blocking.
+        if (workspaceProjectId) { openProject(workspaceProjectId); return; }
+        showToast(`Couldn't look up the workspace project: ${e?.message || e}`,"error",6000);
         return;
       }
       if (!lookup?.found || !lookup?.project_id) {
-        showToast(`No workspace project found for Job # "${jobNum}". It may not have been created yet.`,"error",6000);
+        // Authoritative "no project for this Job #" — do NOT open a stale cached UUID
+        // (that's the blank-page bug). Point the user at the right recovery action.
+        showToast(`No workspace project found for Job # "${jobNum}". It may have been deleted or not created yet — use Create Project or Add to Existing.`,"error",7000);
         return;
       }
-      // Cache the UUID locally so the link is direct next time, and persist it to the quote
-      setWorkspaceProjectId(lookup.project_id);
-      if (currentQuoteId) {
-        // Fire-and-forget: a failure to cache is non-fatal (next click will look up again)
-        restFetch("PATCH",
-          `quotes?id=eq.${encodeURIComponent(currentQuoteId)}`,
-          {body:{ workspace_project_id: lookup.project_id }})
-          .catch(e => console.warn("[WS-LINK-CACHE] failed:", e?.message||e));
+      // Self-heal: if the resolved project differs from what's cached, update state + DB.
+      if (lookup.project_id !== workspaceProjectId) {
+        setWorkspaceProjectId(lookup.project_id);
+        if (currentQuoteId) {
+          restFetch("PATCH",
+            `quotes?id=eq.${encodeURIComponent(currentQuoteId)}`,
+            {body:{ workspace_project_id: lookup.project_id }})
+            .catch(e => console.warn("[WS-LINK-CACHE] failed:", e?.message||e));
+        }
       }
-      window.open(`https://workspace.nulabs.com/#project/${lookup.project_id}/info`, "_blank", "noopener,noreferrer");
+      openProject(lookup.project_id);
     } catch (err) {
       showToast(`Couldn't open workspace project: ${err.message || err}`,"error",6000);
     } finally {
@@ -14353,7 +14362,7 @@ const STANDARD_TERMS = [
                     </div>
                   </div>
                 )}
-                {workspaceProjectId && !showClearLinkConfirm && (
+                {currentQuoteId && !showClearLinkConfirm && (
                   <div style={{marginTop:10,textAlign:"right"}}>
                     <button onClick={()=>setShowClearLinkConfirm(true)}
                       style={{background:"none",border:"none",color:"#9aa5b1",fontSize:10,cursor:"pointer",textDecoration:"underline",padding:0}}>
