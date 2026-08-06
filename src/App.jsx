@@ -13118,31 +13118,45 @@ const STANDARD_TERMS = [
       // Use snapshot specs/notes when not dirty — immune to auto-note formula changes
       const specsText = (!isDirty&&snapshot?.tiSpecs!=null ? snapshot.tiSpecs : (ti.tiSpecs||"")).trim();
       const notesText = (!isDirty&&snapshot?.tiNotes!=null ? snapshot.tiNotes : (ti.tiNotes||"")).trim();
+      // Render note/spec text preserving bullet lists: a leading •, -, *, or ◦ marker
+      // is drawn as a real bullet dot with a hanging indent, and lines stay single-
+      // spaced so a typed bulleted list looks the same on the PDF as on the page.
+      const renderNoteLines = (text) => {
+        text.split('\n').forEach(rawLine=>{
+          const line = rawLine.replace(/\r$/,'');
+          if(!line.trim()){ y += 4; return; }                    // blank line → small gap
+          const sub = /^(\s{2,}|\t)/.test(line);                 // indented → sub-bullet
+          const baseIndent = sub ? 20 : 8;
+          const m = line.match(/^\s*[•\-\*◦·]\s+(.*)$/);         // bullet marker + text
+          if (m) {
+            const textX = ML + baseIndent + 10;                  // hang wrapped lines past the dot
+            const w = doc.splitTextToSize(m[1], TW - (baseIndent+10) - 6);
+            checkY(w.length*12+2);
+            doc.setFillColor(...DARK);
+            doc.circle(ML + baseIndent + 3, y - 2.5, 1.3, 'F');  // real bullet dot
+            doc.text(w, textX, y);
+            y += w.length*12+2;
+          } else {
+            const w = doc.splitTextToSize(line.replace(/^\s+/,''), TW - baseIndent - 6);
+            checkY(w.length*12+2);
+            doc.text(w, ML + baseIndent, y);
+            y += w.length*12+2;
+          }
+        });
+      };
       if(specsText||notesText){
         sectionHdr('Specifications & Notes');
         y += 4;
         if(specsText){
           setF('bold', 9.5, DARK); checkY(14); doc.text('Specifications:', ML, y); y += 13;
           setF('normal', 9, DARK);
-          specsText.split('\n').forEach(line=>{
-            if(!line.trim()){y+=4;return;}
-            const w = doc.splitTextToSize(line.replace(/^•\s*/,''), TW-14);
-            checkY(w.length*12+3);
-            doc.text(w, ML+8, y); y += w.length*12+3;
-          });
+          renderNoteLines(specsText);
           y += 4;
         }
         if(notesText){
           setF('bold', 9.5, DARK); checkY(14); doc.text('Notes:', ML, y); y += 13;
           setF('normal', 9, DARK);
-          notesText.split('\n').forEach(line=>{
-            if(!line.trim()){y+=4;return;}
-            const isSubBullet = line.startsWith('  ') || line.startsWith('\t');
-            const indent = isSubBullet ? 20 : 8;
-            const w = doc.splitTextToSize(line.replace(/^•\s*/,'').replace(/^\s+/,''), TW-indent-6);
-            checkY(w.length*12+3);
-            doc.text(w, ML+indent, y); y += w.length*12+3;
-          });
+          renderNoteLines(notesText);
           y += 4;
         }
         y += 4;
