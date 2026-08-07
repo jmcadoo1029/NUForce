@@ -8881,11 +8881,21 @@ Any procurement specification extended frequency range requirements or optional 
                     <CalcInp value={env.essDur||"10 minutes"} onChange={v=>setEnv(s=>({...s,essDur:v}))} width={120}/>
                   </CalcRow2>
                 )}
-                {(isAcc||isIncl)&&(
-                  <div style={{fontSize:9,color:"#9aa5b1",marginBottom:6,padding:"4px 8px",background:"#f8f9fb",borderRadius:5}}>
-                    Setup: base ${isAcc?"$2,000":"$1,250"} + ${Math.round(fab).toLocaleString()} fab + ${Math.round(drill).toLocaleString()} drill
-                  </div>
-                )}
+                {(() => {
+                  let note=null;
+                  if(isTH) note=<>Setup <strong>{money(base.setup)}</strong> flat. Testing is set by the duration preset — <strong>{env.thDur}</strong> = <strong>{money(testAmt)}</strong> (0–1 Day $1,000 · 3 Days $1,350 · 5 Days $1,875 · 7 Days $2,275 · 10 Days $2,950). The custom-duration field is spec text only and does not change price.</>;
+                  else if(isAlt) note=<>Setup <strong>$500</strong> flat. Testing is set by dwell time — <strong>{env.altDwell}</strong> = <strong>{money(testAmt)}</strong> (1–30 min $1,000 · 31–60 min $1,500 · 1–2 hr $2,275).</>;
+                  else if(env.type==="Salt Fog") note=<>Testing <strong>$1,750</strong> for a <strong>96-hour</strong> exposure. No separate setup line.</>;
+                  else if(isESS) note=<>Flat <strong>$1,000</strong>, reflecting up to <strong>20 minutes per axis</strong>. For anything longer than 20 min/axis, quote it under <strong>HF Vibration</strong> instead.</>;
+                  else if(isAcc) note=<>Setup = <strong>$2,000</strong> base + {money(fab)} fab + {money(drill)} drill = <strong>{money(setupAmt)}</strong> (fab &amp; drill come from the Setup form). Testing <strong>$1,950</strong> flat.</>;
+                  else if(isIncl) note=<>Setup = <strong>$1,250</strong> base + {money(fab)} fab + {money(drill)} drill = <strong>{money(setupAmt)}</strong> (fab &amp; drill come from the Setup form). Testing <strong>$1,750</strong> flat.</>;
+                  if(!note) return null;
+                  return (
+                    <div style={{fontSize:9,color:"#6b7a8d",marginBottom:6,padding:"6px 9px",background:"#f8f9fb",borderRadius:5,lineHeight:1.5}}>
+                      <span style={{fontWeight:700,color:"#5dade2"}}>How this price is set: </span>{note}
+                    </div>
+                  );
+                })()}
                 <CalcResult setupAmt={setupAmt>0?setupAmt:undefined} testAmt={testAmt}/>
                 <SpecSuggestion text={(()=>{
                   const sc=s=>s?" in accordance with "+s:"";
