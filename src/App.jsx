@@ -8809,6 +8809,8 @@ Any procurement specification extended frequency range requirements or optional 
             const isAcc=env.type==="Acceleration";
             const isIncl=env.type==="Inclination";
             const isESS=env.type==="ESS";
+            const isDrip=env.type==="Drip Test";
+            const isSpray=env.type==="Spray Test";
             const typeToKey={
               "Temperature & Humidity":"th","Temperature Only":"th","Humidity Only":"th",
               "Altitude":"alt","Salt Fog":"sf","ESS":"ess","Rapid Decompression":"rd",
@@ -8819,12 +8821,15 @@ Any procurement specification extended frequency range requirements or optional 
             const ENV_BASE_PRICING={
               th:{setup:500,testing:null},sf:{setup:0,testing:1750},alt:{setup:500,testing:null},
               ess:{setup:0,testing:1000},acc:{setup:null,testing:1950},incl:{setup:null,testing:1750},
-              rd:{setup:1000,testing:2275},ed:{setup:1250,testing:2450},drip:{setup:500,testing:750},
-              sub:{setup:500,testing:750},spray:{setup:1250,testing:1250},insres:{setup:0,testing:500},
+              rd:{setup:1000,testing:2275},ed:{setup:1250,testing:2450},drip:{setup:null,testing:1250},
+              sub:{setup:750,testing:1250},spray:{setup:null,testing:1500},insres:{setup:0,testing:500},
             };
             const envKey=typeToKey[env.type]||"alt";
             const base=ENV_BASE_PRICING[envKey]||{setup:500,testing:1000};
-            const smartSetupAmt=(isAcc||isIncl)?Math.round(sf(isAcc?"2000":"1250",0)+drill+fab):base.setup;
+            // Acceleration/Inclination and Drip/Spray fold the Setup-form fab + drill
+            // (holes/drilling math, same as Lightweight Shock) onto a flat base.
+            const fabDrillBase=isAcc?2000:isIncl?1250:(isDrip||isSpray)?750:null;
+            const smartSetupAmt=fabDrillBase!=null?Math.round(fabDrillBase+drill+fab):base.setup;
             const ALT_DWELL_PRICES={"1-30 min":1000,"31-60 min":1500,"1-2 hr":2275};
             const altTestAmt=ALT_DWELL_PRICES[env.altDwell||"1-30 min"]||1000;
             const testAmt=isTH?(ENV_TH_PRICES[env.thDur]||1000):isAlt?altTestAmt:(base.testing||1000);
@@ -8889,6 +8894,9 @@ Any procurement specification extended frequency range requirements or optional 
                   else if(isESS) note=<>Flat <strong>$1,000</strong>, reflecting up to <strong>20 minutes per axis</strong>. For anything longer than 20 min/axis, quote it under <strong>HF Vibration</strong> instead.</>;
                   else if(isAcc) note=<>Setup = <strong>$2,000</strong> base + {money(fab)} fab + {money(drill)} drill = <strong>{money(setupAmt)}</strong> (fab &amp; drill come from the Setup form). Testing <strong>$1,950</strong> flat.</>;
                   else if(isIncl) note=<>Setup = <strong>$1,250</strong> base + {money(fab)} fab + {money(drill)} drill = <strong>{money(setupAmt)}</strong> (fab &amp; drill come from the Setup form). Testing <strong>$1,750</strong> flat.</>;
+                  else if(isDrip) note=<>Setup = <strong>$750</strong> base + {money(fab)} fab + {money(drill)} drill = <strong>{money(setupAmt)}</strong> (fab &amp; drill come from the Setup form, same holes/drilling math as Lightweight Shock). Testing <strong>$1,250</strong> minimum.</>;
+                  else if(isSpray) note=<>Setup = <strong>$750</strong> base + {money(fab)} fab + {money(drill)} drill = <strong>{money(setupAmt)}</strong> (fab &amp; drill come from the Setup form, same holes/drilling math as Lightweight Shock). Testing <strong>$1,500</strong> minimum.</>;
+                  else if(env.type==="Submergence") note=<>Setup <strong>$750</strong> flat. Testing <strong>$1,250</strong>.</>;
                   if(!note) return null;
                   return (
                     <div style={{fontSize:9,color:"#6b7a8d",marginBottom:6,padding:"6px 9px",background:"#f8f9fb",borderRadius:5,lineHeight:1.5}}>
